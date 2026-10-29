@@ -117,6 +117,7 @@
     <string name="notebook_result_working">Working</string>
     <string name="notebook_result_note">Note</string>
     <string name="notebook_result_reminder">Reminder</string>
+    <string name="notebook_result_forwarded">Sent on</string>
     <string name="notebook_result_failed">Not saved</string>
     <string name="notebook_result_dismiss">Dismiss</string>
 

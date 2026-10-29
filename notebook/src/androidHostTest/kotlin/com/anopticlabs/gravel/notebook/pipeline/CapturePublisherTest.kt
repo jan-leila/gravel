@@ -12,6 +12,8 @@ import com.anopticlabs.gravel.notebook.reminders.ReminderItem
 import com.anopticlabs.gravel.notebook.reminders.ReminderProposal
 import com.anopticlabs.gravel.notebook.reminders.ReminderRefreshSignal
 import com.anopticlabs.gravel.notebook.reminders.ReminderTimeStatus
+import com.anopticlabs.gravel.notebook.routers.RoutedText
+import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import com.anopticlabs.gravel.notebook.storage.FakeCryptographer
 import com.anopticlabs.gravel.notebook.storage.NoteStore
 import com.anopticlabs.gravel.notebook.storage.ReminderEventStore
@@ -302,5 +304,16 @@ class CapturePublisherTest {
         assertIs<PublishedCapture.ReminderSet>(publisher.publish(reminder(ReminderTimeStatus.TO_CHECK), now, emptyList()))
         assertEquals(1, completions.readAll(strict = true).size)
         assertTrue(reminders.readAll(strict = true).single().timeToCheck)
+    }
+
+    @Test
+    fun aForwardPublishesAsForwardedWithNothingOfTheNotebooksWritten() = runBlocking<Unit> {
+        val router = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router")
+        val published = publisher().publish(BuiltCapture.Forward(router, RoutedText("c1", "2026-09-22T17:00:00+02:00", "hello")), now, emptyList())
+        assertEquals(PublishedCapture.Forwarded("Tasks"), published)
+        assertTrue(notes.readMetadata(strict = true).isEmpty())
+        assertTrue(reminders.readAll(strict = true).isEmpty())
+        assertTrue(completions.readAll(strict = true).isEmpty())
+        assertTrue(notifier.setNotices.isEmpty())
     }
 }

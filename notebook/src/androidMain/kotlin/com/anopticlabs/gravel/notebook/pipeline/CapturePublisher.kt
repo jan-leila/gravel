@@ -30,6 +30,9 @@ sealed interface PublishedCapture {
     data class ReminderSet(val reminder: ReminderItem, val scheduled: Boolean, val defaulted: Boolean) : PublishedCapture
 
     data class NoteSaved(val noteId: String, val title: String, val classificationFailed: Boolean) : PublishedCapture
+
+    /** Delivered to the app or server router [routerName]; the drain delivered it before publishing. */
+    data class Forwarded(val routerName: String) : PublishedCapture
 }
 
 /**
@@ -67,6 +70,8 @@ class CapturePublisher(
             is BuiltCapture.Completion -> park(built.utterance, capturedAtMillis)
             is BuiltCapture.Reminder -> reminder(built.proposal)
             is BuiltCapture.Note -> note(built.note, offeredFolders)
+            // Nothing of the Notebook's is written for a delivery, which the drain made before this.
+            is BuiltCapture.Forward -> PublishedCapture.Forwarded(built.router.name)
         }
 
     private suspend fun park(utterance: String, capturedAtMillis: Long): PublishedCapture {

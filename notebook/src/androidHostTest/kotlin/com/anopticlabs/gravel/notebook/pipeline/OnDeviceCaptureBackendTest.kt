@@ -6,6 +6,12 @@ import com.anopticlabs.gravel.notebook.llm.PROMPT_CONTENT_BUDGET
 import com.anopticlabs.gravel.notebook.llm.Prompts
 import com.anopticlabs.gravel.notebook.reminders.ReminderProposal
 import com.anopticlabs.gravel.notebook.reminders.ReminderTimeStatus
+import com.anopticlabs.gravel.notebook.routers.RoutedText
+import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.RoutingConfig
+import com.anopticlabs.gravel.notebook.routers.SwitchRule
+import com.anopticlabs.gravel.notebook.storage.CorruptFileException
+import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -66,6 +72,18 @@ class OnDeviceCaptureBackendTest {
     private val decoded = byteArrayOf(1, 2, 3, 4)
     private val decoder = CaptureAudioDecoder { decoded }
 
+    private var graph = RoutingConfig.DEFAULT
+
+    /** Today's behavior before routing existed: a reminder cue at the start makes a reminder, else a note. */
+    private val split = RoutingConfig(
+        entry = "split",
+        routers = listOf(
+            RouterConfig.Switch("split", "Split", listOf(SwitchRule("^remind me", "reminders")), otherwise = "notes"),
+            RouterConfig.Note("notes", "Notes"),
+            RouterConfig.Reminder("reminders", "Reminders"),
+        ),
+    )
+
     // 2026-09-22T15:00:00Z, 17:00 in Berlin.
     private val capturedAt = Instant.fromEpochMilliseconds(1_790_089_200_000L)
     private val berlin = TimeZone.of("Europe/Berlin")
@@ -86,7 +104,7 @@ class OnDeviceCaptureBackendTest {
         stages: MutableList<CaptureStage> = mutableListOf(),
     ): BuiltCapture {
         val speech = FakeSpeech(transcript)
-        val built = OnDeviceCaptureBackend(decoder, speech, text, plenty).process(request(settings)) { stages += it }
+        val built = OnDeviceCaptureBackend(decoder, speech, text, plenty, routing = { graph }).process(request(settings)) { stages += it }
         assertTrue(speech.heard.contentEquals(decoded), "the speech engine did not get the decoded audio")
         return built
     }
@@ -122,6 +140,7 @@ class OnDeviceCaptureBackendTest {
     /** The rules read the time from the moment of the recording; the model's own time is not used. */
     @Test
     fun aReminderTimeIsReadByTheRulesAgainstTheTimeOfTheRecording() = runBlocking<Unit> {
+        graph = split
         val text = FakeText("""{"remind_in_seconds": 3600, "message": "Check the oven"}""")
         val stages = mutableListOf<CaptureStage>()
         val built = assertIs<BuiltCapture.Reminder>(run("remind me in ten minutes to check the oven", text, stages = stages))
@@ -138,6 +157,7 @@ class OnDeviceCaptureBackendTest {
     /** A clock time is read in the recording's zone, from the whole transcript rather than the copy capped for the model. */
     @Test
     fun aClockTimeIsReadInTheRecordingsZoneFromTheWholeTranscript() = runBlocking<Unit> {
+        graph = split
         val text = FakeText("""{"message": "Call Sam"}""")
         val transcript = "remind me to call Sam " + "um ".repeat(PROMPT_CONTENT_BUDGET / 2) + "tomorrow at 9"
         val built = assertIs<BuiltCapture.Reminder>(run(transcript, text))
@@ -147,6 +167,7 @@ class OnDeviceCaptureBackendTest {
 
     @Test
     fun aTimeTheRulesCannotReadIsToCheck() = runBlocking<Unit> {
+        graph = split
         val text = FakeText("""{"remind_in_seconds": 600, "message": "Call Sam"}""")
         val built = assertIs<BuiltCapture.Reminder>(run("remind me to call Sam after lunch", text))
         assertEquals(ReminderProposal("Call Sam", null, ReminderTimeStatus.TO_CHECK, recordedAt = "2026-09-22T17:00:00+02:00"), built.proposal)
@@ -311,5 +332,72 @@ class OnDeviceCaptureBackendTest {
         assertFalse(memoryShortFor(needBytes = 100, availableBytes = 1_000, thresholdBytes = 900))
         assertTrue(memoryShortFor(needBytes = 101, availableBytes = 1_000, thresholdBytes = 900))
         assertTrue(memoryShortFor(needBytes = 0, availableBytes = 899, thresholdBytes = 900))
+    }
+
+    private val tasks = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router")
+    private val hook = RouterConfig.Network("hook", "Webhook", "https://example.test/notes")
+
+    @Test
+    fun theDefaultRoutingWritesEveryTranscriptAsANote() = runBlocking<Unit> {
+        val text = FakeText()
+        val stages = mutableListOf<CaptureStage>()
+        val built = assertIs<BuiltCapture.Note>(run("remind me in ten minutes to check the oven", text, stages = stages))
+        assertEquals(listOf(CaptureStage.TRANSCRIBING, CaptureStage.THINKING, CaptureStage.CREATING_NOTE), stages)
+        assertEquals(Prompts.NOTE_SYSTEM, text.generations.single().system)
+        assertTrue(built.note.markdown.contains("remind me in ten minutes to check the oven"))
+    }
+
+    @Test
+    fun aReminderRouterSetsAReminderWhateverTheWordsSay() = runBlocking<Unit> {
+        graph = RoutingConfig(entry = "r", routers = listOf(RouterConfig.Reminder("r", "Always a reminder")))
+        val text = FakeText("""{"message": "Water the garden"}""")
+        val stages = mutableListOf<CaptureStage>()
+        val built = assertIs<BuiltCapture.Reminder>(run("thoughts on the garden", text, stages = stages))
+        assertEquals(listOf(CaptureStage.TRANSCRIBING, CaptureStage.THINKING, CaptureStage.SETTING_REMINDER), stages)
+        assertEquals(ReminderProposal("Water the garden", null, ReminderTimeStatus.NO_TIME, recordedAt = "2026-09-22T17:00:00+02:00"), built.proposal)
+        assertEquals(Prompts.REMINDER_MESSAGE_SYSTEM, text.generations.single().system)
+    }
+
+    /** What the router API promises: the transcript whole, the recording's start, and no text model run. */
+    @Test
+    fun anAppOrNetworkRouterGetsTheTranscriptWholeWithTheRecordingTimeAndNoModelRuns() = runBlocking<Unit> {
+        for (router in listOf(tasks, hook)) {
+            graph = RoutingConfig(entry = router.id, routers = listOf(router))
+            val text = FakeText()
+            val stages = mutableListOf<CaptureStage>()
+            val transcript = "  remind me: the whole text, [noise] as heard  "
+            val built = assertIs<BuiltCapture.Forward>(run(transcript, text, stages = stages))
+            assertEquals(router, built.router)
+            assertEquals(RoutedText("c1", "2026-09-22T17:00:00+02:00", transcript), built.text)
+            assertEquals(listOf(CaptureStage.TRANSCRIBING, CaptureStage.FORWARDING), stages)
+            assertEquals(0, text.prepared)
+            assertTrue(text.generations.isEmpty())
+        }
+    }
+
+    @Test
+    fun aSwitchRoutesByItsRulesAndTheCompletionClaimIsDecidedBeforeIt() = runBlocking<Unit> {
+        graph = RoutingConfig(
+            entry = "split",
+            routers = listOf(RouterConfig.Switch("split", "Split", listOf(SwitchRule("garden", "tasks")), otherwise = "notes"), RouterConfig.Note("notes", "Notes"), tasks),
+        )
+        assertIs<BuiltCapture.Forward>(run("thoughts on the garden"))
+        assertIs<BuiltCapture.Note>(run("thoughts on the kitchen"))
+        val claim = run("Done, weeded the garden", settings = CaptureSettings(triggerEnabled = true, triggerWord = "done"))
+        assertEquals(BuiltCapture.Completion("weeded the garden"), claim)
+    }
+
+    @Test
+    fun aRoutingThatCannotBeReadHoldsBeforeAnyEngineRuns() = runBlocking<Unit> {
+        val text = FakeText()
+        val speech = FakeSpeech("anything at all")
+        val backend = OnDeviceCaptureBackend(decoder, speech, text, plenty, routing = { throw CorruptFileException("routing", IOException()) })
+        val ready = assertFailsWith<CaptureProcessingException> { backend.checkReady() }
+        assertEquals(CaptureFailureKind.HOLD, ready.kind)
+        assertEquals("the text routing settings could not be read", ready.message)
+        assertEquals(0, text.ready)
+        val processed = assertFailsWith<CaptureProcessingException> { backend.process(request()) {} }
+        assertEquals(CaptureFailureKind.HOLD, processed.kind)
+        assertEquals(0, text.prepared)
     }
 }

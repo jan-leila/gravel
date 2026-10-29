@@ -3,17 +3,18 @@ package com.anopticlabs.gravel.notebook.pipeline
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
 import com.anopticlabs.gravel.notebook.capture.CaptureStage
-import com.anopticlabs.gravel.notebook.capture.RecordedAt
-import com.anopticlabs.gravel.notebook.capture.captureStageForClassify
 import com.anopticlabs.gravel.notebook.llm.PROMPT_CONTENT_BUDGET
 import com.anopticlabs.gravel.notebook.llm.Prompts
 import com.anopticlabs.gravel.notebook.llm.capToBudget
 import com.anopticlabs.gravel.notebook.notes.NoteBuilder
 import com.anopticlabs.gravel.notebook.reminders.ReminderExtractor
-import com.anopticlabs.gravel.notebook.reminders.ReminderIntent
 import com.anopticlabs.gravel.notebook.reminders.SpokenTimeReader
 import com.anopticlabs.gravel.notebook.reminders.effectiveTriggerEnabled
 import com.anopticlabs.gravel.notebook.reminders.shouldParkTriggerCompletion
+import com.anopticlabs.gravel.notebook.routers.RouteWalk
+import com.anopticlabs.gravel.notebook.routers.RoutedText
+import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.RoutingConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.datetime.toLocalDateTime
 
@@ -34,17 +35,21 @@ fun hasSpeech(transcript: String): Boolean =
 
 /**
  * The capture pipeline: decode, transcribe, then a completion claim is parked without the text
- * model; otherwise the cue detector picks the reminder or note prompt for the text model. Before a
- * transcription on the phone, the text model is freed when memory is short ([SpeechCapture.phoneFits]).
+ * model; otherwise the transcript goes through the text routing ([routing], read for each capture)
+ * to the router that consumes it: a note or a reminder built here with the text model, or a
+ * [BuiltCapture.Forward] for the drain to deliver. Before a transcription on the phone, the text
+ * model is freed when memory is short ([SpeechCapture.phoneFits]).
  */
 class OnDeviceCaptureBackend(
     private val decoder: CaptureAudioDecoder,
     private val speech: CaptureSpeech,
     private val text: CaptureText,
     private val memory: CaptureMemory,
+    private val routing: () -> RoutingConfig = { RoutingConfig.DEFAULT },
 ) : CaptureBackend {
 
     override suspend fun checkReady() {
+        readRouting()
         speech.checkReady()
         text.checkReady()
     }
@@ -60,33 +65,57 @@ class OnDeviceCaptureBackend(
         if (!hasSpeech(transcript)) throw CaptureProcessingException(CaptureFailureKind.FLAG, "no speech was heard", reason = CaptureFailureReason.NO_SPEECH)
         val settings = request.settings
         val triggerOn = effectiveTriggerEnabled(settings.triggerEnabled, settings.triggerWord)
+        // A completion claim is a command to the Notebook, decided before the routing sees the text.
         shouldParkTriggerCompletion(triggerOn, settings.triggerWord, transcript)?.let { utterance ->
             onStage(CaptureStage.COMPLETING_TASK)
             return BuiltCapture.Completion(utterance)
         }
-        val isReminder = ReminderIntent.looksLikeReminder(transcript)
+        val config = readRouting()
+        val routed = RoutedText.of(request.id, request.capturedAt, request.zone, transcript)
+        return when (val terminal = RouteWalk.terminal(config, routed)) {
+            is RouterConfig.Note -> buildNote(request, routed, onStage)
+            is RouterConfig.Reminder -> buildReminder(request, routed, onStage)
+            is RouterConfig.App, is RouterConfig.Network -> {
+                onStage(CaptureStage.FORWARDING)
+                BuiltCapture.Forward(terminal, routed)
+            }
+            is RouterConfig.Switch -> throw IllegalStateException("the routing walk ended at a switch")
+        }
+    }
+
+    private suspend fun buildNote(request: CaptureRequest, routed: RoutedText, onStage: (CaptureStage) -> Unit): BuiltCapture.Note {
         onStage(CaptureStage.THINKING)
         text.prepare()
-        onStage(captureStageForClassify(isCompletion = false, isReminder = isReminder))
-        val capped = capToBudget(transcript, PROMPT_CONTENT_BUDGET)
-        val recordedAt = RecordedAt.render(request.capturedAt, request.zone)
-        return if (isReminder) {
-            // The model writes the message only; the rules read the time from the whole transcript.
-            val raw = text.generate(Prompts.REMINDER_MESSAGE_SYSTEM, Prompts.reminderMessagePrompt(capped), REPLY_TOKENS)
-            val spoken = SpokenTimeReader.read(transcript, request.capturedAt, request.zone)
-            BuiltCapture.Reminder(ReminderExtractor.proposal(raw, transcript, spoken, recordedAt))
-        } else {
-            val raw = text.generate(Prompts.NOTE_SYSTEM, Prompts.notePromptVerbatim(capped), REPLY_TOKENS)
-            val note = NoteBuilder.buildNote(
-                rawReply = raw,
-                transcript = transcript,
-                folders = request.folders,
-                folderTags = request.folderTags,
-                now = request.capturedAt.toLocalDateTime(request.zone),
-                recordedAt = recordedAt,
-            )
-            BuiltCapture.Note(note)
-        }
+        onStage(CaptureStage.CREATING_NOTE)
+        val raw = text.generate(Prompts.NOTE_SYSTEM, Prompts.notePromptVerbatim(capToBudget(routed.text, PROMPT_CONTENT_BUDGET)), REPLY_TOKENS)
+        val note = NoteBuilder.buildNote(
+            rawReply = raw,
+            transcript = routed.text,
+            folders = request.folders,
+            folderTags = request.folderTags,
+            now = request.capturedAt.toLocalDateTime(request.zone),
+            recordedAt = routed.recordedAt,
+        )
+        return BuiltCapture.Note(note)
+    }
+
+    private suspend fun buildReminder(request: CaptureRequest, routed: RoutedText, onStage: (CaptureStage) -> Unit): BuiltCapture.Reminder {
+        onStage(CaptureStage.THINKING)
+        text.prepare()
+        onStage(CaptureStage.SETTING_REMINDER)
+        // The model writes the message only; the rules read the time from the whole transcript.
+        val raw = text.generate(Prompts.REMINDER_MESSAGE_SYSTEM, Prompts.reminderMessagePrompt(capToBudget(routed.text, PROMPT_CONTENT_BUDGET)), REPLY_TOKENS)
+        val spoken = SpokenTimeReader.read(routed.text, request.capturedAt, request.zone)
+        return BuiltCapture.Reminder(ReminderExtractor.proposal(raw, routed.text, spoken, routed.recordedAt))
+    }
+
+    // Every capture would go the same way without its routing, so a routing that cannot be read holds the drain.
+    private fun readRouting(): RoutingConfig = try {
+        routing()
+    } catch (e: CaptureProcessingException) {
+        throw e
+    } catch (e: Exception) {
+        throw CaptureProcessingException(CaptureFailureKind.HOLD, "the text routing settings could not be read", e)
     }
 
     private suspend fun phoneFits(): Boolean {

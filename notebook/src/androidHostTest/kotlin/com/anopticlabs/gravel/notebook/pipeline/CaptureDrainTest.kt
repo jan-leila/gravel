@@ -7,6 +7,7 @@ import com.anopticlabs.gravel.notebook.alarms.ReminderAlarms
 import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
 import com.anopticlabs.gravel.notebook.capture.CaptureQueueItem
 import com.anopticlabs.gravel.notebook.capture.CaptureStage
+import com.anopticlabs.gravel.notebook.capture.captureQueueRowLabel
 import com.anopticlabs.gravel.notebook.capture.MAX_QUEUE_ATTEMPTS
 import com.anopticlabs.gravel.notebook.capture.MAX_SERVER_TRIES
 import com.anopticlabs.gravel.notebook.capture.ProcessingPause
@@ -17,6 +18,9 @@ import com.anopticlabs.gravel.notebook.capture.isLong
 import com.anopticlabs.gravel.notebook.notes.BuiltNote
 import com.anopticlabs.gravel.notebook.reminders.ReminderProposal
 import com.anopticlabs.gravel.notebook.reminders.ReminderRefreshSignal
+import com.anopticlabs.gravel.notebook.routers.RoutedText
+import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.TextDeliverer
 import com.anopticlabs.gravel.notebook.reminders.ReminderTimeStatus
 import com.anopticlabs.gravel.notebook.storage.FakeCryptographer
 import com.anopticlabs.gravel.notebook.storage.NoteStore
@@ -89,6 +93,18 @@ class CaptureDrainTest {
 
     private val backend = FakeBackend()
 
+    private class FakeDeliverer : TextDeliverer {
+        val delivered = mutableListOf<Pair<RouterConfig, RoutedText>>()
+        var onDeliver: suspend (RouterConfig, RoutedText) -> Unit = { _, _ -> }
+
+        override suspend fun deliver(router: RouterConfig, text: RoutedText) {
+            onDeliver(router, text)
+            delivered += router to text
+        }
+    }
+
+    private val deliverer = FakeDeliverer()
+
     private fun publisher() = CapturePublisher(
         notes, reminders, completions,
         ReminderAlarms(reminders, events, FakeScheduler(), FakeNotifier(), FakeSettings(), ReminderRefreshSignal(), { now }, { TimeZone.UTC }),
@@ -97,7 +113,7 @@ class CaptureDrainTest {
 
     private val settings = CaptureSettings(triggerEnabled = true, triggerWord = "done")
 
-    private val drain = CaptureDrain(queue, notes, backend, publisher(), rows, { settings }, { TimeZone.UTC })
+    private val drain = CaptureDrain(queue, notes, backend, publisher(), rows, { settings }, { TimeZone.UTC }, deliverer = deliverer)
 
     @Volatile
     private var rules = ProcessingRules()
@@ -1116,5 +1132,49 @@ class CaptureDrainTest {
         rules = rules.copy(pluggedIn = true)
         assertEquals(DrainReport(published = 1), ruled.drain())
         assertEquals(0, ruled.waitingForPower.value)
+    }
+
+    private val tasks = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router")
+
+    private fun forwardTo(router: RouterConfig) {
+        backend.onProcess = { request, onStage ->
+            onStage(CaptureStage.FORWARDING)
+            BuiltCapture.Forward(router, RoutedText.of(request.id, request.capturedAt, request.zone, "said: ${request.audio.decodeToString()}"))
+        }
+    }
+
+    @Test
+    fun aForwardedCaptureIsDeliveredWithItsRecordingTimeBeforeItLeavesTheQueue() = runBlocking<Unit> {
+        assertTrue(queue.enqueue(QueuedCapture("f1", "f1.m4a", now, zoneId = "Europe/Berlin"), "hello".encodeToByteArray()))
+        forwardTo(tasks)
+        var queuedAtDelivery = false
+        deliverer.onDeliver = { _, _ -> queuedAtDelivery = entry("f1") != null }
+        assertEquals(DrainReport(published = 1), drain.drain())
+        val (router, text) = deliverer.delivered.single()
+        assertEquals(tasks, router)
+        assertEquals(RoutedText("f1", "2026-09-22T17:00:00+02:00", "said: hello"), text)
+        assertTrue(queuedAtDelivery, "delivered while still queued")
+        assertNull(entry("f1"))
+        assertFalse(blob("f1").exists())
+        val row = row("f1")!!
+        assertEquals(CaptureQueueItem.Status.FORWARDED, row.status)
+        assertEquals(CaptureQueueItem.Kind.FORWARDED, row.kind)
+        assertEquals("Sent to Tasks", captureQueueRowLabel(row))
+        assertTrue(notes.readMetadata(strict = true).isEmpty())
+    }
+
+    @Test
+    fun aDeliveryThatFailsIsReadLikeAnyProcessingFailure() = runBlocking<Unit> {
+        enqueue("f2")
+        forwardTo(tasks)
+        deliverer.onDeliver = { _, _ -> throw CaptureProcessingException(CaptureFailureKind.RETRY, "no answer") }
+        assertEquals(DrainReport(retried = 1), drain.drain())
+        assertEquals(1, entry("f2")!!.attempts)
+        assertTrue(deliverer.delivered.isEmpty())
+        deliverer.onDeliver = { _, _ -> throw CaptureProcessingException(CaptureFailureKind.FLAG, "gone", reason = CaptureFailureReason.ROUTER_UNAVAILABLE) }
+        assertEquals(DrainReport(flagged = 1), drain.drain())
+        assertEquals("router_unavailable", entry("f2")!!.failure)
+        assertEquals(CaptureQueueItem.Status.FAILED, row("f2")!!.status)
+        assertTrue(blob("f2").exists())
     }
 }

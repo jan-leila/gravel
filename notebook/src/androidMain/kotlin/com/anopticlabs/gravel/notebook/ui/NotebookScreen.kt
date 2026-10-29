@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -431,6 +432,7 @@ private fun CaptureResultRow(item: CaptureQueueItem, onOpen: (() -> Unit)?, onDi
             } else {
                 val (icon, tint) = when (item.status) {
                     CaptureQueueItem.Status.REMINDER_SET -> Icons.Filled.Alarm to MaterialTheme.colorScheme.primary
+                    CaptureQueueItem.Status.FORWARDED -> Icons.AutoMirrored.Filled.Send to MaterialTheme.colorScheme.primary
                     CaptureQueueItem.Status.FAILED -> Icons.Filled.ErrorOutline to MaterialTheme.colorScheme.error
                     else -> Icons.Filled.Description to MaterialTheme.colorScheme.primary
                 }
@@ -443,6 +445,7 @@ private fun CaptureResultRow(item: CaptureQueueItem, onOpen: (() -> Unit)?, onDi
                             item.inFlight -> R.string.notebook_result_working
                             item.status == CaptureQueueItem.Status.NOTE_CREATED -> R.string.notebook_result_note
                             item.status == CaptureQueueItem.Status.REMINDER_SET -> R.string.notebook_result_reminder
+                            item.status == CaptureQueueItem.Status.FORWARDED -> R.string.notebook_result_forwarded
                             else -> R.string.notebook_result_failed
                         }
                     ),

@@ -59,6 +59,9 @@ import com.anopticlabs.gravel.notebook.pipeline.isPluggedIn
 import com.anopticlabs.gravel.notebook.reminders.AndroidPhoneCalendar
 import com.anopticlabs.gravel.notebook.reminders.PhoneCalendar
 import com.anopticlabs.gravel.notebook.reminders.ReminderRefreshSignal
+import com.anopticlabs.gravel.notebook.routers.RouterDeliveries
+import com.anopticlabs.gravel.notebook.routers.RoutingConfigStore
+import com.anopticlabs.gravel.notebook.routers.TextDeliverer
 import com.anopticlabs.gravel.notebook.sources.AudioRecordMicrophone
 import com.anopticlabs.gravel.notebook.sources.Microphone
 import com.anopticlabs.gravel.notebook.sources.PhoneRecorder
@@ -114,8 +117,12 @@ val notebookModule = module {
             get(), get(), get(), get(), get(),
             startBackups = get<AutoBackups<Uri>>()::start, checkBackups = get<AutoBackupChecks>()::request, startCharger = get<LongCaptureCharger>()::start,
             startNetworkWatch = get<ServerNetworkWatch>()::start, startSpeechWatch = get<SpeechSettingWatch>()::start,
+            loadRouting = { get<RoutingConfigStore>().load() },
         )
     }
+    single { RoutingConfigStore(NotebookFiles.root(androidContext()), get()) }
+    // The app and network deliverers are bound where their transports live; none yet.
+    single<TextDeliverer> { RouterDeliveries() }
     single { BackupStaging(NotebookFiles.root(androidContext())) }
     single { NotebookBackup(get(), get(), get(), get(), get(), get(), get()) }
     single { BackupGate() }
@@ -195,7 +202,7 @@ val notebookModule = module {
     single { CaptureRows() }
     single<CaptureAudioDecoder> { MediaCodecAudioDecoder() }
     // CaptureSpeech, CaptureText and CaptureMemory come from the app, which binds them to the engines.
-    single<CaptureBackend> { OnDeviceCaptureBackend(get(), get(), get(), get()) }
+    single<CaptureBackend> { OnDeviceCaptureBackend(get(), get(), get(), get(), routing = { get<RoutingConfigStore>().read() }) }
     single {
         CapturePublisher(
             notes = get(), reminders = get(), completions = get(), alarms = get(), notifier = get(),
@@ -207,7 +214,7 @@ val notebookModule = module {
         CaptureDrain(
             get(), get(), get(), get(), get(), settings = { get<NotebookPreferences>().captureSettings },
             rules = { get<ProcessingControls>().rules() }, notice = { get<CaptureSpeech>().notice() },
-            serverTried = WorkManagerServerTryWork(androidContext())::schedule,
+            serverTried = WorkManagerServerTryWork(androidContext())::schedule, deliverer = get(),
         )
     }
     single {

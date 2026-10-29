@@ -18,6 +18,8 @@ import com.anopticlabs.gravel.notebook.capture.needsReview
 import com.anopticlabs.gravel.notebook.capture.processingOrder
 import com.anopticlabs.gravel.notebook.capture.waitsForPower
 import com.anopticlabs.gravel.notebook.notes.captureRouteFolders
+import com.anopticlabs.gravel.notebook.routers.RouterDeliveries
+import com.anopticlabs.gravel.notebook.routers.TextDeliverer
 import com.anopticlabs.gravel.notebook.storage.BlobRead
 import com.anopticlabs.gravel.notebook.storage.CorruptFileException
 import com.anopticlabs.gravel.notebook.storage.NoteStore
@@ -101,7 +103,9 @@ private fun holdFor(e: Exception, fallback: String): CaptureHold =
  * queue only once it is published, or when its recording is gone; see [captureFailureKind] for the rest. Nothing
  * of a transcript or a reply is logged. A rerouted capture goes through [rules] again in the same pass, once; a second
  * reroute makes it wait. [notice] is read after each pass, [serverTried] called after each server try is recorded.
- * [admitted] runs once a capture can be stopped and before it starts, for tests.
+ * [admitted] runs once a capture can be stopped and before it starts, for tests. A capture the routing sends to an
+ * app or a server is handed to [deliverer] before it settles, where a stop can still land, and leaves the queue only
+ * once the delivery returned.
  */
 class CaptureDrain(
     private val queue: QueueStore,
@@ -115,6 +119,7 @@ class CaptureDrain(
     private val notice: () -> CaptureNotice? = { null },
     private val serverTried: () -> Unit = {},
     private val admitted: (QueuedCapture) -> Unit = {},
+    private val deliverer: TextDeliverer = RouterDeliveries(),
 ) {
     private val running = Mutex()
     private val requested = AtomicBoolean(false)
@@ -393,6 +398,9 @@ class CaptureDrain(
                 rows.stage(entry.id, stage)
                 synchronized(currentLock) { startedFor(entry)?.stage = stage }
             }
+            // A delivery can take seconds and is the one write a forward has, so it runs before the
+            // capture settles, cancellable; a failure is read like any other processing failure.
+            if (built is BuiltCapture.Forward) deliverer.deliver(built.router, built.text)
             if (!settling(entry)) throw CancellationException("capture interrupted")
             // Once published, the entry must go even if the drain is being canceled.
             val published = withContext(NonCancellable) {
@@ -460,6 +468,8 @@ class CaptureDrain(
         is PublishedCapture.ReminderSet ->
             rows.settle(id, CaptureQueueItem.Status.REMINDER_SET, CaptureQueueItem.Kind.REMINDER, published.reminder.message, reminderId = published.reminder.id)
         is PublishedCapture.Parked -> rows.remove(id)
+        is PublishedCapture.Forwarded ->
+            rows.settle(id, CaptureQueueItem.Status.FORWARDED, CaptureQueueItem.Kind.FORWARDED, "Sent to ${published.routerName}")
     }
 
     // A failure here leaves a published capture queued, to be published again by a later drain.

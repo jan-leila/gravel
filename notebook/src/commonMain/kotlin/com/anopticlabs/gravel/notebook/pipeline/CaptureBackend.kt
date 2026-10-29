@@ -3,6 +3,8 @@ package com.anopticlabs.gravel.notebook.pipeline
 import com.anopticlabs.gravel.notebook.capture.CaptureStage
 import com.anopticlabs.gravel.notebook.notes.BuiltNote
 import com.anopticlabs.gravel.notebook.reminders.ReminderProposal
+import com.anopticlabs.gravel.notebook.routers.RoutedText
+import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
 
@@ -14,6 +16,9 @@ sealed interface BuiltCapture {
 
     /** A completion claim: what was said after the trigger word, possibly nothing. */
     data class Completion(val utterance: String) : BuiltCapture
+
+    /** The text routing ended at [router], an app or a server, which the drain delivers [text] to. */
+    data class Forward(val router: RouterConfig, val text: RoutedText) : BuiltCapture
 }
 
 data class CaptureSettings(

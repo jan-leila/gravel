@@ -15,9 +15,9 @@ data class CaptureQueueItem(
     val noteId: String? = null,
     val reminderId: Int? = null,
 ) {
-    enum class Status { QUEUED, PROCESSING, NOTE_CREATED, REMINDER_SET, FAILED }
+    enum class Status { QUEUED, PROCESSING, NOTE_CREATED, REMINDER_SET, FORWARDED, FAILED }
 
-    enum class Kind { NOTE, REMINDER }
+    enum class Kind { NOTE, REMINDER, FORWARDED }
 
     val inFlight: Boolean get() = status == Status.QUEUED || status == Status.PROCESSING
 }
@@ -99,5 +99,6 @@ fun captureQueueRowLabel(item: CaptureQueueItem): String = when (item.status) {
     CaptureQueueItem.Status.PROCESSING -> item.stage?.label ?: "Working"
     CaptureQueueItem.Status.NOTE_CREATED -> item.resultLabel ?: "Note saved"
     CaptureQueueItem.Status.REMINDER_SET -> item.resultLabel ?: "Reminder set"
+    CaptureQueueItem.Status.FORWARDED -> item.resultLabel ?: "Sent on"
     CaptureQueueItem.Status.FAILED -> item.resultLabel ?: "Couldn't process this recording"
 }
