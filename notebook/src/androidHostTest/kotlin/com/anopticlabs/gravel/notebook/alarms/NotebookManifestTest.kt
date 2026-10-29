@@ -1,5 +1,6 @@
 package com.anopticlabs.gravel.notebook.alarms
 
+import com.anopticlabs.gravel.notebook.routers.RouterApi
 import org.w3c.dom.Element
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
@@ -49,6 +50,21 @@ class NotebookManifestTest {
         val permissions = elements("uses-permission").map { it.getAttribute("android:name") }.toSet()
         assertTrue("android.permission.FOREGROUND_SERVICE_SPECIAL_USE" in permissions)
         assertTrue("android.permission.WAKE_LOCK" in permissions)
+    }
+
+    /** Gravel sends to router receivers and exports none of its own; the permission's level is what keeps other senders out of theirs. */
+    @Test
+    fun theRouterApiDefinesASignaturePermissionHoldsItAndQueriesTheActionWithoutExportingAnything() {
+        val permission = elements("permission").single()
+        assertEquals(RouterApi.PERMISSION_ROUTE_TEXT, permission.getAttribute("android:name"))
+        assertEquals("signature", permission.getAttribute("android:protectionLevel"))
+        assertTrue(RouterApi.PERMISSION_ROUTE_TEXT in elements("uses-permission").map { it.getAttribute("android:name") })
+        val queried = elements("queries").single().getElementsByTagName("action")
+        assertEquals(1, queried.length)
+        assertEquals(RouterApi.ACTION_ROUTE_TEXT, (queried.item(0) as Element).getAttribute("android:name"))
+        val exported = (elements("receiver") + elements("service") + elements("activity") + elements("provider"))
+            .filter { it.getAttribute("android:exported") == "true" }
+        assertEquals(emptyList(), exported.map { it.getAttribute("android:name") })
     }
 
     @Test

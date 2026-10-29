@@ -59,7 +59,12 @@ import com.anopticlabs.gravel.notebook.pipeline.isPluggedIn
 import com.anopticlabs.gravel.notebook.reminders.AndroidPhoneCalendar
 import com.anopticlabs.gravel.notebook.reminders.PhoneCalendar
 import com.anopticlabs.gravel.notebook.reminders.ReminderRefreshSignal
+import com.anopticlabs.gravel.notebook.routers.AndroidInstalledRouters
+import com.anopticlabs.gravel.notebook.routers.AndroidRouterBroadcastSender
+import com.anopticlabs.gravel.notebook.routers.AppRouterDelivery
+import com.anopticlabs.gravel.notebook.routers.InstalledRouters
 import com.anopticlabs.gravel.notebook.routers.RouterDeliveries
+import com.anopticlabs.gravel.notebook.routers.RouterTrustStore
 import com.anopticlabs.gravel.notebook.routers.RoutingConfigStore
 import com.anopticlabs.gravel.notebook.routers.TextDeliverer
 import com.anopticlabs.gravel.notebook.sources.AudioRecordMicrophone
@@ -117,12 +122,18 @@ val notebookModule = module {
             get(), get(), get(), get(), get(),
             startBackups = get<AutoBackups<Uri>>()::start, checkBackups = get<AutoBackupChecks>()::request, startCharger = get<LongCaptureCharger>()::start,
             startNetworkWatch = get<ServerNetworkWatch>()::start, startSpeechWatch = get<SpeechSettingWatch>()::start,
-            loadRouting = { get<RoutingConfigStore>().load() },
+            loadRouting = {
+                get<RoutingConfigStore>().load()
+                get<RouterTrustStore>().load()
+            },
         )
     }
     single { RoutingConfigStore(NotebookFiles.root(androidContext()), get()) }
-    // The app and network deliverers are bound where their transports live; none yet.
-    single<TextDeliverer> { RouterDeliveries() }
+    single { RouterTrustStore(androidContext().noBackupFilesDir) }
+    single<InstalledRouters> { AndroidInstalledRouters(androidContext()) }
+    single<TextDeliverer> {
+        RouterDeliveries(app = AppRouterDelivery(get(), { get<RouterTrustStore>().read() }, AndroidRouterBroadcastSender(androidContext())))
+    }
     single { BackupStaging(NotebookFiles.root(androidContext())) }
     single { NotebookBackup(get(), get(), get(), get(), get(), get(), get()) }
     single { BackupGate() }
