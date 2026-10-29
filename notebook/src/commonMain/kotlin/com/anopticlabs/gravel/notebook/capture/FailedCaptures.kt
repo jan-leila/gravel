@@ -20,6 +20,12 @@ enum class CaptureFailureReason(val code: String) {
     /** The transcription server failed it again after the user's Try again. */
     SERVER_ERROR("server_error"),
 
+    /** The text routing could not take it to a router: no rule matched, a circle, or a rule that is not a pattern or took too long. */
+    NOT_ROUTED("not_routed"),
+
+    /** The app or server it was routed to is gone, untrusted or refused it. */
+    ROUTER_UNAVAILABLE("router_unavailable"),
+
     /** What a flagged entry with no code reads as: it ran out of attempts. */
     TRIES_RAN_OUT("tries_ran_out"),
 

@@ -13,7 +13,7 @@ class FailedCapturesTest {
         assertEquals(
             listOf(
                 "damaged", "unreadable_audio", "too_long", "no_speech", "speech_timeout", "speech_refused",
-                "text_too_long", "text_timeout", "text_refused", "not_saved", "server_error", "tries_ran_out", "unknown",
+                "text_too_long", "text_timeout", "text_refused", "not_saved", "server_error", "not_routed", "router_unavailable", "tries_ran_out", "unknown",
             ),
             CaptureFailureReason.entries.map { it.code },
         )
