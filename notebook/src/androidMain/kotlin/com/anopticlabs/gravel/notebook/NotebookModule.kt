@@ -55,6 +55,7 @@ import com.anopticlabs.gravel.notebook.pipeline.SpeechSettingWatch
 import com.anopticlabs.gravel.notebook.pipeline.WorkManagerNetworkWork
 import com.anopticlabs.gravel.notebook.pipeline.WorkManagerServerTryWork
 import com.anopticlabs.gravel.network.UnmeteredWifi
+import com.anopticlabs.gravel.network.hasUplinkNetwork
 import com.anopticlabs.gravel.notebook.pipeline.isPluggedIn
 import com.anopticlabs.gravel.notebook.reminders.AndroidPhoneCalendar
 import com.anopticlabs.gravel.notebook.reminders.PhoneCalendar
@@ -63,6 +64,7 @@ import com.anopticlabs.gravel.notebook.routers.AndroidInstalledRouters
 import com.anopticlabs.gravel.notebook.routers.AndroidRouterBroadcastSender
 import com.anopticlabs.gravel.notebook.routers.AppRouterDelivery
 import com.anopticlabs.gravel.notebook.routers.InstalledRouters
+import com.anopticlabs.gravel.notebook.routers.NetworkRouterDelivery
 import com.anopticlabs.gravel.notebook.routers.RouterDeliveries
 import com.anopticlabs.gravel.notebook.routers.RouterTrustStore
 import com.anopticlabs.gravel.notebook.routers.RoutingConfigStore
@@ -131,8 +133,12 @@ val notebookModule = module {
     single { RoutingConfigStore(NotebookFiles.root(androidContext()), get()) }
     single { RouterTrustStore(androidContext().noBackupFilesDir) }
     single<InstalledRouters> { AndroidInstalledRouters(androidContext()) }
+    // TextPoster comes from the app, which binds it to its HTTP client.
     single<TextDeliverer> {
-        RouterDeliveries(app = AppRouterDelivery(get(), { get<RouterTrustStore>().read() }, AndroidRouterBroadcastSender(androidContext())))
+        RouterDeliveries(
+            app = AppRouterDelivery(get(), { get<RouterTrustStore>().read() }, AndroidRouterBroadcastSender(androidContext())),
+            network = NetworkRouterDelivery(get()) { hasUplinkNetwork(androidContext()) },
+        )
     }
     single { BackupStaging(NotebookFiles.root(androidContext())) }
     single { NotebookBackup(get(), get(), get(), get(), get(), get(), get()) }

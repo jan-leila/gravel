@@ -21,6 +21,7 @@ import com.anopticlabs.gravel.notebook.pipeline.CaptureProcessingException
 import com.anopticlabs.gravel.notebook.pipeline.CaptureRemedy
 import com.anopticlabs.gravel.notebook.pipeline.CaptureSpeech
 import com.anopticlabs.gravel.notebook.pipeline.CaptureText
+import com.anopticlabs.gravel.notebook.routers.TextPoster
 import com.anopticlabs.gravel.notebook.pipeline.joinTranscript
 import com.anopticlabs.gravel.notebook.pipeline.CAPTURE_SAMPLE_RATE
 import com.anopticlabs.gravel.notebook.pipeline.SHORT_OF_MEMORY
@@ -74,6 +75,7 @@ val notebookEnginesModule = module {
     single { SpeechSettingWatch(speechWatched(get(), get()), request = { get<CaptureCoordinator>().requestAgain() }) }
     single<CaptureText> { NotebookText(get()) }
     single<CaptureMemory> { NotebookMemory(androidContext(), get(), get()) }
+    single<TextPoster> { KtorTextPoster(routerPostClient()) }
 }
 
 /**
