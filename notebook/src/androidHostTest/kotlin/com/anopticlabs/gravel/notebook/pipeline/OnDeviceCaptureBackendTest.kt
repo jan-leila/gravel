@@ -102,6 +102,7 @@ class OnDeviceCaptureBackendTest {
         assertEquals("2026-09-22", built.note.date)
         assertTrue(built.note.filename.endsWith("_09.22.26_1700.md"), built.note.filename)
         assertTrue(built.note.markdown.contains("get milk and eggs on the way home"))
+        assertTrue(built.note.markdown.contains("\nrecorded: 2026-09-22T17:00:00+02:00\n"), built.note.markdown)
         val generation = text.generations.single()
         assertEquals(Prompts.NOTE_SYSTEM, generation.system)
         assertEquals(Prompts.notePromptVerbatim("get milk and eggs on the way home"), generation.user)
@@ -148,7 +149,7 @@ class OnDeviceCaptureBackendTest {
     fun aTimeTheRulesCannotReadIsToCheck() = runBlocking<Unit> {
         val text = FakeText("""{"remind_in_seconds": 600, "message": "Call Sam"}""")
         val built = assertIs<BuiltCapture.Reminder>(run("remind me to call Sam after lunch", text))
-        assertEquals(ReminderProposal("Call Sam", null, ReminderTimeStatus.TO_CHECK), built.proposal)
+        assertEquals(ReminderProposal("Call Sam", null, ReminderTimeStatus.TO_CHECK, recordedAt = "2026-09-22T17:00:00+02:00"), built.proposal)
     }
 
     /** The claim is decided before the text model, which a completion never needs. */

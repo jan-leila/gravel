@@ -3,6 +3,7 @@ package com.anopticlabs.gravel.notebook.pipeline
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
 import com.anopticlabs.gravel.notebook.capture.CaptureStage
+import com.anopticlabs.gravel.notebook.capture.RecordedAt
 import com.anopticlabs.gravel.notebook.capture.captureStageForClassify
 import com.anopticlabs.gravel.notebook.llm.PROMPT_CONTENT_BUDGET
 import com.anopticlabs.gravel.notebook.llm.Prompts
@@ -68,11 +69,12 @@ class OnDeviceCaptureBackend(
         text.prepare()
         onStage(captureStageForClassify(isCompletion = false, isReminder = isReminder))
         val capped = capToBudget(transcript, PROMPT_CONTENT_BUDGET)
+        val recordedAt = RecordedAt.render(request.capturedAt, request.zone)
         return if (isReminder) {
             // The model writes the message only; the rules read the time from the whole transcript.
             val raw = text.generate(Prompts.REMINDER_MESSAGE_SYSTEM, Prompts.reminderMessagePrompt(capped), REPLY_TOKENS)
             val spoken = SpokenTimeReader.read(transcript, request.capturedAt, request.zone)
-            BuiltCapture.Reminder(ReminderExtractor.proposal(raw, transcript, spoken))
+            BuiltCapture.Reminder(ReminderExtractor.proposal(raw, transcript, spoken, recordedAt))
         } else {
             val raw = text.generate(Prompts.NOTE_SYSTEM, Prompts.notePromptVerbatim(capped), REPLY_TOKENS)
             val note = NoteBuilder.buildNote(
@@ -81,6 +83,7 @@ class OnDeviceCaptureBackend(
                 folders = request.folders,
                 folderTags = request.folderTags,
                 now = request.capturedAt.toLocalDateTime(request.zone),
+                recordedAt = recordedAt,
             )
             BuiltCapture.Note(note)
         }

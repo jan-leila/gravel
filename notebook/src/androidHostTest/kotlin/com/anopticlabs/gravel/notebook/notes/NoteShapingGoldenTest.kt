@@ -89,6 +89,7 @@ class NoteShapingGoldenTest {
                 tags = o.getValue("tags").toStringList(),
                 content = o.getValue("content").jsonPrimitive.content,
                 date = o.getValue("date").jsonPrimitive.content,
+                recorded = o["recorded"]?.jsonPrimitive?.content,
             )
             assertEquals(o.getValue("out").jsonPrimitive.content, actual, "buildMarkdown(${o["title"]})")
         }

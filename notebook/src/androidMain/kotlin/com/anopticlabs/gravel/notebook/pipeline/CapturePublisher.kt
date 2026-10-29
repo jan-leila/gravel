@@ -98,7 +98,7 @@ class CapturePublisher(
     private suspend fun reminder(proposal: ReminderProposal): PublishedCapture {
         val message = cutToReminderMessage(proposal.message)
         val plan = planReminderArm(proposal, quickRemindMinutes(), now())
-        val item = reminders.create { id -> ReminderItem(id, plan.millis, message, timeToCheck = plan.toCheck) }
+        val item = reminders.create { id -> ReminderItem(id, plan.millis, message, timeToCheck = plan.toCheck, recordedAt = proposal.recordedAt) }
         // A reminder stored but not armed waits for the next re-arm sweep and gets no set notice.
         val scheduled = bestEffort("alarm for reminder ${item.id}") { alarms.arm(item) }
         // Before this refresh: a save or Keep from the row that came ahead of the post would leave the notice up.

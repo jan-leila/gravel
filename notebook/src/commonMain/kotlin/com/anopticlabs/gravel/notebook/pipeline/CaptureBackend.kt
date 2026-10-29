@@ -22,8 +22,9 @@ data class CaptureSettings(
 )
 
 /**
- * One queued recording to process. [capturedAt] is when it was recorded: it dates the note and is
- * the "now" the reminder's time is read against. [folders] are the ones a note may be routed to.
+ * One queued recording to process. [capturedAt] is when the recording started, on the phone or on
+ * the watch, never when it was queued or processed: it dates the note, stamps what is built from
+ * the transcript, and is the "now" the reminder's time is read against. [folders] are the ones a note may be routed to.
  * [phoneTried], [markPhoneTried], [long], [fromWatch], [serverTries], [serverTriedAtMillis] and [markServerTry] are what
  * the entry gives its [SpeechCapture].
  */

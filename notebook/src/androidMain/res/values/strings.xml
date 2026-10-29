@@ -275,6 +275,7 @@
     <string name="notebook_reminders_check_time">%1$s, check this time</string>
     <string name="notebook_reminders_keep_time">Keep this time</string>
     <string name="notebook_reminders_time_to_check_note">Gravel couldn\'t use the time you said, so this reminder is set for your Default Reminder Time. Change it below, or keep it.</string>
+    <string name="notebook_reminders_recorded_at">From a recording on %1$s</string>
     <plurals name="notebook_reminders_repeats_daily">
         <item quantity="one">Repeats every day</item>
         <item quantity="other">Repeats every %d days</item>

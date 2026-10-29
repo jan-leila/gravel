@@ -34,5 +34,15 @@
     "content": "line1\nline2\n\n## heading",
     "date": "2026-05-31",
     "out": "---\ntitle: \"Multiline body\"\ndate: 2026-05-31\ntags: [\"t\"]\ntype: note\n---\n\nline1\nline2\n\n## heading\n"
+  },
+  {
+    "title": "Voice note",
+    "tags": [
+      "ideas"
+    ],
+    "content": "said out loud",
+    "date": "2026-10-29",
+    "recorded": "2026-10-29T14:03:11-04:00",
+    "out": "---\ntitle: \"Voice note\"\ndate: 2026-10-29\nrecorded: 2026-10-29T14:03:11-04:00\ntags: [\"ideas\"]\ntype: note\n---\n\nsaid out loud\n"
   }
 ]
