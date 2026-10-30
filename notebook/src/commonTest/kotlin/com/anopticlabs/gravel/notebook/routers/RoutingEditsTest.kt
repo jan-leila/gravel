@@ -61,6 +61,20 @@ class RoutingEditsTest {
     }
 
     @Test
+    fun aTimeRouterIsRetargetedAndCountedLikeASwitch() {
+        val hours = RouterConfig.Time("hours", "Hours", listOf(TimeRule(listOf(TimeCondition(TimeField.MONTH, 1, 12)), g("reminder"))), otherwise = g("notebook"))
+        val timed = RoutingEdits.withRouter(config, hours)
+        assertEquals(listOf(switch, hours), RoutingEdits.referencedBy(timed, g("reminder")))
+        assertNull(RoutingEdits.withoutRouter(timed, g("reminder")))
+        val moved = RoutingEdits.withRouter(timed, app.copy(id = "todo"), replacing = g("reminder"))
+        assertEquals(app.copy(id = "todo").ref, (moved.router(g("hours")) as RouterConfig.Time).rules.single().router)
+        assertEquals("1 rule, else to Notebook", RoutingEdits.summary(hours, timed))
+        assertEquals("No rules", RoutingEdits.summary(RouterConfig.Time("t", "T"), timed))
+        assertEquals("Time", RoutingEdits.kindName(hours))
+        assertEquals("time-2", RoutingEdits.newId(RoutingEdits.withRouter(timed, RouterConfig.Time("time", "Second")), "time"))
+    }
+
+    @Test
     fun theSummaryNamesWhatARouterDoesWithoutATokenOrAPath() {
         assertEquals("Writes the text as a note", RoutingEdits.summary(note, config))
         assertEquals("Sets a reminder from the text", RoutingEdits.summary(reminder, config))

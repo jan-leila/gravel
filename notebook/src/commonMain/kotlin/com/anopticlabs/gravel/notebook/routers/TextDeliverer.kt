@@ -23,7 +23,7 @@ class RouterDeliveries(
         val deliverer = when (router) {
             is RouterConfig.App -> app
             is RouterConfig.Network -> network
-            is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch ->
+            is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time ->
                 throw IllegalArgumentException("${router.name} is consumed by the Notebook, not delivered")
         } ?: throw CaptureProcessingException(
             CaptureFailureKind.FLAG, "this build cannot deliver to ${router.name}", reason = CaptureFailureReason.ROUTER_UNAVAILABLE,

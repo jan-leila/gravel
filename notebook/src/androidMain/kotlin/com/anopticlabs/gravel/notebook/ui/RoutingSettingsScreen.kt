@@ -62,7 +62,12 @@ import com.anopticlabs.gravel.notebook.routers.RoutingExport
 import com.anopticlabs.gravel.notebook.routers.RoutingStoreState
 import com.anopticlabs.gravel.notebook.routers.Shares
 import com.anopticlabs.gravel.notebook.routers.SwitchRule
+import com.anopticlabs.gravel.notebook.routers.TimeCondition
+import com.anopticlabs.gravel.notebook.routers.TimeField
+import com.anopticlabs.gravel.notebook.routers.TimeMatcher
+import com.anopticlabs.gravel.notebook.routers.TimeRule
 import com.anopticlabs.gravel.notebook.routers.TrustedCertificate
+import com.anopticlabs.gravel.notebook.routers.forwardsText
 import com.anopticlabs.gravel.notebook.routers.shares
 import coredevices.pebble.ui.TopBarParams
 import org.koin.compose.viewmodel.koinViewModel
@@ -265,6 +270,7 @@ private fun kindName(router: RouterConfig): String = stringResource(
         is RouterConfig.Note -> R.string.notebook_routing_kind_note
         is RouterConfig.Reminder -> R.string.notebook_routing_kind_reminder
         is RouterConfig.Switch -> R.string.notebook_routing_kind_switch
+        is RouterConfig.Time -> R.string.notebook_routing_kind_time
         is RouterConfig.App -> R.string.notebook_routing_kind_app
         is RouterConfig.Network -> R.string.notebook_routing_kind_network
     }
@@ -364,6 +370,7 @@ private fun KindPicker(config: RoutingConfig, onPick: (RouterConfig) -> Unit, on
         Kind(R.string.notebook_routing_kind_note, R.string.notebook_routing_kind_note_hint) { id, name -> RouterConfig.Note(id, name) },
         Kind(R.string.notebook_routing_kind_reminder, R.string.notebook_routing_kind_reminder_hint) { id, name -> RouterConfig.Reminder(id, name) },
         Kind(R.string.notebook_routing_kind_switch, R.string.notebook_routing_kind_switch_hint) { id, name -> RouterConfig.Switch(id, name) },
+        Kind(R.string.notebook_routing_kind_time, R.string.notebook_routing_kind_time_hint) { id, name -> RouterConfig.Time(id, name) },
         // An app router's ref is the picked router's, so it starts with none.
         Kind(R.string.notebook_routing_kind_app, R.string.notebook_routing_kind_app_hint) { _, name -> RouterConfig.App("", name, "", "", "") },
         Kind(R.string.notebook_routing_kind_network, R.string.notebook_routing_kind_network_hint) { id, name -> RouterConfig.Network(id, name, "") },
@@ -407,6 +414,8 @@ private fun RouterEditor(
     var name by remember(router.ref) { mutableStateOf(router.name) }
     var rules by remember(router.ref) { mutableStateOf((router as? RouterConfig.Switch)?.rules.orEmpty()) }
     var otherwise by remember(router.ref) { mutableStateOf((router as? RouterConfig.Switch)?.otherwise) }
+    var timeRules by remember(router.ref) { mutableStateOf((router as? RouterConfig.Time)?.rules.orEmpty()) }
+    var timeOtherwise by remember(router.ref) { mutableStateOf((router as? RouterConfig.Time)?.otherwise) }
     var picked by remember(router.ref) {
         mutableStateOf((router as? RouterConfig.App)?.let { app -> apps.flatMap { it.routers }.firstOrNull { it.packageName == app.packageName && it.receiverClass == app.receiverClass } })
     }
@@ -425,6 +434,7 @@ private fun RouterEditor(
             is RouterConfig.Note -> RouterConfig.Note(router.id, trimmed, confirm = confirm)
             is RouterConfig.Reminder -> RouterConfig.Reminder(router.id, trimmed, confirm = confirm)
             is RouterConfig.Switch -> RouterConfig.Switch(router.id, trimmed, rules, otherwise)
+            is RouterConfig.Time -> RouterConfig.Time(router.id, trimmed, timeRules, timeOtherwise)
             is RouterConfig.App -> picked?.let { RouterConfig.App(it.id, trimmed, it.packageName, it.receiverClass, it.namespace, it.needs, shares, confirm) } ?: router.copy(name = trimmed, shares = shares, confirm = confirm)
             is RouterConfig.Network -> RouterConfig.Network(router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares, confirm = confirm)
         }
@@ -455,6 +465,7 @@ private fun RouterEditor(
                     when (router) {
                         is RouterConfig.Note, is RouterConfig.Reminder -> Unit
                         is RouterConfig.Switch -> SwitchFields(rules, otherwise, others, onRules = { rules = it }, onOtherwise = { otherwise = it })
+                        is RouterConfig.Time -> TimeRulesFields(timeRules, timeOtherwise, others, onRules = { timeRules = it }, onOtherwise = { timeOtherwise = it })
                         is RouterConfig.App -> {
                             if (picked == null && router.packageName.isNotEmpty()) Text(stringResource(R.string.notebook_routing_app_gone), color = MaterialTheme.colorScheme.error)
                             AppFields(apps, picked, onPick = { app, choice -> if (app.trusted) take(choice) else askTrust = app to choice })
@@ -465,7 +476,7 @@ private fun RouterEditor(
                             SharesFields(needed = Need.entries.toSet(), shares, onShares = { shares = it })
                         }
                     }
-                    if (router !is RouterConfig.Switch) {
+                    if (!router.forwardsText) {
                         Row(Modifier.fillMaxWidth().clickable { confirm = !confirm }, verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = confirm, onCheckedChange = { confirm = it })
                             Column(Modifier.padding(start = 4.dp)) {
@@ -530,6 +541,136 @@ private fun SwitchFields(
     }
     TargetPicker(stringResource(R.string.notebook_routing_otherwise), otherwise, targets, allowNone = true, onPick = onOtherwise)
 }
+
+/**
+ * The rules of a Time router: each a list of conditions on the recording's time, all of which must
+ * hold, and a target. A new rule starts with one condition on the time of day, the common case.
+ */
+@Composable
+private fun TimeRulesFields(
+    rules: List<TimeRule>,
+    otherwise: RouterRef?,
+    targets: List<RouterConfig>,
+    onRules: (List<TimeRule>) -> Unit,
+    onOtherwise: (RouterRef?) -> Unit,
+) {
+    Text(stringResource(R.string.notebook_routing_time_rules), style = MaterialTheme.typography.titleSmall)
+    rules.forEachIndexed { index, rule ->
+        fun replace(changed: TimeRule) = onRules(rules.mapIndexed { i, r -> if (i == index) changed else r })
+        rule.conditions.forEachIndexed { c, condition ->
+            fun replaceCondition(changed: TimeCondition) = replace(rule.copy(conditions = rule.conditions.mapIndexed { i, x -> if (i == c) changed else x }))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FieldPicker(condition.field) { field -> replaceCondition(TimeCondition(field, TimeMatcher.range(field).first, TimeMatcher.range(field).last)) }
+                Box(Modifier.weight(1f)) { BoundInput(stringResource(R.string.notebook_routing_time_from), condition.field, condition.from) { replaceCondition(condition.copy(from = it)) } }
+                Box(Modifier.weight(1f)) { BoundInput(stringResource(R.string.notebook_routing_time_to), condition.field, condition.to) { replaceCondition(condition.copy(to = it)) } }
+                IconButton(onClick = { replace(rule.copy(conditions = rule.conditions.filterIndexed { i, _ -> i != c })) }, enabled = rule.conditions.size > 1) {
+                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.notebook_routing_remove_condition))
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (rule.conditions.size < RoutingConfig.MAX_CONDITIONS) {
+                TextButton(onClick = { replace(rule.copy(conditions = rule.conditions + TimeCondition(TimeField.DAY_OF_WEEK, 1, 5))) }) { Text(stringResource(R.string.notebook_routing_add_condition)) }
+            }
+            TargetPicker(stringResource(R.string.notebook_routing_forward_to), rule.router, targets, allowNone = false) { ref -> ref?.let { replace(rule.copy(router = it)) } }
+            IconButton(onClick = { onRules(rules.filterIndexed { i, _ -> i != index }) }) {
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.notebook_routing_remove_rule))
+            }
+        }
+    }
+    if (rules.size < RoutingConfig.MAX_RULES) {
+        val first = targets.firstOrNull()
+        OutlinedButton(
+            onClick = { first?.let { onRules(rules + TimeRule(listOf(TimeCondition(TimeField.TIME_OF_DAY, 9 * 60, 17 * 60)), it.ref)) } },
+            enabled = first != null,
+        ) { Text(stringResource(R.string.notebook_routing_add_rule)) }
+    }
+    TargetPicker(stringResource(R.string.notebook_routing_otherwise), otherwise, targets, allowNone = true, onPick = onOtherwise)
+}
+
+@Composable
+private fun FieldPicker(current: TimeField, onPick: (TimeField) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { open = true }) {
+            Text(fieldName(current))
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            TimeField.entries.forEach { field ->
+                DropdownMenuItem(text = { Text(fieldName(field)) }, onClick = {
+                    onPick(field)
+                    open = false
+                })
+            }
+        }
+    }
+}
+
+/**
+ * One bound of a condition: a clock for the time of day, a menu for the day of the week and the
+ * month, a number for the rest. What the user types is kept as typed and handed on once it reads
+ * as a value; the save's validation catches a bound left outside its range.
+ */
+@Composable
+private fun BoundInput(label: String, field: TimeField, value: Int, onValue: (Int) -> Unit) {
+    when (field) {
+        TimeField.DAY_OF_WEEK -> NamedPicker(label, value, DAY_NAMES, onValue)
+        TimeField.MONTH -> NamedPicker(label, value, MONTH_NAMES, onValue)
+        else -> {
+            val shown = if (field == TimeField.TIME_OF_DAY) TimeMatcher.clock(value) else value.toString()
+            var text by remember(field, value) { mutableStateOf(shown) }
+            OutlinedTextField(
+                value = text,
+                onValueChange = { typed ->
+                    text = typed
+                    val parsed = if (field == TimeField.TIME_OF_DAY) TimeMatcher.parseClock(typed) else typed.trim().toIntOrNull()
+                    if (parsed != null && parsed != value) onValue(parsed)
+                },
+                label = { Text(label) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun NamedPicker(label: String, value: Int, names: List<String>, onValue: (Int) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("$label: ${names.getOrNull(value - 1) ?: value}", maxLines = 1)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            names.forEachIndexed { index, name ->
+                DropdownMenuItem(text = { Text(name) }, onClick = {
+                    onValue(index + 1)
+                    open = false
+                })
+            }
+        }
+    }
+}
+
+@Composable
+private fun fieldName(field: TimeField): String = stringResource(
+    when (field) {
+        TimeField.TIME_OF_DAY -> R.string.notebook_routing_time_field_time_of_day
+        TimeField.DAY_OF_WEEK -> R.string.notebook_routing_time_field_day_of_week
+        TimeField.DAY_OF_MONTH -> R.string.notebook_routing_time_field_day_of_month
+        TimeField.DAY_OF_YEAR -> R.string.notebook_routing_time_field_day_of_year
+        TimeField.WEEK_OF_MONTH -> R.string.notebook_routing_time_field_week_of_month
+        TimeField.WEEK_OF_YEAR -> R.string.notebook_routing_time_field_week_of_year
+        TimeField.MONTH -> R.string.notebook_routing_time_field_month
+        TimeField.YEAR -> R.string.notebook_routing_time_field_year
+    },
+)
+
+// ISO order, Monday first, matching TimeField.DAY_OF_WEEK; the names are the English ones the rest of this screen uses.
+private val DAY_NAMES = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+private val MONTH_NAMES = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
 
 /** A button showing the current target's name, with a menu of the routers; [allowNone] adds a choice that flags the recording. */
 @Composable

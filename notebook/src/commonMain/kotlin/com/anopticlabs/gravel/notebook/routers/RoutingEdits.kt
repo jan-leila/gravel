@@ -20,6 +20,7 @@ object RoutingEdits {
             when {
                 existing.ref == replacing -> router
                 existing is RouterConfig.Switch -> existing.copy(rules = existing.rules.map { it.copy(router = it.router.moved()) }, otherwise = existing.otherwise?.moved())
+                existing is RouterConfig.Time -> existing.copy(rules = existing.rules.map { it.copy(router = it.router.moved()) }, otherwise = existing.otherwise?.moved())
                 else -> existing
             }
         }
@@ -27,11 +28,10 @@ object RoutingEdits {
         return config.copy(entry = config.entry.moved(), routers = if (present) routers else routers + router)
     }
 
-    /** The switches whose rules or fallback forward to [ref]; a router they name cannot be removed. */
-    fun referencedBy(config: RoutingConfig, ref: RouterRef): List<RouterConfig.Switch> =
-        config.routers.filterIsInstance<RouterConfig.Switch>().filter { switch -> switch.otherwise == ref || switch.rules.any { it.router == ref } }
+    /** The routers whose rules or fallback forward to [ref]; a router they name cannot be removed. */
+    fun referencedBy(config: RoutingConfig, ref: RouterRef): List<RouterConfig> = config.routers.filter { ref in it.forwards }
 
-    /** Without the router [ref]; null when it is the entry or a switch forwards to it. */
+    /** Without the router [ref]; null when it is the entry or another router forwards to it. */
     fun withoutRouter(config: RoutingConfig, ref: RouterRef): RoutingConfig? {
         if (config.entry == ref || referencedBy(config, ref).isNotEmpty()) return null
         return config.copy(routers = config.routers.filterNot { it.ref == ref })
@@ -56,6 +56,7 @@ object RoutingEdits {
         is RouterConfig.Note -> "Note"
         is RouterConfig.Reminder -> "Reminder"
         is RouterConfig.Switch -> "Switch"
+        is RouterConfig.Time -> "Time"
         is RouterConfig.App -> "App"
         is RouterConfig.Network -> "Network"
     }
@@ -69,17 +70,20 @@ object RoutingEdits {
     private fun describe(router: RouterConfig, config: RoutingConfig): String = when (router) {
         is RouterConfig.Note -> "Writes the text as a note"
         is RouterConfig.Reminder -> "Sets a reminder from the text"
-        is RouterConfig.Switch -> {
-            val rules = when (router.rules.size) {
-                0 -> "No rules"
-                1 -> "1 rule"
-                else -> "${router.rules.size} rules"
-            }
-            val otherwise = router.otherwise?.let { config.router(it)?.name }
-            if (otherwise == null) rules else "$rules, else to $otherwise"
-        }
+        is RouterConfig.Switch -> rulesSummary(router.rules.size, router.otherwise, config)
+        is RouterConfig.Time -> rulesSummary(router.rules.size, router.otherwise, config)
         is RouterConfig.App -> "Sends to ${router.packageName}" + sharesSummary(router)
         is RouterConfig.Network -> "Posts to ${hostOf(router.url)}" + sharesSummary(router)
+    }
+
+    private fun rulesSummary(count: Int, otherwise: RouterRef?, config: RoutingConfig): String {
+        val rules = when (count) {
+            0 -> "No rules"
+            1 -> "1 rule"
+            else -> "$count rules"
+        }
+        val fallback = otherwise?.let { config.router(it)?.name }
+        return if (fallback == null) rules else "$rules, else to $fallback"
     }
 
     // Only what is needed is mentioned: a grant for a part the router never asked for changes nothing.

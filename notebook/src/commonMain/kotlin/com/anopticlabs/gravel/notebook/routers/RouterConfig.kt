@@ -102,6 +102,21 @@ sealed interface RouterConfig {
     ) : RouterConfig
 
     /**
+     * Forwards to the router of the first rule whose conditions all hold for the time the recording
+     * was made, in the zone it was made in, else to [otherwise]. The fields and their units are in
+     * [TimeField].
+     */
+    @Serializable
+    @SerialName("time")
+    data class Time(
+        override val id: String,
+        override val name: String,
+        val rules: List<TimeRule> = emptyList(),
+        val otherwise: RouterRef? = null,
+        override val namespace: String? = null,
+    ) : RouterConfig
+
+    /**
      * Forwards to a router another app declares (`ROUTER_API.md`): the receiver, named by package
      * and class, that declared [id] when the user picked it, in an app signed by [namespace].
      * [needs] is what the receiver declared it wants beyond the text, as read when it was picked;
@@ -143,14 +158,14 @@ val RouterConfig.shares: Shares?
     get() = when (this) {
         is RouterConfig.App -> shares
         is RouterConfig.Network -> shares
-        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch -> null
+        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time -> null
     }
 
 /** What a delivery to this router may carry beyond the text: an app's declared needs, a server's every need not refused. */
 fun RouterConfig.needed(): Set<Need> = when (this) {
     is RouterConfig.App -> needs
     is RouterConfig.Network -> Need.entries.filterTo(mutableSetOf()) { shares.of(it) != Grant.NEVER }
-    is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch -> emptySet()
+    is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time -> emptySet()
 }
 
 /** The needs the user has to be asked about before a delivery to this router. */
@@ -168,6 +183,48 @@ fun RouterConfig.shared(granted: Set<Need>): Set<Need> = needed().filterTo(mutab
 /** [pattern] is a regular expression looked for anywhere in the text; [router] is where a match goes. */
 @Serializable
 data class SwitchRule(val pattern: String, val router: RouterRef, val ignoreCase: Boolean = true)
+
+/** Where a recording goes when every one of [conditions] holds for its time. */
+@Serializable
+data class TimeRule(val conditions: List<TimeCondition>, val router: RouterRef)
+
+/**
+ * [field] is between [from] and [to], both included; with [from] above [to] the range wraps round
+ * the field's cycle (22:00 to 06:00, Friday to Monday), except for the year, which has none.
+ */
+@Serializable
+data class TimeCondition(val field: TimeField, val from: Int, val to: Int)
+
+/** What a [TimeCondition] reads off the recording's local time, in the units of [TimeMatcher]. */
+@Serializable
+enum class TimeField {
+    /** Minutes since midnight, 0 to 1439. */
+    @SerialName("time_of_day") TIME_OF_DAY,
+
+    /** 1 (Monday) to 7 (Sunday). */
+    @SerialName("day_of_week") DAY_OF_WEEK,
+    @SerialName("day_of_month") DAY_OF_MONTH,
+    @SerialName("day_of_year") DAY_OF_YEAR,
+
+    /** 1 to 5: the first seven days of the month are week 1. */
+    @SerialName("week_of_month") WEEK_OF_MONTH,
+
+    /** The ISO-8601 week, 1 to 53. */
+    @SerialName("week_of_year") WEEK_OF_YEAR,
+    @SerialName("month") MONTH,
+    @SerialName("year") YEAR,
+}
+
+/** The routers this one forwards to; empty for one that consumes the text. */
+val RouterConfig.forwards: List<RouterRef>
+    get() = when (this) {
+        is RouterConfig.Switch -> rules.map { it.router } + listOfNotNull(otherwise)
+        is RouterConfig.Time -> rules.map { it.router } + listOfNotNull(otherwise)
+        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.App, is RouterConfig.Network -> emptyList()
+    }
+
+/** Whether this router hands the text on rather than consuming it. */
+val RouterConfig.forwardsText: Boolean get() = this is RouterConfig.Switch || this is RouterConfig.Time
 
 /**
  * The whole graph: the [entry] router the transcript goes to first, and every router by ref. The
@@ -202,7 +259,7 @@ data class RoutingConfig(
                 is RouterConfig.App -> require(RouterTrust.normalizeDigest(router.namespace) == router.namespace) {
                     "${router.name} needs the SHA-256 of its app's signing certificate as its namespace."
                 }
-                is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Network ->
+                is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Network ->
                     require(router.namespace == null) { "${router.name} is one of Gravel's own routers and cannot be in a namespace." }
             }
         }
@@ -213,6 +270,7 @@ data class RoutingConfig(
         routers.forEach { router ->
             when (router) {
                 is RouterConfig.Switch -> requireWellFormed(router)
+                is RouterConfig.Time -> requireWellFormed(router)
                 is RouterConfig.Network -> requireWellFormed(router)
                 is RouterConfig.App -> requireWellFormed(router)
                 is RouterConfig.Note, is RouterConfig.Reminder -> Unit
@@ -238,6 +296,19 @@ data class RoutingConfig(
         switch.otherwise?.let { require(router(it) != null) { "${switch.name} falls back to a router that does not exist." } }
     }
 
+    private fun requireWellFormed(time: RouterConfig.Time) {
+        require(time.rules.size <= MAX_RULES) { "${time.name} can have at most $MAX_RULES rules." }
+        time.rules.forEachIndexed { index, rule ->
+            val n = index + 1
+            require(rule.conditions.size in 1..MAX_CONDITIONS) { "Rule $n of ${time.name} needs 1 to $MAX_CONDITIONS conditions." }
+            rule.conditions.forEach { condition ->
+                require(TimeMatcher.isWellFormed(condition)) { "Rule $n of ${time.name} has a ${TimeMatcher.fieldName(condition.field)} outside its range." }
+            }
+            require(router(rule.router) != null) { "Rule $n of ${time.name} forwards to a router that does not exist." }
+        }
+        time.otherwise?.let { require(router(it) != null) { "${time.name} falls back to a router that does not exist." } }
+    }
+
     private fun requireWellFormed(network: RouterConfig.Network) {
         require(isHttpsUrl(network.url)) { "${network.name} needs an https:// address of up to $MAX_URL_CHARS characters." }
         network.bearerToken?.let {
@@ -254,17 +325,17 @@ data class RoutingConfig(
         }
     }
 
-    // Switches are the only routers that forward, so a circle can only run through them.
+    // A circle can only run through the routers that forward.
     private fun requireNoCircle() {
-        val switches = routers.filterIsInstance<RouterConfig.Switch>().associateBy { it.ref }
+        val forwarding = routers.filter { it.forwardsText }.associateBy { it.ref }
         val done = mutableSetOf<RouterRef>()
         fun visit(ref: RouterRef, path: List<RouterRef>) {
-            val switch = switches[ref] ?: return
-            if (ref in path) throw IllegalArgumentException("The rules of ${switch.name} lead back to ${switch.name}.")
+            val router = forwarding[ref] ?: return
+            if (ref in path) throw IllegalArgumentException("The rules of ${router.name} lead back to ${router.name}.")
             if (!done.add(ref)) return
-            (switch.rules.map { it.router } + listOfNotNull(switch.otherwise)).forEach { visit(it, path + ref) }
+            router.forwards.forEach { visit(it, path + ref) }
         }
-        switches.keys.forEach { visit(it, emptyList()) }
+        forwarding.keys.forEach { visit(it, emptyList()) }
     }
 
     companion object {
@@ -280,6 +351,7 @@ data class RoutingConfig(
         const val MAX_ID_CHARS = 32
         const val MAX_NAME_CHARS = 64
         const val MAX_RULES = 32
+        const val MAX_CONDITIONS = 4
         const val MAX_PATTERN_CHARS = 256
         const val MAX_URL_CHARS = 2048
         const val MAX_TOKEN_CHARS = 512

@@ -61,6 +61,33 @@ class RouteWalkTest {
         assertEquals(app, RouteWalk.terminal(chained, text("home: urgent fix")))
     }
 
+    private val hours = RouterConfig.Time(
+        "hours", "Hours",
+        listOf(
+            TimeRule(listOf(TimeCondition(TimeField.DAY_OF_WEEK, 1, 5), TimeCondition(TimeField.TIME_OF_DAY, 9 * 60, 17 * 60)), app.ref),
+            TimeRule(listOf(TimeCondition(TimeField.TIME_OF_DAY, 22 * 60, 6 * 60)), g("reminders")),
+        ),
+        otherwise = g("notes"),
+    )
+
+    /** A Time router reads the recording's own local time: the first rule whose conditions all hold wins, else the fallback. */
+    @Test
+    fun aTimeRouterForwardsByTheRecordingsLocalTime() {
+        val timed = RoutingConfig(entry = g("hours"), routers = listOf(hours, note, reminder, app))
+        assertEquals(app, RouteWalk.terminal(timed, RoutedText("c1", "2026-09-23T12:00:00+02:00", "x")), "Wednesday noon")
+        assertEquals(reminder, RouteWalk.terminal(timed, RoutedText("c1", "2026-09-23T23:30:00+02:00", "x")), "late evening")
+        assertEquals(reminder, RouteWalk.terminal(timed, RoutedText("c1", "2026-09-24T05:59:00+02:00", "x")), "the wrap holds to the end")
+        assertEquals(note, RouteWalk.terminal(timed, RoutedText("c1", "2026-09-26T12:00:00+02:00", "x")), "Saturday noon")
+        assertEquals(app, RouteWalk.terminal(timed, RoutedText("c1", "2026-09-23T12:00:00Z", "x")), "the offset the payload carries is the one that counts")
+        val strict = timed.copy(routers = timed.routers.map { if (it is RouterConfig.Time) it.copy(otherwise = null) else it })
+        assertTrue(flagged { RouteWalk.terminal(strict, RoutedText("c1", "2026-09-26T12:00:00+02:00", "x")) }.message!!.contains("no rule of Hours matched"))
+        assertTrue(flagged { RouteWalk.terminal(timed, RoutedText("c1", "noon", "x")) }.message!!.contains("could not be read"))
+        // Under a switch: a reminder cue goes to the reminders, the rest by the hour.
+        val under = RoutingConfig(entry = g("split"), routers = listOf(split.copy(otherwise = g("hours")), hours, note, reminder, app))
+        assertEquals(reminder, RouteWalk.terminal(under, RoutedText("c1", "2026-09-23T12:00:00+02:00", "remind me later")))
+        assertEquals(app, RouteWalk.terminal(under, RoutedText("c1", "2026-09-23T12:00:00+02:00", "thoughts")))
+    }
+
     @Test
     fun noMatchWithoutAFallbackIsFlaggedAsNotRouted() {
         val strict = config.copy(routers = config.routers.map { if (it is RouterConfig.Switch) it.copy(otherwise = null) else it })

@@ -17,6 +17,7 @@ import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import com.anopticlabs.gravel.notebook.routers.RoutingConfig
 import com.anopticlabs.gravel.notebook.routers.asked
+import com.anopticlabs.gravel.notebook.routers.forwardsText
 import com.anopticlabs.gravel.notebook.routers.shared
 import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
@@ -88,7 +89,7 @@ class OnDeviceCaptureBackend(
     override suspend fun resume(resume: CaptureResume, onStage: (CaptureStage) -> Unit): BuiltCapture {
         val router = readRouting().router(resume.router)
             ?: unavailable("${resume.routerName} no longer exists in the text routing")
-        if (router is RouterConfig.Switch) unavailable("${resume.routerName} now forwards elsewhere")
+        if (router.forwardsText) unavailable("${resume.routerName} now forwards elsewhere")
         return consume(router, resume.text, resume.granted, resume.capturedAt, resume.zone, resume.folders, resume.folderTags, onStage)
     }
 
@@ -108,7 +109,7 @@ class OnDeviceCaptureBackend(
             onStage(CaptureStage.FORWARDING)
             BuiltCapture.Forward(terminal, routed, terminal.shared(granted))
         }
-        is RouterConfig.Switch -> throw IllegalStateException("the routing walk ended at a switch")
+        is RouterConfig.Switch, is RouterConfig.Time -> throw IllegalStateException("the routing walk ended at a router that forwards")
     }
 
     private fun unavailable(why: String): Nothing =

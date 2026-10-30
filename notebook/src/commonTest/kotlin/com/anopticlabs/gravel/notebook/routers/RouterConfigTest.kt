@@ -106,7 +106,7 @@ class RouterConfigTest {
                 is RouterConfig.Reminder -> router.copy(confirm = true)
                 is RouterConfig.App -> router.copy(confirm = true)
                 is RouterConfig.Network -> router.copy(confirm = true)
-                is RouterConfig.Switch -> error("not here")
+                is RouterConfig.Switch, is RouterConfig.Time -> error("not here")
             }
             val json = NotebookJson.encodeToString(RouterConfig.serializer(), careful)
             assertEquals("true", NotebookJson.parseToJsonElement(json).jsonObject.getValue("confirm").jsonPrimitive.content)
@@ -194,6 +194,43 @@ class RouterConfigTest {
         val left = RouterConfig.Switch("l", "L", emptyList(), otherwise = g("notes"))
         val right = RouterConfig.Switch("r", "R", emptyList(), otherwise = g("notes"))
         RoutingConfig(entry = g("top"), routers = listOf(RouterConfig.Switch("top", "Top", listOf(SwitchRule("x", g("l"))), otherwise = g("r")), left, right, note)).requireWellFormed()
+        // A Time router forwards too, so a circle through one is a circle.
+        val hours = RouterConfig.Time("hours", "Hours", listOf(TimeRule(listOf(TimeCondition(TimeField.MONTH, 1, 12)), g("a"))), otherwise = g("notes"))
+        val toHours = RouterConfig.Switch("a", "A", emptyList(), otherwise = g("hours"))
+        assertTrue(refused(RoutingConfig(entry = g("notes"), routers = listOf(note, hours, toHours))).contains("lead back to"))
+    }
+
+    private val hours = RouterConfig.Time(
+        "hours", "Hours",
+        listOf(TimeRule(listOf(TimeCondition(TimeField.DAY_OF_WEEK, 1, 5), TimeCondition(TimeField.TIME_OF_DAY, 9 * 60, 17 * 60)), g("reminders"))),
+        otherwise = g("notes"),
+    )
+
+    @Test
+    fun aTimeRouterRoundTripsUnderItsTagWithTheFieldsAsTheirWords() {
+        val timed = RoutingConfig(entry = g("hours"), routers = listOf(hours, note, reminder))
+        timed.requireWellFormed()
+        val json = NotebookJson.encodeToString(timed)
+        assertEquals(timed, NotebookJson.decodeFromString<RoutingConfig>(json))
+        val router = NotebookJson.parseToJsonElement(json).jsonObject.getValue("routers").jsonArray[0].jsonObject
+        assertEquals("time", router.getValue("type").jsonPrimitive.content)
+        val condition = router.getValue("rules").jsonArray[0].jsonObject.getValue("conditions").jsonArray[0].jsonObject
+        assertEquals(mapOf("field" to "day_of_week", "from" to "1", "to" to "5"), condition.mapValues { it.value.jsonPrimitive.content })
+        assertFalse(router.containsKey("namespace"))
+    }
+
+    @Test
+    fun aTimeRoutersRulesAreBoundedConditionsOnExistingTargets() {
+        fun with(vararg rules: TimeRule, otherwise: RouterRef? = g("notes")) = RoutingConfig(entry = g("hours"), routers = listOf(hours.copy(rules = rules.toList(), otherwise = otherwise), note, reminder))
+        with().requireWellFormed()
+        assertTrue(refused(with(TimeRule(emptyList(), g("notes")))).contains("needs 1 to 4 conditions"))
+        assertTrue(refused(with(TimeRule(List(5) { TimeCondition(TimeField.MONTH, 1, 1) }, g("notes")))).contains("needs 1 to 4 conditions"))
+        assertTrue(refused(with(TimeRule(listOf(TimeCondition(TimeField.TIME_OF_DAY, 0, 1440)), g("notes")))).contains("has a time of day outside its range"))
+        assertTrue(refused(with(TimeRule(listOf(TimeCondition(TimeField.YEAR, 2027, 2026)), g("notes")))).contains("has a year outside its range"))
+        assertTrue(refused(with(TimeRule(listOf(TimeCondition(TimeField.MONTH, 1, 1)), g("nowhere")))).contains("forwards to a router that does not exist"))
+        assertTrue(refused(with(otherwise = g("nowhere"))).contains("falls back to a router that does not exist"))
+        assertTrue(refused(with(*Array(RoutingConfig.MAX_RULES + 1) { TimeRule(listOf(TimeCondition(TimeField.MONTH, 1, 1)), g("notes")) })).contains("at most"))
+        assertTrue(refused(RoutingConfig(entry = g("hours"), routers = listOf(hours.copy(namespace = signer), note, reminder))).contains("Gravel's own"))
     }
 
     @Test

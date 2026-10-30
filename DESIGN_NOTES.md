@@ -1801,6 +1801,16 @@ in the app's device suite:
     Access Framework like a manual backup); an import replaces both only
     after the whole file validated. Gravel exports nothing for this; `NotebookManifestTest` pins
     the permission, the query and the absence of exported components.
+  - A `Time` router forwards by when the recording was made, read off
+    the payload's own `recordedAt` in the offset it carries
+    (`TimeMatcher`: minutes of the day, ISO day of the week, day and
+    week of the month and year, month, year; a rule is a conjunction of
+    up to four inclusive ranges, each wrapping round its cycle except the
+    year), so a recording made at 23:00 in Berlin is an evening one
+    wherever the phone is when it is processed. It is the second
+    forwarding kind: `RouterConfig.forwards` and `forwardsText` are what
+    the walk, the circle check and the edits go by, so a third kind adds
+    itself there.
   - A router can wait on the user: one set to ask first (`confirm`), or
     one with an Ask grant for a part it needs. The walk then ends in a
     `BuiltCapture.ToConfirm` and the drain parks the capture on its queue
