@@ -62,15 +62,24 @@ The build signs release only when the environment names the keystore
 clone and CI build without it. `LOCAL_RELEASE_BUILD=true` in
 `local.properties` signs release with the debug key, as it does for Gravel.
 
-Gravel trusts the certificate's SHA-256 as a built-in trusted signer
-(`DEFAULT_TRUSTED_ROUTER_SIGNERS` in the Notebook module), so the apps are
-listed as trusted routers without a prompt. A lost key would mean a new
-digest in Gravel and a reinstall of every router app.
+Once the key exists, its certificate's SHA-256 goes into Gravel's built-in
+trusted signers (`DEFAULT_TRUSTED_ROUTER_SIGNERS` in the Notebook module,
+with a comment naming these apps), so the apps are listed as trusted
+routers without a prompt; until then the user trusts the certificate once
+in Gravel's Text Routing settings. A lost key would mean a new digest in
+Gravel and a reinstall of every router app.
 
 The apps are **not** in F-Droid's main repository: F-Droid signs with its
 own per-app keys, which the built-in trust would not match. They are
 published as GitHub releases (Obtainium reads those) and through Gravel's
-own F-Droid repository, both signed with this key.
+own F-Droid repository, both signed with this key, by the
+`Router apps release` workflow (`.github/workflows/routers-release.yml`)
+when a `routers-v*` tag is pushed. The workflow needs the apps' keystore and
+the repository's own index-signing keystore as secrets (named at the top of
+the workflow file), and the `fdroid-repo` branch to exist (an empty branch
+with GitHub Pages serving it; `fdroid update --create-metadata` fills it).
+Users add `https://<owner>.github.io/<repository>/repo` to their F-Droid
+client, or the GitHub releases page to Obtainium.
 
 ## Building
 

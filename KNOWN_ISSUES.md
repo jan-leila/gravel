@@ -1804,6 +1804,37 @@ nothing posts this one again until another recording is parked; the
 recordings themselves wait in the Notebook, where their rows are. The
 completed-tasks notice has the same gap.
 
+## Four router apps allow cleartext to a private address
+
+**Status: accepted; the relays they talk to usually have no TLS on a LAN.**
+
+The Home Assistant, Vikunja, Signal and Actual router apps (`routers/`)
+send over plain `http://` when the address is a private one (a LAN name,
+a private, link-local or loopback range), since a Home Assistant or a
+signal-cli or actual-http-api relay on a home network commonly has no
+certificate. The text of a recording then crosses the LAN in clear. The
+other router apps, and Gravel's own Network router, are https only.
+
+## The Signal and Actual router apps trust a relay's own door
+
+**Status: accepted; the relay is the user's.**
+
+Signal's app and Actual's API offer no way in for another app, so the
+Signal and Actual router apps send through a relay the user runs
+(signal-cli-rest-api, actual-http-api). Whether that relay asks for a
+token or key at all is the relay's configuration, not these apps': one
+left open on a LAN takes a message from anything on it.
+
+## A pinned mail server certificate has to be pinned again when it changes
+
+**Status: accepted; a pin is a pin.**
+
+The email router app can trust an SMTP server by its certificate's
+SHA-256 (for a Proton Bridge, whose certificate is self-signed). A
+server whose certificate changes, as a Bridge's does when it is set up
+again, is then refused until the user pastes the new digest; the test
+send in the app's settings says so.
+
 ## An app router gets no answer back
 
 **Status: accepted; the API is one-way.**

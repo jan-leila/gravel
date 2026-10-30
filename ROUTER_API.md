@@ -189,7 +189,8 @@ recording in the Notebook until the user answers, which may be days later.
 
 ## First-party routers
 
-Gravel's own router apps, one per integration (Slack, and more to come),
+Gravel's own router apps, one per integration (Slack, Home Assistant,
+Vikunja, Mastodon, OpenStreetMap notes, Signal, Actual Budget, email),
 live in this repository under `routers/` and are the worked examples of
 this API: `routers/README.md` says how they are built, signed with a key
 of their own that Gravel trusts as a built-in signer, and published outside
