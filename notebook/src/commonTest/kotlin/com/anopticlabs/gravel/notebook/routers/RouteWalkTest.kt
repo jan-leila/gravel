@@ -89,6 +89,27 @@ class RouteWalkTest {
     }
 
     @Test
+    fun aPlaceRouterForwardsByWhereTheRecordingWasMadeAndHasAPlaceForNoLocation() {
+        val home = Spot("Home", 52.5200, 13.4050, 800)
+        val places = RouterConfig.Place(
+            "places", "Places",
+            listOf(PlaceRule(home, within = true, app.ref), PlaceRule(Spot("Town", 52.5200, 13.4050, 20_000), within = false, g("reminders"))),
+            otherwise = g("notes"),
+            unknown = g("reminders"),
+        )
+        val placed = RoutingConfig(entry = g("places"), routers = listOf(places, note, reminder, app))
+        fun at(latitude: Double, longitude: Double) = RoutedText("c1", "2026-09-22T17:00:00+02:00", "x", RoutedLocation(latitude, longitude))
+        assertEquals(app, RouteWalk.terminal(placed, at(52.5210, 13.4060)), "at home")
+        assertEquals(note, RouteWalk.terminal(placed, at(52.5500, 13.4050)), "in town but not at home")
+        assertEquals(reminder, RouteWalk.terminal(placed, at(48.8566, 2.3522)), "far away")
+        assertEquals(reminder, RouteWalk.terminal(placed, text("x")), "no location goes where the router says")
+        val noUnknown = placed.copy(routers = placed.routers.map { if (it is RouterConfig.Place) it.copy(unknown = null) else it })
+        assertEquals(note, RouteWalk.terminal(noUnknown, text("x")), "else to the fallback")
+        val strict = noUnknown.copy(routers = noUnknown.routers.map { if (it is RouterConfig.Place) it.copy(otherwise = null) else it })
+        assertTrue(flagged { RouteWalk.terminal(strict, text("x")) }.message!!.contains("no rule of Places matched"))
+    }
+
+    @Test
     fun noMatchWithoutAFallbackIsFlaggedAsNotRouted() {
         val strict = config.copy(routers = config.routers.map { if (it is RouterConfig.Switch) it.copy(otherwise = null) else it })
         assertTrue(flagged { RouteWalk.terminal(strict, text("thoughts on the garden")) }.message!!.contains("no rule of Split matched"))

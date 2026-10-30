@@ -106,7 +106,7 @@ class RouterConfigTest {
                 is RouterConfig.Reminder -> router.copy(confirm = true)
                 is RouterConfig.App -> router.copy(confirm = true)
                 is RouterConfig.Network -> router.copy(confirm = true)
-                is RouterConfig.Switch, is RouterConfig.Time -> error("not here")
+                is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place -> error("not here")
             }
             val json = NotebookJson.encodeToString(RouterConfig.serializer(), careful)
             assertEquals("true", NotebookJson.parseToJsonElement(json).jsonObject.getValue("confirm").jsonPrimitive.content)
@@ -115,6 +115,33 @@ class RouterConfigTest {
         }
         assertFalse(switch.confirm)
         assertEquals(full.copy(routers = full.routers.map { if (it is RouterConfig.Note) it.copy(confirm = true) else it }).let { RoutingExport.decode(RoutingExport.encode(it, TrustEntries.EMPTY)).routing }.router(g("notes"))!!.confirm, true)
+    }
+
+    private val home = Spot("Home", 52.52, 13.405, 800)
+    private val places = RouterConfig.Place("places", "Places", listOf(PlaceRule(home, within = true, g("reminders"))), otherwise = g("notes"), unknown = g("notes"))
+
+    @Test
+    fun aPlaceRouterRoundTripsAndItsSpotsAreBounded() {
+        val placed = RoutingConfig(entry = g("places"), routers = listOf(places, note, reminder))
+        placed.requireWellFormed()
+        val json = NotebookJson.encodeToString(placed)
+        assertEquals(placed, NotebookJson.decodeFromString<RoutingConfig>(json))
+        val router = NotebookJson.parseToJsonElement(json).jsonObject.getValue("routers").jsonArray[0].jsonObject
+        assertEquals("place", router.getValue("type").jsonPrimitive.content)
+        assertEquals(setOf("label", "latitude", "longitude", "radiusMeters"), router.getValue("rules").jsonArray[0].jsonObject.getValue("spot").jsonObject.keys)
+        fun with(vararg rules: PlaceRule, otherwise: RouterRef? = g("notes"), unknown: RouterRef? = null) =
+            RoutingConfig(entry = g("places"), routers = listOf(places.copy(rules = rules.toList(), otherwise = otherwise, unknown = unknown), note, reminder))
+        with().requireWellFormed()
+        assertTrue(refused(with(PlaceRule(home.copy(label = " "), true, g("notes")))).contains("needs a place name"))
+        assertTrue(refused(with(PlaceRule(home.copy(latitude = 91.0), true, g("notes")))).contains("needs a latitude, a longitude and a radius"))
+        assertTrue(refused(with(PlaceRule(home.copy(radiusMeters = 5), true, g("notes")))).contains("needs a latitude, a longitude and a radius"))
+        assertTrue(refused(with(PlaceRule(home, true, g("nowhere")))).contains("forwards to a router that does not exist"))
+        assertTrue(refused(with(otherwise = g("nowhere"))).contains("falls back to a router that does not exist"))
+        assertTrue(refused(with(unknown = g("nowhere"))).contains("without a location to a router that does not exist"))
+        assertTrue(refused(RoutingConfig(entry = g("places"), routers = listOf(places.copy(namespace = signer), note, reminder))).contains("Gravel's own"))
+        // A circle through a Place router's no-location target is a circle.
+        val back = RouterConfig.Switch("back", "Back", emptyList(), otherwise = g("places"))
+        assertTrue(refused(RoutingConfig(entry = g("notes"), routers = listOf(note, reminder, places.copy(unknown = g("back")), back))).contains("lead back to"))
     }
 
     @Test

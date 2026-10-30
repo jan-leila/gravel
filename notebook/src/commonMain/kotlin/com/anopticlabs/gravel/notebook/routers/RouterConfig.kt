@@ -117,6 +117,22 @@ sealed interface RouterConfig {
     ) : RouterConfig
 
     /**
+     * Forwards to the router of the first rule whose spot the recording was made within (or outside
+     * of, for a rule with [PlaceRule.within] off), else to [otherwise]; a recording with no location
+     * goes to [unknown], or to [otherwise] when that is not set.
+     */
+    @Serializable
+    @SerialName("place")
+    data class Place(
+        override val id: String,
+        override val name: String,
+        val rules: List<PlaceRule> = emptyList(),
+        val otherwise: RouterRef? = null,
+        val unknown: RouterRef? = null,
+        override val namespace: String? = null,
+    ) : RouterConfig
+
+    /**
      * Forwards to a router another app declares (`ROUTER_API.md`): the receiver, named by package
      * and class, that declared [id] when the user picked it, in an app signed by [namespace].
      * [needs] is what the receiver declared it wants beyond the text, as read when it was picked;
@@ -158,14 +174,14 @@ val RouterConfig.shares: Shares?
     get() = when (this) {
         is RouterConfig.App -> shares
         is RouterConfig.Network -> shares
-        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time -> null
+        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place -> null
     }
 
 /** What a delivery to this router may carry beyond the text: an app's declared needs, a server's every need not refused. */
 fun RouterConfig.needed(): Set<Need> = when (this) {
     is RouterConfig.App -> needs
     is RouterConfig.Network -> Need.entries.filterTo(mutableSetOf()) { shares.of(it) != Grant.NEVER }
-    is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time -> emptySet()
+    is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place -> emptySet()
 }
 
 /** The needs the user has to be asked about before a delivery to this router. */
@@ -183,6 +199,14 @@ fun RouterConfig.shared(granted: Set<Need>): Set<Need> = needed().filterTo(mutab
 /** [pattern] is a regular expression looked for anywhere in the text; [router] is where a match goes. */
 @Serializable
 data class SwitchRule(val pattern: String, val router: RouterRef, val ignoreCase: Boolean = true)
+
+/** A circle on the map: [radiusMeters] round a point, called [label] in the settings. */
+@Serializable
+data class Spot(val label: String, val latitude: Double, val longitude: Double, val radiusMeters: Int)
+
+/** Where a recording made [within] [spot] goes, or one made outside it when [within] is off. */
+@Serializable
+data class PlaceRule(val spot: Spot, val within: Boolean, val router: RouterRef)
 
 /** Where a recording goes when every one of [conditions] holds for its time. */
 @Serializable
@@ -220,11 +244,12 @@ val RouterConfig.forwards: List<RouterRef>
     get() = when (this) {
         is RouterConfig.Switch -> rules.map { it.router } + listOfNotNull(otherwise)
         is RouterConfig.Time -> rules.map { it.router } + listOfNotNull(otherwise)
+        is RouterConfig.Place -> rules.map { it.router } + listOfNotNull(otherwise, unknown)
         is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.App, is RouterConfig.Network -> emptyList()
     }
 
 /** Whether this router hands the text on rather than consuming it. */
-val RouterConfig.forwardsText: Boolean get() = this is RouterConfig.Switch || this is RouterConfig.Time
+val RouterConfig.forwardsText: Boolean get() = this is RouterConfig.Switch || this is RouterConfig.Time || this is RouterConfig.Place
 
 /**
  * The whole graph: the [entry] router the transcript goes to first, and every router by ref. The
@@ -259,7 +284,7 @@ data class RoutingConfig(
                 is RouterConfig.App -> require(RouterTrust.normalizeDigest(router.namespace) == router.namespace) {
                     "${router.name} needs the SHA-256 of its app's signing certificate as its namespace."
                 }
-                is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Network ->
+                is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.Network ->
                     require(router.namespace == null) { "${router.name} is one of Gravel's own routers and cannot be in a namespace." }
             }
         }
@@ -271,6 +296,7 @@ data class RoutingConfig(
             when (router) {
                 is RouterConfig.Switch -> requireWellFormed(router)
                 is RouterConfig.Time -> requireWellFormed(router)
+                is RouterConfig.Place -> requireWellFormed(router)
                 is RouterConfig.Network -> requireWellFormed(router)
                 is RouterConfig.App -> requireWellFormed(router)
                 is RouterConfig.Note, is RouterConfig.Reminder -> Unit
@@ -307,6 +333,23 @@ data class RoutingConfig(
             require(router(rule.router) != null) { "Rule $n of ${time.name} forwards to a router that does not exist." }
         }
         time.otherwise?.let { require(router(it) != null) { "${time.name} falls back to a router that does not exist." } }
+    }
+
+    private fun requireWellFormed(place: RouterConfig.Place) {
+        require(place.rules.size <= MAX_RULES) { "${place.name} can have at most $MAX_RULES rules." }
+        place.rules.forEachIndexed { index, rule ->
+            val n = index + 1
+            val spot = rule.spot
+            require(spot.label.isNotBlank() && spot.label.length <= MAX_NAME_CHARS && spot.label.trim() == spot.label) {
+                "Rule $n of ${place.name} needs a place name of up to $MAX_NAME_CHARS characters."
+            }
+            require(PlaceMatcher.isWellFormed(spot)) {
+                "Rule $n of ${place.name} needs a latitude, a longitude and a radius of ${PlaceMatcher.MIN_RADIUS_METERS} to ${PlaceMatcher.MAX_RADIUS_METERS} metres."
+            }
+            require(router(rule.router) != null) { "Rule $n of ${place.name} forwards to a router that does not exist." }
+        }
+        place.otherwise?.let { require(router(it) != null) { "${place.name} falls back to a router that does not exist." } }
+        place.unknown?.let { require(router(it) != null) { "${place.name} sends recordings without a location to a router that does not exist." } }
     }
 
     private fun requireWellFormed(network: RouterConfig.Network) {

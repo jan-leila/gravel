@@ -1811,6 +1811,15 @@ in the app's device suite:
     forwarding kind: `RouterConfig.forwards` and `forwardsText` are what
     the walk, the circle check and the edits go by, so a third kind adds
     itself there.
+  - A `Place` router forwards by where the recording was made: the first
+    rule whose spot (a point and a radius, named for the settings) the
+    recording's location is within, or outside of when the rule says so,
+    else the fallback; a recording with no location goes to the router
+    the user named for that, or to the fallback (`PlaceMatcher`, the
+    haversine distance on the mean Earth radius; the `haversine` artifact
+    elsewhere in the tree is an unrelated Ring stub). The payload's
+    location is read here inside Gravel; the grants govern only what
+    leaves the phone.
   - A router can wait on the user: one set to ask first (`confirm`), or
     one with an Ask grant for a part it needs. The walk then ends in a
     `BuiltCapture.ToConfirm` and the drain parks the capture on its queue

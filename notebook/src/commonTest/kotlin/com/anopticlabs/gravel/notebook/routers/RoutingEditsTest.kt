@@ -75,6 +75,21 @@ class RoutingEditsTest {
     }
 
     @Test
+    fun aPlaceRouterIsRetargetedThroughItsNoLocationTargetToo() {
+        val home = Spot("Home", 52.52, 13.405, 800)
+        val places = RouterConfig.Place("places", "Places", listOf(PlaceRule(home, true, g("reminder"))), otherwise = g("notebook"), unknown = g("reminder"))
+        val placed = RoutingEdits.withRouter(config, places)
+        assertEquals(listOf(switch, places), RoutingEdits.referencedBy(placed, g("reminder")))
+        val moved = RoutingEdits.withRouter(placed, app.copy(id = "todo"), replacing = g("reminder"))
+        val after = moved.router(g("places")) as RouterConfig.Place
+        assertEquals(app.copy(id = "todo").ref, after.rules.single().router)
+        assertEquals(app.copy(id = "todo").ref, after.unknown)
+        assertEquals("1 place, else to Notebook", RoutingEdits.summary(places, placed))
+        assertEquals("No places", RoutingEdits.summary(RouterConfig.Place("p", "P"), placed))
+        assertEquals("Place", RoutingEdits.kindName(places))
+    }
+
+    @Test
     fun theSummaryNamesWhatARouterDoesWithoutATokenOrAPath() {
         assertEquals("Writes the text as a note", RoutingEdits.summary(note, config))
         assertEquals("Sets a reminder from the text", RoutingEdits.summary(reminder, config))

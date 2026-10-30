@@ -21,6 +21,7 @@ object RoutingEdits {
                 existing.ref == replacing -> router
                 existing is RouterConfig.Switch -> existing.copy(rules = existing.rules.map { it.copy(router = it.router.moved()) }, otherwise = existing.otherwise?.moved())
                 existing is RouterConfig.Time -> existing.copy(rules = existing.rules.map { it.copy(router = it.router.moved()) }, otherwise = existing.otherwise?.moved())
+                existing is RouterConfig.Place -> existing.copy(rules = existing.rules.map { it.copy(router = it.router.moved()) }, otherwise = existing.otherwise?.moved(), unknown = existing.unknown?.moved())
                 else -> existing
             }
         }
@@ -57,6 +58,7 @@ object RoutingEdits {
         is RouterConfig.Reminder -> "Reminder"
         is RouterConfig.Switch -> "Switch"
         is RouterConfig.Time -> "Time"
+        is RouterConfig.Place -> "Place"
         is RouterConfig.App -> "App"
         is RouterConfig.Network -> "Network"
     }
@@ -72,15 +74,16 @@ object RoutingEdits {
         is RouterConfig.Reminder -> "Sets a reminder from the text"
         is RouterConfig.Switch -> rulesSummary(router.rules.size, router.otherwise, config)
         is RouterConfig.Time -> rulesSummary(router.rules.size, router.otherwise, config)
+        is RouterConfig.Place -> rulesSummary(router.rules.size, router.otherwise, config, "place")
         is RouterConfig.App -> "Sends to ${router.packageName}" + sharesSummary(router)
         is RouterConfig.Network -> "Posts to ${hostOf(router.url)}" + sharesSummary(router)
     }
 
-    private fun rulesSummary(count: Int, otherwise: RouterRef?, config: RoutingConfig): String {
+    private fun rulesSummary(count: Int, otherwise: RouterRef?, config: RoutingConfig, unit: String = "rule"): String {
         val rules = when (count) {
-            0 -> "No rules"
-            1 -> "1 rule"
-            else -> "$count rules"
+            0 -> "No ${unit}s"
+            1 -> "1 $unit"
+            else -> "$count ${unit}s"
         }
         val fallback = otherwise?.let { config.router(it)?.name }
         return if (fallback == null) rules else "$rules, else to $fallback"

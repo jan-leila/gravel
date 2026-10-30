@@ -129,7 +129,7 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   recording goes to a transcription server only if you set one up.
   Where a recording's text goes is yours to set: by default it becomes a
   note, and Settings > Notebook > Text Routing can send it through rules
-  on the words or on the time it was recorded to a reminder, to another app that declares a router
+  on the words, the time or the place it was recorded to a reminder, to another app that declares a router
   ([ROUTER_API.md](ROUTER_API.md); only apps signed by a certificate you
   trust, a list that is yours to edit, export and import with the
   routing), or to an https:// address of yours. A router can be set to

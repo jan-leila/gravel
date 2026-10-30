@@ -288,7 +288,7 @@ val notebookModule = module {
         )
     }
     viewModel { NotesViewModel(get()) }
-    viewModel { RoutingViewModel(get(), get(), get(), BackupDocuments(androidContext().contentResolver)) }
+    viewModel { RoutingViewModel(get(), get(), get(), BackupDocuments(androidContext().contentResolver), location = get()) }
     viewModel {
         RemindersViewModel(
             reminders = get(), events = get(), alarms = get(), typedNotes = get(),

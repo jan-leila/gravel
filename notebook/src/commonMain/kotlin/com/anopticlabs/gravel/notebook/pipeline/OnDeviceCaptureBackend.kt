@@ -109,7 +109,7 @@ class OnDeviceCaptureBackend(
             onStage(CaptureStage.FORWARDING)
             BuiltCapture.Forward(terminal, routed, terminal.shared(granted))
         }
-        is RouterConfig.Switch, is RouterConfig.Time -> throw IllegalStateException("the routing walk ended at a router that forwards")
+        is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place -> throw IllegalStateException("the routing walk ended at a router that forwards")
     }
 
     private fun unavailable(why: String): Nothing =

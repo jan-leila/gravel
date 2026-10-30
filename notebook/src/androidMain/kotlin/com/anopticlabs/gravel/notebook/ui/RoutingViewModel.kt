@@ -3,6 +3,8 @@ package com.anopticlabs.gravel.notebook.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.anopticlabs.gravel.notebook.backup.BackupDocumentOps
+import com.anopticlabs.gravel.notebook.capture.RecordingLocation
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.InstalledRouter
 import com.anopticlabs.gravel.notebook.routers.InstalledRouters
 import com.anopticlabs.gravel.notebook.routers.RouterTrust
@@ -16,6 +18,7 @@ import com.anopticlabs.gravel.notebook.routers.TrustedCertificate
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +64,11 @@ class RoutingViewModel<H : Any>(
     private val installed: InstalledRouters,
     private val documents: BackupDocumentOps<H>,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val location: RecordingLocation = RecordingLocation.NONE,
 ) : ViewModel() {
+    /** Where the phone is now, for a place the user is at; null when it is not known or not allowed. */
+    suspend fun currentLocation(): RoutedLocation? = withContext(io) { location.current() }
+
     private val _ui = MutableStateFlow(RoutingUi())
     val ui: StateFlow<RoutingUi> = _ui.asStateFlow()
 

@@ -40,6 +40,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,8 +54,10 @@ import androidx.compose.ui.window.Dialog
 import com.anopticlabs.gravel.notebook.R
 import com.anopticlabs.gravel.notebook.routers.Grant
 import com.anopticlabs.gravel.notebook.routers.InstalledRouter
+import com.anopticlabs.gravel.notebook.routers.PlaceRule
 import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.RouterRef
 import com.anopticlabs.gravel.notebook.routers.RouterTrust
 import com.anopticlabs.gravel.notebook.routers.RoutingConfig
@@ -61,6 +65,7 @@ import com.anopticlabs.gravel.notebook.routers.RoutingEdits
 import com.anopticlabs.gravel.notebook.routers.RoutingExport
 import com.anopticlabs.gravel.notebook.routers.RoutingStoreState
 import com.anopticlabs.gravel.notebook.routers.Shares
+import com.anopticlabs.gravel.notebook.routers.Spot
 import com.anopticlabs.gravel.notebook.routers.SwitchRule
 import com.anopticlabs.gravel.notebook.routers.TimeCondition
 import com.anopticlabs.gravel.notebook.routers.TimeField
@@ -174,7 +179,7 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>) {
         }
         RoutingDialog.AddRouter -> config?.let { c -> KindPicker(c, onPick = { dialog = RoutingDialog.Edit(it) }, onDismiss = close) }
         is RoutingDialog.Edit -> config?.let { c ->
-            RouterEditor(open.router, c, ui.apps, onSave = { router ->
+            RouterEditor(open.router, c, ui.apps, locate = viewModel::currentLocation, onSave = { router ->
                 viewModel.save(RoutingEdits.withRouter(c, router, replacing = open.router.ref))
                 close()
             }, onTrust = viewModel::trustApp, onDismiss = close)
@@ -271,6 +276,7 @@ private fun kindName(router: RouterConfig): String = stringResource(
         is RouterConfig.Reminder -> R.string.notebook_routing_kind_reminder
         is RouterConfig.Switch -> R.string.notebook_routing_kind_switch
         is RouterConfig.Time -> R.string.notebook_routing_kind_time
+        is RouterConfig.Place -> R.string.notebook_routing_kind_place
         is RouterConfig.App -> R.string.notebook_routing_kind_app
         is RouterConfig.Network -> R.string.notebook_routing_kind_network
     }
@@ -371,6 +377,7 @@ private fun KindPicker(config: RoutingConfig, onPick: (RouterConfig) -> Unit, on
         Kind(R.string.notebook_routing_kind_reminder, R.string.notebook_routing_kind_reminder_hint) { id, name -> RouterConfig.Reminder(id, name) },
         Kind(R.string.notebook_routing_kind_switch, R.string.notebook_routing_kind_switch_hint) { id, name -> RouterConfig.Switch(id, name) },
         Kind(R.string.notebook_routing_kind_time, R.string.notebook_routing_kind_time_hint) { id, name -> RouterConfig.Time(id, name) },
+        Kind(R.string.notebook_routing_kind_place, R.string.notebook_routing_kind_place_hint) { id, name -> RouterConfig.Place(id, name) },
         // An app router's ref is the picked router's, so it starts with none.
         Kind(R.string.notebook_routing_kind_app, R.string.notebook_routing_kind_app_hint) { _, name -> RouterConfig.App("", name, "", "", "") },
         Kind(R.string.notebook_routing_kind_network, R.string.notebook_routing_kind_network_hint) { id, name -> RouterConfig.Network(id, name, "") },
@@ -407,6 +414,7 @@ private fun RouterEditor(
     router: RouterConfig,
     config: RoutingConfig,
     apps: List<RouterApp>,
+    locate: suspend () -> RoutedLocation?,
     onSave: (RouterConfig) -> Unit,
     onTrust: (RouterApp) -> Unit,
     onDismiss: () -> Unit,
@@ -416,6 +424,9 @@ private fun RouterEditor(
     var otherwise by remember(router.ref) { mutableStateOf((router as? RouterConfig.Switch)?.otherwise) }
     var timeRules by remember(router.ref) { mutableStateOf((router as? RouterConfig.Time)?.rules.orEmpty()) }
     var timeOtherwise by remember(router.ref) { mutableStateOf((router as? RouterConfig.Time)?.otherwise) }
+    var placeRules by remember(router.ref) { mutableStateOf((router as? RouterConfig.Place)?.rules.orEmpty()) }
+    var placeOtherwise by remember(router.ref) { mutableStateOf((router as? RouterConfig.Place)?.otherwise) }
+    var placeUnknown by remember(router.ref) { mutableStateOf((router as? RouterConfig.Place)?.unknown) }
     var picked by remember(router.ref) {
         mutableStateOf((router as? RouterConfig.App)?.let { app -> apps.flatMap { it.routers }.firstOrNull { it.packageName == app.packageName && it.receiverClass == app.receiverClass } })
     }
@@ -435,6 +446,7 @@ private fun RouterEditor(
             is RouterConfig.Reminder -> RouterConfig.Reminder(router.id, trimmed, confirm = confirm)
             is RouterConfig.Switch -> RouterConfig.Switch(router.id, trimmed, rules, otherwise)
             is RouterConfig.Time -> RouterConfig.Time(router.id, trimmed, timeRules, timeOtherwise)
+            is RouterConfig.Place -> RouterConfig.Place(router.id, trimmed, placeRules, placeOtherwise, placeUnknown)
             is RouterConfig.App -> picked?.let { RouterConfig.App(it.id, trimmed, it.packageName, it.receiverClass, it.namespace, it.needs, shares, confirm) } ?: router.copy(name = trimmed, shares = shares, confirm = confirm)
             is RouterConfig.Network -> RouterConfig.Network(router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares, confirm = confirm)
         }
@@ -466,6 +478,10 @@ private fun RouterEditor(
                         is RouterConfig.Note, is RouterConfig.Reminder -> Unit
                         is RouterConfig.Switch -> SwitchFields(rules, otherwise, others, onRules = { rules = it }, onOtherwise = { otherwise = it })
                         is RouterConfig.Time -> TimeRulesFields(timeRules, timeOtherwise, others, onRules = { timeRules = it }, onOtherwise = { timeOtherwise = it })
+                        is RouterConfig.Place -> PlaceRulesFields(
+                            placeRules, placeOtherwise, placeUnknown, others, locate,
+                            onRules = { placeRules = it }, onOtherwise = { placeOtherwise = it }, onUnknown = { placeUnknown = it },
+                        )
                         is RouterConfig.App -> {
                             if (picked == null && router.packageName.isNotEmpty()) Text(stringResource(R.string.notebook_routing_app_gone), color = MaterialTheme.colorScheme.error)
                             AppFields(apps, picked, onPick = { app, choice -> if (app.trusted) take(choice) else askTrust = app to choice })
@@ -586,6 +602,85 @@ private fun TimeRulesFields(
         ) { Text(stringResource(R.string.notebook_routing_add_rule)) }
     }
     TargetPicker(stringResource(R.string.notebook_routing_otherwise), otherwise, targets, allowNone = true, onPick = onOtherwise)
+}
+
+/**
+ * The rules of a Place router: a spot (name, coordinates, radius; "Use my location" fills the
+ * coordinates from the phone), within or outside, and a target; then the fallback and where a
+ * recording without a location goes.
+ */
+@Composable
+private fun PlaceRulesFields(
+    rules: List<PlaceRule>,
+    otherwise: RouterRef?,
+    unknown: RouterRef?,
+    targets: List<RouterConfig>,
+    locate: suspend () -> RoutedLocation?,
+    onRules: (List<PlaceRule>) -> Unit,
+    onOtherwise: (RouterRef?) -> Unit,
+    onUnknown: (RouterRef?) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var unknownLocation by remember { mutableStateOf(false) }
+    Text(stringResource(R.string.notebook_routing_place_rules), style = MaterialTheme.typography.titleSmall)
+    rules.forEachIndexed { index, rule ->
+        fun replace(changed: PlaceRule) = onRules(rules.mapIndexed { i, r -> if (i == index) changed else r })
+        fun replaceSpot(changed: Spot) = replace(rule.copy(spot = changed))
+        OutlinedTextField(
+            value = rule.spot.label,
+            onValueChange = { replaceSpot(rule.spot.copy(label = it)) },
+            label = { Text(stringResource(R.string.notebook_routing_field_place_label)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.weight(1f)) { DecimalInput(stringResource(R.string.notebook_routing_field_latitude), rule.spot.latitude) { replaceSpot(rule.spot.copy(latitude = it)) } }
+            Box(Modifier.weight(1f)) { DecimalInput(stringResource(R.string.notebook_routing_field_longitude), rule.spot.longitude) { replaceSpot(rule.spot.copy(longitude = it)) } }
+            Box(Modifier.weight(1f)) { DecimalInput(stringResource(R.string.notebook_routing_field_radius), rule.spot.radiusMeters.toDouble()) { replaceSpot(rule.spot.copy(radiusMeters = it.toInt())) } }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = {
+                scope.launch {
+                    val here = locate()
+                    if (here == null) unknownLocation = true else replaceSpot(rule.spot.copy(latitude = here.latitude, longitude = here.longitude))
+                }
+            }) { Text(stringResource(R.string.notebook_routing_use_my_location)) }
+            OutlinedButton(onClick = { replace(rule.copy(within = !rule.within)) }) {
+                Text(stringResource(if (rule.within) R.string.notebook_routing_place_within else R.string.notebook_routing_place_outside))
+            }
+            TargetPicker(stringResource(R.string.notebook_routing_forward_to), rule.router, targets, allowNone = false) { ref -> ref?.let { replace(rule.copy(router = it)) } }
+            IconButton(onClick = { onRules(rules.filterIndexed { i, _ -> i != index }) }) {
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.notebook_routing_remove_rule))
+            }
+        }
+    }
+    if (unknownLocation) Text(stringResource(R.string.notebook_routing_location_unknown), color = MaterialTheme.colorScheme.error)
+    if (rules.size < RoutingConfig.MAX_RULES) {
+        val first = targets.firstOrNull()
+        OutlinedButton(
+            onClick = { first?.let { onRules(rules + PlaceRule(Spot("", 0.0, 0.0, 500), within = true, it.ref)) } },
+            enabled = first != null,
+        ) { Text(stringResource(R.string.notebook_routing_add_rule)) }
+    }
+    TargetPicker(stringResource(R.string.notebook_routing_otherwise), otherwise, targets, allowNone = true, onPick = onOtherwise)
+    TargetPicker(stringResource(R.string.notebook_routing_no_location), unknown, targets, allowNone = true, onPick = onUnknown)
+}
+
+/** A decimal the user types, kept as typed and handed on once it reads as a number; the save's validation catches the rest. */
+@Composable
+private fun DecimalInput(label: String, value: Double, onValue: (Double) -> Unit) {
+    var text by remember(value) { mutableStateOf(if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()) }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { typed ->
+            text = typed
+            typed.trim().toDoubleOrNull()?.takeIf { it.isFinite() && it != value }?.let(onValue)
+        },
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable

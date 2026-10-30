@@ -27,11 +27,18 @@ object RouteWalk {
             val next = when (current) {
                 is RouterConfig.Switch -> pick(current, text, ruleDeadline)
                 is RouterConfig.Time -> pick(current, text)
+                is RouterConfig.Place -> pick(current, text)
                 else -> error("${current.name} does not forward")
             } ?: notRouted("no rule of ${current.name} matched and it has no fallback")
             current = config.router(next) ?: notRouted("${current.name} forwards to a router that does not exist")
         }
         return current
+    }
+
+    // The payload's location is read here inside Gravel; the grants govern only what leaves the phone.
+    private fun pick(place: RouterConfig.Place, text: RoutedText): RouterRef? {
+        val location = text.location ?: return place.unknown ?: place.otherwise
+        return place.rules.firstOrNull { PlaceMatcher.holds(it, location) }?.router ?: place.otherwise
     }
 
     // The recording's own time, in the zone it was made in; a payload Gravel did not write could carry anything.
