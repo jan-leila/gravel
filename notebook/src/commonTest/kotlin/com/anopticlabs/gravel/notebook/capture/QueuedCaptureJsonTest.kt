@@ -1,6 +1,8 @@
 package com.anopticlabs.gravel.notebook.capture
 
+import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.routers.RoutedLocation
+import com.anopticlabs.gravel.notebook.routers.RouterRef
 import com.anopticlabs.gravel.notebook.storage.NotebookJson
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
@@ -9,6 +11,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class QueuedCaptureJsonTest {
 
@@ -48,6 +52,31 @@ class QueuedCaptureJsonTest {
         assertEquals(RoutedLocation(52.52, 13.405), placed.copy(accuracyMeters = null).location)
         assertEquals(null, placed.copy(longitude = null).location)
         assertEquals(null, QueuedCapture("x", "x.m4a", 5L).location)
+    }
+
+    /** The wait on the user is one nested object, absent until a capture is parked; a flagged entry is a failed capture before anything else. */
+    @Test
+    fun aParkedEntryCarriesWhatTheUserHasToSeeAndAFlaggedOneIsNotWaiting() {
+        val awaiting = AwaitingUser(
+            RouterRef("a".repeat(64), "tasks"), "Tasks", "buy milk", "2026-09-22T17:00:00+02:00", confirm = true,
+            location = RoutedLocation(52.52, 13.405), asks = setOf(Need.LOCATION), granted = setOf(Need.RECORDED_AT),
+        )
+        val parked = QueuedCapture("p", "p.wav", 1L, awaiting = awaiting)
+        val json = NotebookJson.encodeToString(parked)
+        val fields = NotebookJson.parseToJsonElement(json).jsonObject
+        assertEquals(setOf("id", "originalFileName", "queuedAtMillis", "awaiting"), fields.keys)
+        assertEquals(setOf("router", "routerName", "text", "recordedAt", "confirm", "location", "asks", "granted"), fields.getValue("awaiting").jsonObject.keys)
+        assertEquals(parked, NotebookJson.decodeFromString<QueuedCapture>(json))
+        assertTrue(parked.awaitsUser)
+        assertFalse(parked.copy(flagged = true).awaitsUser)
+        assertFalse(parked.copy(attempts = MAX_QUEUE_ATTEMPTS).awaitsUser)
+        assertFalse(QueuedCapture("x", "x.m4a", 5L).awaitsUser)
+        assertEquals(null, NotebookJson.decodeFromString<QueuedCapture>("""{"id":"x","originalFileName":"x.m4a","queuedAtMillis":5}""").awaiting)
+        val bare = NotebookJson.decodeFromString<AwaitingUser>("""{"router":{"id":"notebook"},"routerName":"Notebook","text":"t","recordedAt":"2026-09-22T17:00:00+02:00","confirm":false}""")
+        assertEquals(AwaitingUser(RouterRef.gravel("notebook"), "Notebook", "t", "2026-09-22T17:00:00+02:00", confirm = false), bare)
+        assertTrue(bare.settled)
+        assertFalse(bare.copy(confirm = true).settled)
+        assertFalse(bare.copy(asks = setOf(Need.LOCATION)).settled)
     }
 
     @Test

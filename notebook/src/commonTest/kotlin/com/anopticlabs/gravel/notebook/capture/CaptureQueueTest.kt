@@ -1,5 +1,7 @@
 package com.anopticlabs.gravel.notebook.capture
 
+import com.anopticlabs.gravel.notebook.routers.Need
+import com.anopticlabs.gravel.notebook.routers.RouterRef
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -66,6 +68,32 @@ class CaptureQueueTest {
         fun flaggedAt(bumpTo: Int) = applyQueueDrainResults(listOf(entry("s1", attempts = bumpTo - 1)), emptySet(), mapOf("s1" to bumpTo)).single().flagged
         assertFalse(flaggedAt(MAX_QUEUE_ATTEMPTS - 1))
         assertTrue(flaggedAt(MAX_QUEUE_ATTEMPTS))
+    }
+
+    private val waiting = AwaitingUser(RouterRef.gravel("hook"), "Hook", "buy milk", "2026-09-22T17:00:00+02:00", confirm = true, asks = setOf(Need.LOCATION, Need.RECORDED_AT))
+
+    /** Parking and giving the attempt back are one copy, so one write; an answer moves one need; a confirmation clears the flag. */
+    @Test
+    fun parkingAnsweringAndConfirmingChangeTheOneEntryInPlace() {
+        val queue = listOf(entry("a", attempts = 3), entry("b"))
+        val parked = awaitUser(queue, "a", waiting, attempts = 2)
+        assertEquals(listOf(entry("a", attempts = 2).copy(awaiting = waiting), entry("b")), parked)
+        assertEquals(queue, awaitUser(queue, "zz", waiting, attempts = 0))
+        val answered = answerUser(parked, "a", Need.LOCATION, allow = true)
+        assertEquals(waiting.copy(asks = setOf(Need.RECORDED_AT), granted = setOf(Need.LOCATION)), answered.first().awaiting)
+        val refused = answerUser(answered, "a", Need.RECORDED_AT, allow = false)
+        assertEquals(waiting.copy(asks = emptySet(), granted = setOf(Need.LOCATION)), refused.first().awaiting)
+        assertEquals(parked, answerUser(parked, "b", Need.LOCATION, allow = true), "an entry that is not parked has no answer to take")
+        val confirmed = confirmUser(refused, "a")
+        assertEquals(waiting.copy(confirm = false, asks = emptySet(), granted = setOf(Need.LOCATION)), confirmed.first().awaiting)
+        assertTrue(confirmed.first().awaiting!!.settled)
+        assertEquals(parked, confirmUser(parked, "b"))
+    }
+
+    @Test
+    fun aDrainKeepsAParkedEntrysWait() {
+        val parked = awaitUser(listOf(entry("a", attempts = 3)), "a", waiting, attempts = 2)
+        assertEquals(parked.first().awaiting, applyQueueDrainResults(parked, emptySet(), mapOf("a" to 3)).first().awaiting)
     }
 
     @Test

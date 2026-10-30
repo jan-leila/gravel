@@ -1,5 +1,6 @@
 package com.anopticlabs.gravel.notebook.capture
 
+import com.anopticlabs.gravel.notebook.routers.RouterRef
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -42,6 +43,14 @@ class FailedCapturesTest {
             ),
             failedCaptures(queue) { it != "old" },
         )
+    }
+
+    @Test
+    fun flaggingOrRetryingEndsAWaitOnTheUser() {
+        val waiting = AwaitingUser(RouterRef.gravel("hook"), "Hook", "buy milk", "2026-09-22T17:00:00+02:00", confirm = true)
+        val parked = awaitUser(listOf(entry("a")), "a", waiting, attempts = 0)
+        assertEquals(null, flagQueuedCapture(parked, "a", CaptureFailureReason.ROUTER_UNAVAILABLE).single().awaiting)
+        assertEquals(null, retryFailedCaptures(flagQueuedCapture(parked, "a", CaptureFailureReason.ROUTER_UNAVAILABLE), setOf("a")).single().awaiting)
     }
 
     @Test

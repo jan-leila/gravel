@@ -1,9 +1,13 @@
 package com.anopticlabs.gravel.notebook.capture
 
+import com.anopticlabs.gravel.notebook.routers.Need
+
 /**
  * One row of the in-memory capture list: what the queue is doing and what it produced. [id] is the
  * durable queue entry's id. [stage] is set only while PROCESSING; [resultLabel] holds the terminal
- * text; [noteId] is set on NOTE_CREATED, [reminderId] on REMINDER_SET.
+ * text; [noteId] is set on NOTE_CREATED, [reminderId] on REMINDER_SET. An AWAITING_USER row
+ * carries what the user has to see: the [transcript], the [target] router's name, the needs still
+ * [asks]ed about, and whether a [confirm]ation is wanted once they are answered.
  */
 data class CaptureQueueItem(
     val id: String,
@@ -14,8 +18,12 @@ data class CaptureQueueItem(
     val resultLabel: String? = null,
     val noteId: String? = null,
     val reminderId: Int? = null,
+    val transcript: String? = null,
+    val target: String? = null,
+    val asks: Set<Need> = emptySet(),
+    val confirm: Boolean = false,
 ) {
-    enum class Status { QUEUED, PROCESSING, NOTE_CREATED, REMINDER_SET, FORWARDED, FAILED }
+    enum class Status { QUEUED, PROCESSING, NOTE_CREATED, REMINDER_SET, FORWARDED, FAILED, AWAITING_USER }
 
     enum class Kind { NOTE, REMINDER, FORWARDED }
 
@@ -61,14 +69,48 @@ fun withSettledCaptureItem(
     label: String?,
     noteId: String? = null,
     reminderId: Int? = null,
+    transcript: String? = null,
+    target: String? = null,
+    asks: Set<Need> = emptySet(),
+    confirm: Boolean = false,
 ): List<CaptureQueueItem> =
     items.map {
         if (it.id == id) {
-            it.copy(status = status, kind = kind, stage = null, resultLabel = label, noteId = noteId, reminderId = reminderId)
+            it.copy(
+                status = status, kind = kind, stage = null, resultLabel = label, noteId = noteId, reminderId = reminderId,
+                transcript = transcript, target = target, asks = asks, confirm = confirm,
+            )
         } else {
             it
         }
     }
+
+/** The row a parked entry shows, built from the entry alone so it can be rebuilt after the process died. */
+fun awaitingCaptureItem(entry: QueuedCapture): CaptureQueueItem? {
+    val awaiting = entry.awaiting ?: return null
+    return CaptureQueueItem(
+        entry.id, entry.queuedAtMillis, CaptureQueueItem.Status.AWAITING_USER,
+        transcript = awaiting.text, target = awaiting.routerName, asks = awaiting.asks, confirm = awaiting.confirm,
+    )
+}
+
+/**
+ * Brings the AWAITING_USER rows in line with the parked entries: one for every entry without a
+ * row, none for an entry no longer parked, the rest refreshed from the entry (an answered
+ * question leaves the row). Rows in flight or settled otherwise are left alone, since only the
+ * drain moves those.
+ */
+fun syncAwaitingCaptureItems(items: List<CaptureQueueItem>, awaiting: List<QueuedCapture>): List<CaptureQueueItem> {
+    val rows = awaiting.mapNotNull(::awaitingCaptureItem).associateBy { it.id }
+    val kept = items.mapNotNull { item ->
+        when {
+            item.status != CaptureQueueItem.Status.AWAITING_USER -> item
+            else -> rows[item.id]
+        }
+    }
+    val present = kept.mapTo(mutableSetOf()) { it.id }
+    return kept + rows.values.filter { it.id !in present }
+}
 
 /** Puts row [id] back to QUEUED while it is still in flight, for a capture stopped to be started again later. */
 fun withRequeuedCaptureItem(items: List<CaptureQueueItem>, id: String): List<CaptureQueueItem> =
@@ -101,4 +143,5 @@ fun captureQueueRowLabel(item: CaptureQueueItem): String = when (item.status) {
     CaptureQueueItem.Status.REMINDER_SET -> item.resultLabel ?: "Reminder set"
     CaptureQueueItem.Status.FORWARDED -> item.resultLabel ?: "Sent on"
     CaptureQueueItem.Status.FAILED -> item.resultLabel ?: "Couldn't process this recording"
+    CaptureQueueItem.Status.AWAITING_USER -> item.resultLabel ?: "Waiting for you: ${item.target ?: "a router"}"
 }

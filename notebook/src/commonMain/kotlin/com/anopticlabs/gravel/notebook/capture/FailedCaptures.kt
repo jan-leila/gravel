@@ -71,11 +71,11 @@ fun failedCaptures(queue: List<QueuedCapture>, hasRecording: (String) -> Boolean
             FailedCapture(it.id, it.queuedAtMillis, it.durationMillis, reason, present)
         }
 
-/** Flags the entry [id] with [reason], in place; a no-op when it is absent. */
+/** Flags the entry [id] with [reason], in place, and ends any wait on the user; a no-op when it is absent. */
 fun flagQueuedCapture(queue: List<QueuedCapture>, id: String, reason: CaptureFailureReason): List<QueuedCapture> =
-    queue.map { if (it.id == id) it.copy(attempts = MAX_QUEUE_ATTEMPTS, flagged = true, failure = reason.code) else it }
+    queue.map { if (it.id == id) it.copy(attempts = MAX_QUEUE_ATTEMPTS, flagged = true, failure = reason.code, awaiting = null) else it }
 
-/** Gives the flagged entries among [ids] fresh attempts, the server's included. */
+/** Gives the flagged entries among [ids] fresh attempts, the server's included; a kept transcript goes too, so the retry routes afresh. */
 fun retryFailedCaptures(queue: List<QueuedCapture>, ids: Set<String>): List<QueuedCapture> = queue.map {
-    if (it.needsReview && it.id in ids) it.copy(attempts = 0, flagged = false, failure = null, serverTries = 0, serverTriedAtMillis = null) else it
+    if (it.needsReview && it.id in ids) it.copy(attempts = 0, flagged = false, failure = null, serverTries = 0, serverTriedAtMillis = null, awaiting = null) else it
 }
