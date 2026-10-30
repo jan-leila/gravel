@@ -12,6 +12,10 @@ manifest, a settings screen and one sender.
 | --- | --- | --- | --- |
 | `slack` | `message` | a Slack channel, through an incoming webhook | nothing |
 | `homeassistant` | `assist` | Home Assistant's Assist, as a typed sentence | nothing |
+| `vikunja` | `task` | a task in a Vikunja project, titled with the text | the recording time, for the description |
+| `mastodon` | `post` | a status on a Mastodon account, followers-only by default | nothing |
+| `osmnote` | `note` | an OpenStreetMap note where the recording was made | the location; a recording without one is refused |
+| `signal` | `message` | a Signal message, through a signal-cli-rest-api relay the user runs | nothing |
 
 ## How an app works
 
