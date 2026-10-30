@@ -1835,6 +1835,14 @@ in the app's device suite:
     Re-record; the rows are rebuilt from the queue on every status read,
     and a count-only notification (`notebook_awaiting`) says recordings
     wait while the app is off screen.
+  - The settings can ask the text model to rewrite the routing from a
+    description (`RoutingViewModel.describeChange`): the routing goes to
+    the model with its secrets swapped out (`RoutingSecrets`: a token
+    becomes `SECRET_n`, a spot loses its coordinates), the answer is read
+    with the same lenient JSON extraction the notes use, the secrets go
+    back, the result is validated like any save, and what changed
+    (`RoutingDiff`) is shown for the user to keep or discard; nothing is
+    stored before that. One retry carries the refusal's reason.
   - A network router posts the payload (`NetworkPayload`: the same
     fields, the shared parts only) through a `TextPoster` the app binds to a Ktor client of its
     own (`KtorTextPoster`), answered by the status alone: a 2xx is taken,

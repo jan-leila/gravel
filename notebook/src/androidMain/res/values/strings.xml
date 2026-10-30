@@ -137,6 +137,14 @@
     <string name="notebook_routing_trusted">Trusted</string>
     <string name="notebook_routing_not_trusted">Not trusted</string>
     <string name="notebook_routing_confirm">Ask me before the text goes here</string>
+    <string name="notebook_routing_describe">Describe a change</string>
+    <string name="notebook_routing_describe_hint">Say what you want in your own words, such as "send anything starting with remind to a reminder router". The text model rewrites the routing; you see what changed before it is kept. Tokens and places are hidden from it.</string>
+    <string name="notebook_routing_describe_field">What should change?</string>
+    <string name="notebook_routing_describe_go">Propose</string>
+    <string name="notebook_routing_describe_working">Asking the text model…</string>
+    <string name="notebook_routing_proposal_title">Proposed change</string>
+    <string name="notebook_routing_proposal_apply">Keep it</string>
+    <string name="notebook_routing_proposal_discard">Discard</string>
     <string name="notebook_routing_confirm_hint">The recording waits in the Notebook until you send or dismiss it</string>
     <string name="notebook_routing_shares">What goes with the text</string>
     <string name="notebook_routing_shares_hint">Only what you allow leaves the phone. Ask pauses a recording routed here until you answer.</string>

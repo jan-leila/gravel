@@ -114,6 +114,8 @@ private sealed interface RoutingDialog {
     data object ConfirmExport : RoutingDialog
 
     data object ConfirmImport : RoutingDialog
+
+    data object Describe : RoutingDialog
 }
 
 @Composable
@@ -136,6 +138,7 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>) {
             confirmButton = { TextButton(onClick = viewModel::clearNotice) { Text(stringResource(R.string.notebook_routing_ok)) } },
         )
     }
+    ui.proposal?.let { proposal -> ProposalDialog(proposal, onApply = viewModel::applyProposal, onDiscard = viewModel::discardProposal) }
     ui.error?.let { error ->
         AlertDialog(
             onDismissRequest = viewModel::clearError,
@@ -159,7 +162,11 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>) {
                 Text(stringResource(R.string.notebook_routing_unreadable), color = MaterialTheme.colorScheme.error)
                 Button(onClick = { dialog = RoutingDialog.ConfirmReset }) { Text(stringResource(R.string.notebook_routing_reset)) }
             }
-            is RoutingStoreState.Loaded -> LoadedRouting(state.config, ui.busy) { dialog = it }
+            is RoutingStoreState.Loaded -> {
+                LoadedRouting(state.config, ui.busy) { dialog = it }
+                OutlinedButton(onClick = { dialog = RoutingDialog.Describe }, enabled = !ui.busy) { Text(stringResource(R.string.notebook_routing_describe)) }
+                if (ui.busy) Text(stringResource(R.string.notebook_routing_describe_working), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         HorizontalDivider()
         CertificatesSection(ui) { dialog = it }
@@ -208,7 +215,51 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>) {
             stringResource(R.string.notebook_routing_import_title), stringResource(R.string.notebook_routing_import_body), stringResource(R.string.notebook_routing_import),
             onConfirm = { launch { import.launch(arrayOf("*/*")) } }, onDismiss = close,
         )
+        RoutingDialog.Describe -> DescribeChangeDialog(onGo = { instruction ->
+            close()
+            viewModel.describeChange(instruction)
+        }, onDismiss = close)
     }
+}
+
+/** The user's words for the text model; the hint says what happens, and that the secrets stay out of it. */
+@Composable
+private fun DescribeChangeDialog(onGo: (String) -> Unit, onDismiss: () -> Unit) {
+    var instruction by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.notebook_routing_describe)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.notebook_routing_describe_hint), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = instruction,
+                    onValueChange = { instruction = it },
+                    label = { Text(stringResource(R.string.notebook_routing_describe_field)) },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onGo(instruction) }, enabled = instruction.isNotBlank()) { Text(stringResource(R.string.notebook_routing_describe_go)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.notebook_cancel)) } },
+    )
+}
+
+/** What the model proposes, as lines; nothing is stored until Keep it. */
+@Composable
+private fun ProposalDialog(proposal: Proposal, onApply: () -> Unit, onDiscard: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDiscard,
+        title = { Text(stringResource(R.string.notebook_routing_proposal_title)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                proposal.lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            }
+        },
+        confirmButton = { TextButton(onClick = onApply) { Text(stringResource(R.string.notebook_routing_proposal_apply)) } },
+        dismissButton = { TextButton(onClick = onDiscard) { Text(stringResource(R.string.notebook_routing_proposal_discard)) } },
+    )
 }
 
 @Composable

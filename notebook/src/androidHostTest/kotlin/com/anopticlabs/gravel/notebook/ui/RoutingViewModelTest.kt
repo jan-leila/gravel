@@ -9,6 +9,13 @@ import com.anopticlabs.gravel.notebook.routers.RouterRef
 import com.anopticlabs.gravel.notebook.routers.RouterTrustStore
 import com.anopticlabs.gravel.notebook.routers.RoutingConfig
 import com.anopticlabs.gravel.notebook.routers.RoutingConfigStore
+import kotlin.test.assertNotNull
+import com.anopticlabs.gravel.notebook.routers.Spot
+import com.anopticlabs.gravel.notebook.routers.PlaceRule
+import com.anopticlabs.gravel.notebook.pipeline.CaptureText
+import com.anopticlabs.gravel.notebook.pipeline.CaptureProcessingException
+import com.anopticlabs.gravel.notebook.pipeline.CaptureFailureKind
+import com.anopticlabs.gravel.notebook.llm.Prompts
 import com.anopticlabs.gravel.notebook.routers.RoutingExport
 import com.anopticlabs.gravel.notebook.routers.RoutingStoreState
 import com.anopticlabs.gravel.notebook.routers.SwitchRule
@@ -66,8 +73,33 @@ class RoutingViewModelTest {
     private val installed = FakeInstalled()
     private val documents = FakeDocuments()
 
+    /** Answers what it is told to, in order, and keeps what it was asked. */
+    private class FakeText : CaptureText {
+        val replies = ArrayDeque<String>()
+        val prompts = mutableListOf<Pair<String, String>>()
+        var ready = true
+        var prepared = 0
+        var released = 0
+        override suspend fun checkReady() {
+            if (!ready) throw CaptureProcessingException(CaptureFailureKind.HOLD, "the text model is not downloaded")
+        }
+        override suspend fun prepare() {
+            prepared++
+        }
+        override suspend fun generate(system: String, user: String, maxTokens: Int): String {
+            prompts += system to user
+            return replies.removeFirstOrNull() ?: error("no reply left")
+        }
+        override suspend fun release() {
+            released++
+        }
+    }
+
+    private val text = FakeText()
+    private var processing = false
+
     // Unconfined, so an action runs to its first hop onto the I/O dispatcher before its call returns; [settle] waits for the rest.
-    private val viewModel = RoutingViewModel(store, trust, installed, documents, io = Dispatchers.Unconfined)
+    private val viewModel = RoutingViewModel(store, trust, installed, documents, io = Dispatchers.Unconfined, text = text, processing = { processing })
     private val split = RoutingConfig(
         entry = RouterRef.gravel("split"),
         routers = listOf(
@@ -205,5 +237,149 @@ class RoutingViewModelTest {
         settle()
         assertEquals(RoutingViewModel.IMPORT_FAILED, viewModel.ui.value.error)
         assertEquals(split, store.read())
+    }
+}
+
+class RoutingViewModelEditTest {
+
+    private val root = Files.createTempDirectory("notebook").toFile()
+    private val store = RoutingConfigStore(root, FakeCryptographer(softwareCrypto()))
+    private val trust = RouterTrustStore(File(root, "nobackup"), { 1L }, defaults = emptySet())
+    private val installed = object : InstalledRouters {
+        override fun discover() = emptyList<InstalledRouter>()
+        override fun resolve(packageName: String, receiverClass: String) = null
+        override fun signedBy(packageName: String, sha256: String) = false
+    }
+    private val documents = object : BackupDocumentOps<String> {
+        override fun describe(handle: String) = null
+        override fun openWrite(handle: String): OutputStream = ByteArrayOutputStream()
+        override fun openRead(handle: String): InputStream = throw IOException("no documents here")
+        override fun delete(handle: String) = false
+    }
+
+    private class FakeText : CaptureText {
+        val replies = ArrayDeque<String>()
+        val prompts = mutableListOf<Pair<String, String>>()
+        var ready = true
+        var prepared = 0
+        var released = 0
+        override suspend fun checkReady() {
+            if (!ready) throw CaptureProcessingException(CaptureFailureKind.HOLD, "the text model is not downloaded")
+        }
+        override suspend fun prepare() {
+            prepared++
+        }
+        override suspend fun generate(system: String, user: String, maxTokens: Int): String {
+            prompts += system to user
+            return replies.removeFirstOrNull() ?: error("no reply left")
+        }
+        override suspend fun release() {
+            released++
+        }
+    }
+
+    private val text = FakeText()
+    private var processing = false
+    private val viewModel = RoutingViewModel(store, trust, installed, documents, io = Dispatchers.Unconfined, text = text, processing = { processing })
+    private val none = RoutingViewModel(store, trust, installed, documents, io = Dispatchers.Unconfined)
+
+    private fun g(id: String) = RouterRef.gravel(id)
+    private val hook = RouterConfig.Network("hook", "Hook", "https://example.test/notes", bearerToken = "s3cret")
+    private val home = Spot("Home", 52.52, 13.405, 800)
+    private val places = RouterConfig.Place("places", "Places", listOf(PlaceRule(home, true, g("hook"))), otherwise = g("notebook"))
+    private val current = RoutingConfig(entry = g("places"), routers = listOf(places, RouterConfig.Note("notebook", "Notebook"), hook))
+
+    private fun settle() = runBlocking { viewModel.ui.first { !it.busy } }
+
+    @AfterTest
+    fun cleanUp() {
+        root.deleteRecursively()
+    }
+
+    /** The model's JSON, with the secrets as it saw them, plus a reminder router and a rule to it. */
+    private fun reply(token: String = "SECRET_1", extra: String = ""): String = """
+        {"v":1,"entry":{"id":"split"},"routers":[
+          {"type":"switch","id":"split","name":"Split","rules":[{"pattern":"^remind me","router":{"id":"reminder"}}],"otherwise":{"id":"places"}},
+          {"type":"reminder","id":"reminder","name":"Reminders"},
+          {"type":"place","id":"places","name":"Places","rules":[{"spot":{"label":"Home","latitude":0.0,"longitude":0.0,"radiusMeters":800},"within":true,"router":{"id":"hook"}}],"otherwise":{"id":"notebook"}},
+          {"type":"note","id":"notebook","name":"Notebook"},
+          {"type":"network","id":"hook","name":"Hook","url":"https://example.test/notes","bearerToken":"$token"}$extra
+        ]}
+    """.trimIndent()
+
+    @Test
+    fun aDescribedChangeIsProposedWithTheSecretsHiddenFromTheModelAndRestoredAndIsStoredOnlyWhenKept() = runBlocking<Unit> {
+        store.write(current)
+        viewModel.load()
+        settle()
+        text.replies += "Sure! ```json\n${reply()}\n```"
+        viewModel.describeChange("send anything starting with remind me to a reminder router")
+        settle()
+        val (system, user) = text.prompts.single()
+        assertEquals(Prompts.ROUTING_EDIT_SYSTEM, system)
+        assertFalse(user.contains("s3cret") || user.contains("52.52") || user.contains("13.405"), user)
+        assertTrue(user.contains("SECRET_1") && user.contains("<instruction>\nsend anything starting with remind me to a reminder router\n</instruction>"), user)
+        assertEquals(1, text.prepared)
+        assertEquals(1, text.released)
+        val proposal = assertNotNull(viewModel.ui.value.proposal)
+        assertEquals("s3cret", (proposal.config.router(g("hook")) as RouterConfig.Network).bearerToken)
+        assertEquals(home, (proposal.config.router(g("places")) as RouterConfig.Place).rules.single().spot)
+        assertEquals(g("split"), proposal.config.entry)
+        assertEquals(listOf("The entry router is now 'Split'.", "Added Switch 'Split'.", "Added Reminder 'Reminders'."), proposal.lines)
+        assertEquals(current, store.read(), "nothing stored until the user keeps it")
+        viewModel.applyProposal()
+        settle()
+        assertNull(viewModel.ui.value.proposal)
+        assertEquals(proposal.config, store.read())
+        assertEquals(RoutingStoreState.Loaded(proposal.config), viewModel.ui.value.store)
+    }
+
+    @Test
+    fun aRefusedAnswerIsAskedAgainOnceWithTheReasonAndThenGivenUp() = runBlocking<Unit> {
+        store.write(current)
+        text.replies += "not json at all"
+        text.replies += reply(extra = """,{"type":"note","id":"notebook","name":"Twice"}""")
+        viewModel.describeChange("add a reminder router")
+        settle()
+        assertEquals(2, text.prompts.size)
+        assertTrue(text.prompts[1].second.contains("Your previous answer was refused: the answer was not a JSON object"), text.prompts[1].second)
+        assertNull(viewModel.ui.value.proposal)
+        assertEquals(RoutingViewModel.EDIT_FAILED, viewModel.ui.value.error)
+        assertEquals(current, store.read())
+        assertEquals(1, text.released)
+        viewModel.clearError()
+        text.replies += reply(token = "SECRET_7")
+        text.replies += reply()
+        viewModel.describeChange("add a reminder router")
+        settle()
+        assertTrue(text.prompts.last().second.contains("names a secret that does not exist"))
+        assertNotNull(viewModel.ui.value.proposal, "the second answer was good")
+        viewModel.discardProposal()
+        assertNull(viewModel.ui.value.proposal)
+        assertEquals(current, store.read())
+    }
+
+    @Test
+    fun noModelABusyQueueAnEmptyDescriptionOrAModelNotReadyIsSaidAndNothingIsAsked() = runBlocking<Unit> {
+        store.write(current)
+        none.describeChange("anything")
+        runBlocking { none.ui.first { !it.busy } }
+        assertEquals(RoutingViewModel.EDIT_UNAVAILABLE, none.ui.value.error)
+        processing = true
+        viewModel.describeChange("anything")
+        settle()
+        assertEquals(RoutingViewModel.EDIT_BUSY, viewModel.ui.value.error)
+        processing = false
+        viewModel.clearError()
+        viewModel.describeChange("   ")
+        settle()
+        assertEquals(RoutingViewModel.EDIT_INSTRUCTION, viewModel.ui.value.error)
+        viewModel.clearError()
+        text.ready = false
+        viewModel.describeChange("anything")
+        settle()
+        assertEquals("the text model is not downloaded", viewModel.ui.value.error)
+        assertTrue(text.prompts.isEmpty())
+        assertEquals(0, text.prepared)
     }
 }

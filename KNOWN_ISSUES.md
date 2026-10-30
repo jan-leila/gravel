@@ -1835,6 +1835,22 @@ server whose certificate changes, as a Bridge's does when it is set up
 again, is then refused until the user pastes the new digest; the test
 send in the app's settings says so.
 
+## The text model's routing edits can come back invalid
+
+**Status: accepted; the preview is the safeguard.**
+
+Settings > Notebook > Text Routing can ask the on-device text model to
+rewrite the routing from a description. The models Gravel ships are small
+(Qwen3 1.7B and 0.8B, greedy decoding, no grammar-constrained output), so
+a larger routing or a vaguer request can come back as JSON the routing
+refuses, or as a change other than the one meant. A refused answer is asked
+for once more with the reason and then given up on; a valid one is shown
+as a list of what changed and stored only when the user keeps it. The
+tokens and the places' coordinates are swapped out before the model sees
+the routing and back afterwards. Constraining the model's output with a
+grammar (llama.cpp's GBNF) would make the shape certain and is a possible
+follow-up.
+
 ## An app router gets no answer back
 
 **Status: accepted; the API is one-way.**
