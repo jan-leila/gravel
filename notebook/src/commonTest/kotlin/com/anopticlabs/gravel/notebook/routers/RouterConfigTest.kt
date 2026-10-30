@@ -94,6 +94,29 @@ class RouterConfigTest {
         }
     }
 
+    /** The flag is written only when set, so an untouched routing file does not change; a switch cannot ask. */
+    @Test
+    fun aConfirmationFlagRoundTripsOnTheKindsThatConsumeTheTextAndIsLeftOutWhenOff() {
+        val untouched = NotebookJson.parseToJsonElement(NotebookJson.encodeToString(full)).jsonObject.getValue("routers").jsonArray
+        assertTrue(untouched.none { it.jsonObject.containsKey("confirm") })
+        for (router in listOf(note, reminder, app, network)) {
+            assertFalse(router.confirm)
+            val careful = when (router) {
+                is RouterConfig.Note -> router.copy(confirm = true)
+                is RouterConfig.Reminder -> router.copy(confirm = true)
+                is RouterConfig.App -> router.copy(confirm = true)
+                is RouterConfig.Network -> router.copy(confirm = true)
+                is RouterConfig.Switch -> error("not here")
+            }
+            val json = NotebookJson.encodeToString(RouterConfig.serializer(), careful)
+            assertEquals("true", NotebookJson.parseToJsonElement(json).jsonObject.getValue("confirm").jsonPrimitive.content)
+            assertEquals(careful, NotebookJson.decodeFromString(RouterConfig.serializer(), json))
+            assertTrue(NotebookJson.decodeFromString(RouterConfig.serializer(), json).confirm)
+        }
+        assertFalse(switch.confirm)
+        assertEquals(full.copy(routers = full.routers.map { if (it is RouterConfig.Note) it.copy(confirm = true) else it }).let { RoutingExport.decode(RoutingExport.encode(it, TrustEntries.EMPTY)).routing }.router(g("notes"))!!.confirm, true)
+    }
+
     @Test
     fun theNeedsMetaDataIsACommaListWhoseUnknownWordsAreIgnored() {
         assertEquals(emptySet(), RouterApi.parseNeeds(null))

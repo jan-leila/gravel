@@ -421,11 +421,11 @@ private fun RouterEditor(
     fun built(): RouterConfig {
         val trimmed = name.trim()
         return when (router) {
-            is RouterConfig.Note -> RouterConfig.Note(router.id, trimmed)
-            is RouterConfig.Reminder -> RouterConfig.Reminder(router.id, trimmed)
+            is RouterConfig.Note -> RouterConfig.Note(router.id, trimmed, confirm = router.confirm)
+            is RouterConfig.Reminder -> RouterConfig.Reminder(router.id, trimmed, confirm = router.confirm)
             is RouterConfig.Switch -> RouterConfig.Switch(router.id, trimmed, rules, otherwise)
-            is RouterConfig.App -> picked?.let { RouterConfig.App(it.id, trimmed, it.packageName, it.receiverClass, it.namespace, it.needs, shares) } ?: router.copy(name = trimmed, shares = shares)
-            is RouterConfig.Network -> RouterConfig.Network(router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares)
+            is RouterConfig.App -> picked?.let { RouterConfig.App(it.id, trimmed, it.packageName, it.receiverClass, it.namespace, it.needs, shares, router.confirm) } ?: router.copy(name = trimmed, shares = shares)
+            is RouterConfig.Network -> RouterConfig.Network(router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares, confirm = router.confirm)
         }
     }
     fun take(choice: InstalledRouter) {

@@ -7,6 +7,7 @@ import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.RouterRef
 import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
 
@@ -21,6 +22,12 @@ sealed interface BuiltCapture {
 
     /** The text routing ended at [router], an app or a server, which the drain delivers [text] to with the parts in [share]. */
     data class Forward(val router: RouterConfig, val text: RoutedText, val share: Set<Need> = emptySet()) : BuiltCapture
+
+    /**
+     * The text routing ended at [router], which waits for the user: a confirmation, questions about
+     * the needs in [asks], or both. Nothing was built; the drain parks [text] and resumes on the answer.
+     */
+    data class ToConfirm(val router: RouterConfig, val text: RoutedText, val asks: Set<Need>) : BuiltCapture
 }
 
 data class CaptureSettings(
@@ -54,10 +61,29 @@ class CaptureRequest(
     val location: RoutedLocation? = null,
 )
 
+/**
+ * A parked capture to take up again: the [text] as it was routed, the [router] the walk ended at
+ * (its current definition is used; [routerName] is for a failure that finds it gone), the needs the
+ * user [granted] for this recording, and what the Note and Reminder builders read off a request.
+ */
+class CaptureResume(
+    val router: RouterRef,
+    val routerName: String,
+    val text: RoutedText,
+    val granted: Set<Need>,
+    val capturedAt: Instant,
+    val zone: TimeZone,
+    val folders: List<String>,
+    val folderTags: Map<String, List<String>>,
+)
+
 /** Turns a recording into what it asked for; failures as [CaptureProcessingException]. */
 interface CaptureBackend {
     /** Fails with [CaptureFailureKind.HOLD] while a capture could not be processed at all. */
     suspend fun checkReady()
 
     suspend fun process(request: CaptureRequest, onStage: (CaptureStage) -> Unit): BuiltCapture
+
+    /** Finishes a parked capture from its kept transcript: no audio, no speech step; never a [BuiltCapture.ToConfirm]. */
+    suspend fun resume(resume: CaptureResume, onStage: (CaptureStage) -> Unit): BuiltCapture
 }

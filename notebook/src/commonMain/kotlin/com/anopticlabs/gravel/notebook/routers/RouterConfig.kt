@@ -67,6 +67,9 @@ sealed interface RouterConfig {
 
     val ref: RouterRef get() = RouterRef(namespace, id)
 
+    /** Whether a recording routed here waits for the user to confirm it first; only a router that consumes the text can ask. */
+    val confirm: Boolean get() = false
+
     /** Writes the text as a note, titled and tagged by the text model. */
     @Serializable
     @SerialName("note")
@@ -74,6 +77,7 @@ sealed interface RouterConfig {
         override val id: String,
         override val name: String,
         override val namespace: String? = null,
+        override val confirm: Boolean = false,
     ) : RouterConfig
 
     /** Sets a reminder: the message from the text model, the time read from the words. */
@@ -83,6 +87,7 @@ sealed interface RouterConfig {
         override val id: String,
         override val name: String,
         override val namespace: String? = null,
+        override val confirm: Boolean = false,
     ) : RouterConfig
 
     /** Forwards to the router of the first rule whose pattern matches, else to [otherwise]. */
@@ -112,6 +117,7 @@ sealed interface RouterConfig {
         override val namespace: String,
         val needs: Set<Need> = emptySet(),
         val shares: Shares = Shares(),
+        override val confirm: Boolean = false,
     ) : RouterConfig
 
     /**
@@ -128,6 +134,7 @@ sealed interface RouterConfig {
         val bearerToken: String? = null,
         override val namespace: String? = null,
         val shares: Shares = Shares(),
+        override val confirm: Boolean = false,
     ) : RouterConfig
 }
 

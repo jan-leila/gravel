@@ -17,6 +17,7 @@ import com.anopticlabs.gravel.notebook.pipeline.CaptureFailureKind
 import com.anopticlabs.gravel.notebook.pipeline.CaptureProcessingException
 import com.anopticlabs.gravel.notebook.pipeline.CapturePublisher
 import com.anopticlabs.gravel.notebook.pipeline.CaptureRequest
+import com.anopticlabs.gravel.notebook.pipeline.CaptureResume
 import com.anopticlabs.gravel.notebook.pipeline.CaptureRows
 import com.anopticlabs.gravel.notebook.pipeline.FailedCaptureActions
 import com.anopticlabs.gravel.notebook.pipeline.ProcessingControls
@@ -81,6 +82,7 @@ class NotebookViewModelTest {
     private val backend = object : CaptureBackend {
         override suspend fun checkReady() = throw CaptureProcessingException(CaptureFailureKind.HOLD, "not set up")
         override suspend fun process(request: CaptureRequest, onStage: (CaptureStage) -> Unit): BuiltCapture = error("unused")
+        override suspend fun resume(resume: CaptureResume, onStage: (CaptureStage) -> Unit): BuiltCapture = error("unused")
     }
     private val navigator = NotebookNavigator()
     private val drain = CaptureDrain(queue, notes, backend, publisher, rows, { CaptureSettings() })

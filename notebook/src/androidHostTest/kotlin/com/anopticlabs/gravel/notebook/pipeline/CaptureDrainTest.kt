@@ -4,7 +4,10 @@ import com.anopticlabs.gravel.notebook.alarms.FakeNotifier
 import com.anopticlabs.gravel.notebook.alarms.FakeScheduler
 import com.anopticlabs.gravel.notebook.alarms.FakeSettings
 import com.anopticlabs.gravel.notebook.alarms.ReminderAlarms
+import com.anopticlabs.gravel.notebook.capture.AwaitingUser
 import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
+import com.anopticlabs.gravel.notebook.capture.answerUser
+import com.anopticlabs.gravel.notebook.capture.awaitsUser
 import com.anopticlabs.gravel.notebook.capture.CaptureQueueItem
 import com.anopticlabs.gravel.notebook.capture.CaptureStage
 import com.anopticlabs.gravel.notebook.capture.captureQueueRowLabel
@@ -38,6 +41,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -90,6 +94,14 @@ class CaptureDrainTest {
         override suspend fun process(request: CaptureRequest, onStage: (CaptureStage) -> Unit): BuiltCapture {
             requests += request
             return onProcess(request, onStage)
+        }
+
+        val resumes = mutableListOf<CaptureResume>()
+        var onResume: suspend (CaptureResume, (CaptureStage) -> Unit) -> BuiltCapture = { _, _ -> error("no resume expected") }
+
+        override suspend fun resume(resume: CaptureResume, onStage: (CaptureStage) -> Unit): BuiltCapture {
+            resumes += resume
+            return onResume(resume, onStage)
         }
     }
 
@@ -1190,5 +1202,185 @@ class CaptureDrainTest {
         assertEquals("router_unavailable", entry("f2")!!.failure)
         assertEquals(CaptureQueueItem.Status.FAILED, row("f2")!!.status)
         assertTrue(blob("f2").exists())
+    }
+
+    private val hook = RouterConfig.Network("hook", "Hook", "https://example.test/notes")
+
+    private fun parkAt(router: RouterConfig, asks: Set<Need>) {
+        backend.onProcess = { request, onStage ->
+            onStage(CaptureStage.TRANSCRIBING)
+            BuiltCapture.ToConfirm(router, RoutedText.of(request.id, request.capturedAt, request.zone, "said: ${request.audio.decodeToString()}"), asks)
+        }
+    }
+
+    /** The park is one write: the transcript kept and the attempt given back together, so a process end between them cannot happen. */
+    @Test
+    fun aRouterThatWaitsOnTheUserParksTheCaptureWithItsTranscriptAndGivesTheAttemptBack() = runBlocking<Unit> {
+        enqueue("p1", "hello")
+        parkAt(hook, setOf(Need.LOCATION))
+        assertEquals(DrainReport(awaiting = 1), drain.drain())
+        val parked = entry("p1")!!
+        assertEquals(0, parked.attempts)
+        assertEquals(AwaitingUser(hook.ref, "Hook", "said: hello", "2026-09-22T15:00:00Z", confirm = false, asks = setOf(Need.LOCATION)), parked.awaiting)
+        assertTrue(parked.awaitsUser)
+        assertTrue(blob("p1").exists())
+        assertTrue(deliverer.delivered.isEmpty())
+        val row = row("p1")!!
+        assertEquals(CaptureQueueItem.Status.AWAITING_USER, row.status)
+        assertEquals("said: hello", row.transcript)
+        assertEquals("Hook", row.target)
+        assertEquals(setOf(Need.LOCATION), row.asks)
+        assertFalse(row.confirm)
+        assertFalse(row.inFlight)
+        assertEquals(DrainReport(), drain.drain(), "a parked capture is left out of every later pass")
+        assertEquals(1, backend.requests.size)
+    }
+
+    @Test
+    fun aResumeRequestFinishesAParkedCaptureFromItsTranscriptWithTheGrantsGiven() = runBlocking<Unit> {
+        enqueue("p1", "hello")
+        parkAt(hook, setOf(Need.LOCATION))
+        drain.drain()
+        queue.update { answerUser(it, "p1", Need.LOCATION, allow = true) }
+        backend.onResume = { resume, onStage ->
+            onStage(CaptureStage.FORWARDING)
+            BuiltCapture.Forward(hook, resume.text, resume.granted)
+        }
+        var processingDuringResume = false
+        deliverer.onDeliver = { _, _ -> processingDuringResume = drain.isProcessing("p1") }
+        drain.requestResume("p1")
+        assertEquals(DrainReport(published = 1), drain.drain())
+        val resume = backend.resumes.single()
+        assertEquals(hook.ref, resume.router)
+        assertEquals("Hook", resume.routerName)
+        assertEquals(RoutedText("p1", "2026-09-22T15:00:00Z", "said: hello"), resume.text)
+        assertEquals(setOf(Need.LOCATION), resume.granted)
+        assertEquals(now, resume.capturedAt.toEpochMilliseconds())
+        assertEquals(1, backend.requests.size, "no second transcription")
+        assertEquals(listOf(setOf(Need.LOCATION)), deliverer.shared)
+        assertTrue(processingDuringResume)
+        assertNull(entry("p1"))
+        assertFalse(blob("p1").exists())
+        assertEquals(CaptureQueueItem.Status.FORWARDED, row("p1")!!.status)
+        assertEquals(DrainReport(), drain.drain(), "a request is consumed by the pass that served it")
+    }
+
+    @Test
+    fun aResumeRequestForACaptureStillWaitingOnAnAnswerOrGoneChangesOnlyItsRow() = runBlocking<Unit> {
+        enqueue("p1", "hello")
+        parkAt(hook, setOf(Need.LOCATION))
+        drain.drain()
+        drain.requestResume("p1")
+        assertEquals(DrainReport(), drain.drain())
+        assertTrue(backend.resumes.isEmpty(), "a question is still open")
+        assertEquals(CaptureQueueItem.Status.AWAITING_USER, row("p1")!!.status)
+        queue.update { answerUser(it, "p1", Need.LOCATION, allow = false) }
+        rows.remove("p1")
+        drain.requestResume("zz")
+        assertEquals(DrainReport(), drain.drain())
+        assertEquals(emptySet(), row("p1")!!.asks, "the rows are brought in line with the queue on any request")
+        assertEquals(QueueStore.AwaitingRemoval.REMOVED, queue.removeAwaiting("p1"))
+        drain.requestResume("p1")
+        assertEquals(DrainReport(), drain.drain())
+        assertNull(row("p1"))
+        assertTrue(backend.resumes.isEmpty())
+    }
+
+    @Test
+    fun aResumeThatFailsKeepsTheParkedCaptureForAnotherTryOrFlagsIt() = runBlocking<Unit> {
+        enqueue("p1", "hello")
+        parkAt(hook, emptySet())
+        drain.drain()
+        backend.onResume = { _, _ -> throw CaptureProcessingException(CaptureFailureKind.RETRY, "Hook answered HTTP 503") }
+        drain.requestResume("p1")
+        assertEquals(DrainReport(retried = 1), drain.drain())
+        assertEquals(1, entry("p1")!!.attempts, "a retry counts, as for any capture")
+        assertTrue(entry("p1")!!.awaitsUser)
+        val row = row("p1")!!
+        assertEquals(CaptureQueueItem.Status.AWAITING_USER, row.status)
+        assertEquals("Hook answered HTTP 503; confirm to try again", row.resultLabel)
+        assertEquals("said: hello", row.transcript)
+        backend.onResume = { _, _ -> throw CaptureProcessingException(CaptureFailureKind.WAIT, "Hook waits for a network", waitsForNetwork = true) }
+        drain.requestResume("p1")
+        assertEquals(DrainReport(waited = 1, held = CaptureHold("Hook waits for a network", waitsForNetwork = true, waitOnly = true)), drain.drain())
+        assertEquals(1, entry("p1")!!.attempts, "a wait gives the attempt back")
+        assertEquals(CaptureQueueItem.Status.AWAITING_USER, row("p1")!!.status)
+        backend.onResume = { _, _ -> throw CaptureProcessingException(CaptureFailureKind.FLAG, "Hook no longer exists in the text routing", reason = CaptureFailureReason.ROUTER_UNAVAILABLE) }
+        drain.requestResume("p1")
+        assertEquals(DrainReport(flagged = 1), drain.drain())
+        val flagged = entry("p1")!!
+        assertTrue(flagged.flagged)
+        assertNull(flagged.awaiting)
+        assertEquals(CaptureFailureReason.ROUTER_UNAVAILABLE, flagged.failureReason)
+        assertEquals(CaptureQueueItem.Status.FAILED, row("p1")!!.status)
+        assertTrue(blob("p1").exists())
+    }
+
+    @Test
+    fun aResumeIsServedBeforeTheNextCaptureAndAfterTheChecks() = runBlocking<Unit>(Dispatchers.Default) {
+        enqueue("p1", "hello")
+        parkAt(hook, emptySet())
+        drain.drain()
+        backend.onProcess = { request, onStage ->
+            onStage(CaptureStage.TRANSCRIBING)
+            note(request.audio.decodeToString())
+        }
+        backend.onResume = { resume, _ -> BuiltCapture.Forward(hook, resume.text, emptySet()) }
+        val order = mutableListOf<String>()
+        enqueue("a")
+        enqueue("b", at = now + 1)
+        val transcribing = CompletableDeferred<Unit>()
+        val first = backend.onProcess
+        backend.onProcess = { request, onStage ->
+            order += request.id
+            if (request.id == "a") {
+                transcribing.complete(Unit)
+                delay(100)
+            }
+            first(request, onStage)
+        }
+        deliverer.onDeliver = { _, text -> order += text.captureId }
+        val checks = backend.checks
+        val draining = async { drain.drain() }
+        withTimeout(5.seconds) { transcribing.await() }
+        drain.requestResume("p1")
+        assertEquals(DrainReport(published = 3), withTimeout(5.seconds) { draining.await() })
+        assertEquals(listOf("a", "p1", "b"), order)
+        assertEquals(checks + 1, backend.checks, "the pass checked once, before its first capture")
+    }
+
+    @Test
+    fun aStoppedResumeLeavesTheCaptureParkedWithItsAttemptGivenBack() = runBlocking<Unit>(Dispatchers.Default) {
+        enqueue("p1", "hello")
+        parkAt(hook, emptySet())
+        drain.drain()
+        val resuming = CompletableDeferred<Unit>()
+        backend.onResume = { _, onStage ->
+            onStage(CaptureStage.FORWARDING)
+            resuming.complete(Unit)
+            awaitCancellation()
+        }
+        drain.requestResume("p1")
+        val draining = async { drain.drain() }
+        withTimeout(5.seconds) { resuming.await() }
+        assertTrue(drain.interrupt(transcribingOnly = false) { it.id == "p1" })
+        assertEquals(DrainReport(), withTimeout(5.seconds) { draining.await() })
+        val parked = entry("p1")!!
+        assertEquals(0, parked.attempts)
+        assertTrue(parked.awaitsUser)
+        assertEquals(CaptureQueueItem.Status.AWAITING_USER, row("p1")!!.status)
+    }
+
+    @Test
+    fun aParkThatCannotBeWrittenFailsLikeAnyOtherWrite() = runBlocking<Unit> {
+        enqueue("p1", "x".repeat(10))
+        parkAt(hook, emptySet())
+        val huge = "x".repeat(5 * 1024 * 1024)
+        backend.onProcess = { request, _ -> BuiltCapture.ToConfirm(hook, RoutedText.of(request.id, request.capturedAt, request.zone, huge), emptySet()) }
+        assertEquals(DrainReport(flagged = 1), drain.drain())
+        val flagged = entry("p1")!!
+        assertTrue(flagged.flagged)
+        assertNull(flagged.awaiting)
+        assertEquals(CaptureFailureReason.NOT_SAVED, flagged.failureReason)
     }
 }

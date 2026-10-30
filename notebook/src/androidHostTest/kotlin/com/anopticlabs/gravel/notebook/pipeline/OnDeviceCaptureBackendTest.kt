@@ -23,6 +23,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 import kotlinx.coroutines.runBlocking
@@ -368,24 +369,28 @@ class OnDeviceCaptureBackendTest {
     /** What goes with the text is what the router needs and the user granted; an Ask grant shares nothing on its own. */
     @Test
     fun aForwardSharesTheNeededPartsTheUserGrantedAlways() = runBlocking<Unit> {
-        suspend fun shareTo(router: RouterConfig): Set<Need> {
+        suspend fun to(router: RouterConfig): BuiltCapture {
             graph = RoutingConfig(entry = router.ref, routers = listOf(router))
-            return assertIs<BuiltCapture.Forward>(run("hello")).share
+            return run("hello")
         }
+        suspend fun shareTo(router: RouterConfig): Set<Need> = assertIs<BuiltCapture.Forward>(to(router)).share
+        suspend fun askedBy(router: RouterConfig): Set<Need> = assertIs<BuiltCapture.ToConfirm>(to(router)).asks
         val always = Shares(location = Grant.ALWAYS, recordedAt = Grant.ALWAYS)
         assertEquals(setOf(Need.LOCATION, Need.RECORDED_AT), shareTo(hook.copy(shares = always)))
         assertEquals(setOf(Need.RECORDED_AT), shareTo(hook.copy(shares = Shares(location = Grant.NEVER, recordedAt = Grant.ALWAYS))))
-        assertEquals(emptySet(), shareTo(hook.copy(shares = Shares(location = Grant.ASK, recordedAt = Grant.NEVER))))
+        assertEquals(emptySet(), shareTo(hook.copy(shares = Shares(location = Grant.NEVER, recordedAt = Grant.NEVER))))
+        assertEquals(setOf(Need.LOCATION), askedBy(hook.copy(shares = Shares(location = Grant.ASK, recordedAt = Grant.NEVER))), "an Ask pauses for the user")
         assertEquals(emptySet(), shareTo(tasks.copy(shares = always)), "an app router gets only what it declared")
+        assertEquals(emptySet(), shareTo(tasks), "nothing declared, nothing to ask")
         assertEquals(setOf(Need.LOCATION), shareTo(tasks.copy(needs = setOf(Need.LOCATION), shares = always)))
-        assertEquals(emptySet(), shareTo(tasks.copy(needs = setOf(Need.LOCATION))))
+        assertEquals(setOf(Need.LOCATION), askedBy(tasks.copy(needs = setOf(Need.LOCATION))))
     }
 
     /** What the router API promises: the transcript whole, the recording's start and place, and no text model run. */
     @Test
     fun anAppOrNetworkRouterGetsTheTranscriptWholeWithTheRecordingTimeAndPlaceAndNoModelRuns() = runBlocking<Unit> {
         val here = RoutedLocation(52.52, 13.405, 30f)
-        for (router in listOf(tasks, hook)) {
+        for (router in listOf(tasks, hook.copy(shares = Shares(Grant.NEVER, Grant.NEVER)))) {
             graph = RoutingConfig(entry = router.ref, routers = listOf(router))
             val text = FakeText()
             val stages = mutableListOf<CaptureStage>()
@@ -394,7 +399,7 @@ class OnDeviceCaptureBackendTest {
             assertEquals(router, built.router)
             assertEquals(RoutedText("c1", "2026-09-22T17:00:00+02:00", transcript, here), built.text)
             assertEquals(null, assertIs<BuiltCapture.Forward>(run(transcript)).text.location)
-            assertEquals(emptySet(), built.share, "nothing is granted until the user decides")
+            assertEquals(emptySet(), built.share, "nothing shared without a grant")
             assertEquals(listOf(CaptureStage.TRANSCRIBING, CaptureStage.FORWARDING), stages)
             assertEquals(0, text.prepared)
             assertTrue(text.generations.isEmpty())
@@ -411,6 +416,87 @@ class OnDeviceCaptureBackendTest {
         assertIs<BuiltCapture.Note>(run("thoughts on the kitchen"))
         val claim = run("Done, weeded the garden", settings = CaptureSettings(triggerEnabled = true, triggerWord = "done"))
         assertEquals(BuiltCapture.Completion("weeded the garden"), claim)
+    }
+
+    private fun resumeOf(router: RouterConfig, text: String, granted: Set<Need> = emptySet(), location: RoutedLocation? = null) = CaptureResume(
+        router.ref, router.name, RoutedText("c1", "2026-09-22T17:00:00+02:00", text, location), granted,
+        capturedAt, berlin, listOf("unclassified", "shopping"), mapOf("shopping" to listOf("shopping")),
+    )
+
+    private suspend fun resume(resume: CaptureResume, text: FakeText = FakeText(), stages: MutableList<CaptureStage> = mutableListOf()): BuiltCapture {
+        val speech = FakeSpeech("never heard")
+        val built = OnDeviceCaptureBackend(decoder, speech, text, plenty, routing = { graph }).resume(resume) { stages += it }
+        assertNull(speech.heard, "a resume transcribes nothing")
+        return built
+    }
+
+    /** A router that asks the user gets nothing built: the answer may change what is sent, or drop the recording. */
+    @Test
+    fun aRouterThatAsksTheUserParksTheCaptureWithNothingBuilt() = runBlocking<Unit> {
+        val text = FakeText()
+        val stages = mutableListOf<CaptureStage>()
+        graph = RoutingConfig(entry = hook.ref, routers = listOf(hook))
+        val asked = assertIs<BuiltCapture.ToConfirm>(run("hello", text, stages = stages))
+        assertEquals(hook, asked.router)
+        assertEquals(RoutedText("c1", "2026-09-22T17:00:00+02:00", "hello"), asked.text)
+        assertEquals(setOf(Need.LOCATION, Need.RECORDED_AT), asked.asks)
+        assertEquals(listOf(CaptureStage.TRANSCRIBING), stages)
+        assertEquals(0, text.prepared)
+        assertTrue(text.generations.isEmpty())
+        val careful = RouterConfig.Note("notes", "Notes", confirm = true)
+        graph = RoutingConfig(entry = careful.ref, routers = listOf(careful))
+        assertEquals(BuiltCapture.ToConfirm(careful, RoutedText("c1", "2026-09-22T17:00:00+02:00", "hello"), emptySet()), run("hello", text))
+        assertTrue(text.generations.isEmpty())
+        val claim = run("Done, weeded the garden", settings = CaptureSettings(triggerEnabled = true, triggerWord = "done"))
+        assertEquals(BuiltCapture.Completion("weeded the garden"), claim, "a completion claim is decided before the routing, so it never waits")
+    }
+
+    /** The kept transcript goes through the same prompts as a fresh one; the grants given are the ones a delivery carries. */
+    @Test
+    fun aResumeBuildsFromTheKeptTranscriptWithTheGrantsGiven() = runBlocking<Unit> {
+        val text = FakeText()
+        val stages = mutableListOf<CaptureStage>()
+        val careful = RouterConfig.Note("notes", "Notes", confirm = true)
+        graph = RoutingConfig(entry = careful.ref, routers = listOf(careful))
+        val note = assertIs<BuiltCapture.Note>(resume(resumeOf(careful, "get milk and eggs on the way home"), text, stages))
+        assertEquals(listOf(CaptureStage.THINKING, CaptureStage.CREATING_NOTE), stages)
+        assertEquals("Buy milk", note.note.title)
+        assertEquals("shopping", note.note.folder)
+        assertTrue(note.note.markdown.contains("\nrecorded: 2026-09-22T17:00:00+02:00\n"), note.note.markdown)
+        assertEquals(Prompts.notePromptVerbatim("get milk and eggs on the way home"), text.generations.single().user)
+
+        graph = split
+        val reminders = split.router(RouterRef.gravel("reminders"))!!
+        val reminder = assertIs<BuiltCapture.Reminder>(resume(resumeOf(reminders, "remind me in ten minutes to check the oven"), FakeText("""{"message": "Check the oven"}""")))
+        assertEquals(capturedAt.toEpochMilliseconds() + 600_000L, reminder.proposal.remindAtMillis)
+        assertEquals("2026-09-22T17:00:00+02:00", reminder.proposal.recordedAt)
+
+        graph = RoutingConfig(entry = hook.ref, routers = listOf(hook))
+        val here = RoutedLocation(52.52, 13.405)
+        val forward = assertIs<BuiltCapture.Forward>(resume(resumeOf(hook, "hello", granted = setOf(Need.LOCATION), location = here)))
+        assertEquals(hook, forward.router)
+        assertEquals(RoutedText("c1", "2026-09-22T17:00:00+02:00", "hello", here), forward.text)
+        assertEquals(setOf(Need.LOCATION), forward.share, "a one-time grant answers the ask; the unanswered one stays withheld")
+        val renamed = hook.copy(name = "Hook 2", url = "https://example.test/v2")
+        graph = RoutingConfig(entry = renamed.ref, routers = listOf(renamed))
+        assertEquals(renamed, assertIs<BuiltCapture.Forward>(resume(resumeOf(hook, "hello"))).router, "the router as it is now, not as it was")
+    }
+
+    @Test
+    fun aResumeToARouterThatIsGoneOrNowForwardsIsFlaggedAndAnUnreadableRoutingHolds() = runBlocking<Unit> {
+        graph = RoutingConfig.DEFAULT
+        val gone = assertFailsWith<CaptureProcessingException> { resume(resumeOf(hook, "hello")) }
+        assertEquals(CaptureFailureKind.FLAG, gone.kind)
+        assertEquals(CaptureFailureReason.ROUTER_UNAVAILABLE, gone.reason)
+        assertEquals("Webhook no longer exists in the text routing", gone.message)
+        graph = split
+        val switch = split.router(RouterRef.gravel("split"))!!
+        val forwards = assertFailsWith<CaptureProcessingException> { resume(resumeOf(switch, "hello")) }
+        assertEquals(CaptureFailureKind.FLAG, forwards.kind)
+        assertEquals("Split now forwards elsewhere", forwards.message)
+        val backend = OnDeviceCaptureBackend(decoder, FakeSpeech("x"), FakeText(), plenty, routing = { throw CorruptFileException("routing", IOException()) })
+        val held = assertFailsWith<CaptureProcessingException> { backend.resume(resumeOf(hook, "hello")) {} }
+        assertEquals(CaptureFailureKind.HOLD, held.kind)
     }
 
     @Test

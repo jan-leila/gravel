@@ -72,6 +72,7 @@ class CapturePublisher(
             is BuiltCapture.Note -> note(built.note, offeredFolders)
             // Nothing of the Notebook's is written for a delivery, which the drain made before this.
             is BuiltCapture.Forward -> PublishedCapture.Forwarded(built.router.name)
+            is BuiltCapture.ToConfirm -> throw IllegalArgumentException("a capture waiting on the user is parked, not published")
         }
 
     private suspend fun park(utterance: String, capturedAtMillis: Long): PublishedCapture {
