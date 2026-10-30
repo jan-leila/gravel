@@ -16,6 +16,8 @@ manifest, a settings screen and one sender.
 | `mastodon` | `post` | a status on a Mastodon account, followers-only by default | nothing |
 | `osmnote` | `note` | an OpenStreetMap note where the recording was made | the location; a recording without one is refused |
 | `signal` | `message` | a Signal message, through a signal-cli-rest-api relay the user runs | nothing |
+| `actual` | `transaction` | a transaction in Actual Budget, through an actual-http-api relay the user runs | the recording time, for the date |
+| `email` | `mail` | an email through an SMTP server the user sets up (a Proton Bridge, for Proton) | the recording time, for the subject and date |
 
 ## How an app works
 

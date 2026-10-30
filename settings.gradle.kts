@@ -54,6 +54,8 @@ include(":libindex")
 // outside F-Droid's main repository; the F-Droid recipe builds :androidApp only.
 include(":routers:common")
 include(":routers:slack")
+include(":routers:email")
+include(":routers:actual")
 include(":routers:signal")
 include(":routers:osmnote")
 include(":routers:mastodon")
