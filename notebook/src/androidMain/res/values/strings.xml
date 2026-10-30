@@ -85,7 +85,7 @@
     <string name="notebook_routing_kind_switch">Switch</string>
     <string name="notebook_routing_kind_switch_hint">Forwards to the first router whose rule matches, else to a fallback</string>
     <string name="notebook_routing_kind_app">App</string>
-    <string name="notebook_routing_kind_app_hint">Sends the text to a router another app declares, once you trust that app</string>
+    <string name="notebook_routing_kind_app_hint">Sends the text to a router another app declares; you trust the app when you pick it</string>
     <string name="notebook_routing_kind_network">Network</string>
     <string name="notebook_routing_kind_network_hint">Posts the text as JSON to an https:// address</string>
     <string name="notebook_routing_field_name">Name</string>
@@ -98,12 +98,13 @@
     <string name="notebook_routing_none">None (the recording is flagged)</string>
     <string name="notebook_routing_remove_rule">Remove rule</string>
     <string name="notebook_routing_pick_app">Router</string>
-    <string name="notebook_routing_no_trusted_apps">No trusted app declares a router. Trust an app under Apps with routers first.</string>
+    <string name="notebook_routing_pick_one">Pick a router to send to.</string>
+    <string name="notebook_routing_app_gone">The app behind this router is no longer installed, or no longer declares it. Recordings routed here are flagged.</string>
     <string name="notebook_routing_field_url">Address (https://)</string>
     <string name="notebook_routing_field_token">Bearer token (optional)</string>
     <string name="notebook_routing_token_hint">Sent as Authorization: Bearer; stored encrypted</string>
     <string name="notebook_routing_apps">Apps with routers</string>
-    <string name="notebook_routing_apps_intro">An installed app can declare routers you can forward to. Gravel sends only to apps you trust, by their signing certificate.</string>
+    <string name="notebook_routing_apps_intro">An installed app can declare routers you can forward to. Gravel sends only to apps you trust, by their signing certificate, which is also the namespace their routers are in.</string>
     <string name="notebook_routing_no_apps">No installed app declares a router.</string>
     <string name="notebook_routing_refresh">Refresh</string>
     <string name="notebook_routing_trusted">Trusted</string>

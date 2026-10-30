@@ -3,6 +3,7 @@ package com.anopticlabs.gravel.notebook.ui
 import com.anopticlabs.gravel.notebook.routers.InstalledRouter
 import com.anopticlabs.gravel.notebook.routers.InstalledRouters
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.RouterRef
 import com.anopticlabs.gravel.notebook.routers.RouterTrustStore
 import com.anopticlabs.gravel.notebook.routers.RoutingConfig
 import com.anopticlabs.gravel.notebook.routers.RoutingConfigStore
@@ -41,9 +42,9 @@ class RoutingViewModelTest {
     // Unconfined, so an action runs to its first hop onto the I/O dispatcher before its call returns; [settle] waits for the rest.
     private val viewModel = RoutingViewModel(store, trust, installed, io = Dispatchers.Unconfined)
     private val split = RoutingConfig(
-        entry = "split",
+        entry = RouterRef.gravel("split"),
         routers = listOf(
-            RouterConfig.Switch("split", "Split", listOf(SwitchRule("^remind me", "reminder")), otherwise = "notebook"),
+            RouterConfig.Switch("split", "Split", listOf(SwitchRule("^remind me", RouterRef.gravel("reminder"))), otherwise = RouterRef.gravel("notebook")),
             RouterConfig.Note("notebook", "Notebook"),
             RouterConfig.Reminder("reminder", "Reminders"),
         ),
@@ -59,8 +60,8 @@ class RoutingViewModelTest {
 
     @Test
     fun loadsTheRoutingAndTheAppsWithTheirTrust() {
-        installed.routers += InstalledRouter("com.example.tasks", "com.example.tasks.Router", "Tasks", "Makes a task", listOf(a))
-        installed.routers += InstalledRouter("com.example.tasks", "com.example.tasks.Other", "Archive", null, listOf(a))
+        installed.routers += InstalledRouter("com.example.tasks", "com.example.tasks.Router", "tasks", a, "Tasks", "Makes a task", "Tasks app")
+        installed.routers += InstalledRouter("com.example.tasks", "com.example.tasks.Other", "archive", a, "Archive", null, "Tasks app")
         assertNull(viewModel.ui.value.store)
         viewModel.load()
         settle()
@@ -68,6 +69,8 @@ class RoutingViewModelTest {
         assertEquals(RoutingStoreState.Loaded(RoutingConfig.DEFAULT), ui.store)
         val app = ui.apps.single()
         assertEquals("com.example.tasks", app.packageName)
+        assertEquals("Tasks app", app.appName)
+        assertEquals(a, app.namespace)
         assertEquals(listOf("Archive", "Tasks"), app.routers.map { it.label })
         assertFalse(app.trusted)
         assertFalse(app.byUser)
@@ -82,7 +85,7 @@ class RoutingViewModelTest {
         settle()
         assertEquals(split, store.read())
         assertEquals(RoutingStoreState.Loaded(split), viewModel.ui.value.store)
-        viewModel.save(split.copy(entry = "gone"))
+        viewModel.save(split.copy(entry = RouterRef.gravel("gone")))
         settle()
         assertEquals("The entry router does not exist.", viewModel.ui.value.error)
         assertEquals(split, store.read())
@@ -103,7 +106,7 @@ class RoutingViewModelTest {
 
     @Test
     fun trustingAnAppMarksItAndForgettingItUnmarksIt() {
-        installed.routers += InstalledRouter("com.example.tasks", "com.example.tasks.Router", "Tasks", null, listOf(a, "b".repeat(64)))
+        installed.routers += InstalledRouter("com.example.tasks", "com.example.tasks.Router", "tasks", a, "Tasks", null, "Tasks app")
         viewModel.load()
         settle()
         viewModel.trustApp(viewModel.ui.value.apps.single())
@@ -111,7 +114,7 @@ class RoutingViewModelTest {
         val trusted = viewModel.ui.value.apps.single()
         assertTrue(trusted.trusted)
         assertTrue(trusted.byUser)
-        assertEquals(setOf(a, "b".repeat(64)), trust.read().map { it.sha256 }.toSet())
+        assertEquals(a, trust.read().single().sha256)
         viewModel.forgetApp(trusted)
         settle()
         assertFalse(viewModel.ui.value.apps.single().trusted)

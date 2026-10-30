@@ -49,6 +49,7 @@ import androidx.compose.ui.window.Dialog
 import com.anopticlabs.gravel.notebook.R
 import com.anopticlabs.gravel.notebook.routers.InstalledRouter
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.RouterRef
 import com.anopticlabs.gravel.notebook.routers.RoutingConfig
 import com.anopticlabs.gravel.notebook.routers.RoutingEdits
 import com.anopticlabs.gravel.notebook.routers.RoutingStoreState
@@ -128,9 +129,9 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel) {
         RoutingDialog.AddRouter -> config?.let { c -> KindPicker(c, onPick = { dialog = RoutingDialog.Edit(it) }, onDismiss = close) }
         is RoutingDialog.Edit -> config?.let { c ->
             RouterEditor(open.router, c, ui.apps, onSave = { router ->
-                viewModel.save(RoutingEdits.withRouter(c, router))
+                viewModel.save(RoutingEdits.withRouter(c, router, replacing = open.router.ref))
                 close()
-            }, onDismiss = close)
+            }, onTrust = viewModel::trustApp, onDismiss = close)
         }
         is RoutingDialog.Delete -> config?.let { c -> DeleteQuestion(open.router, c, onConfirm = { viewModel.save(it) }, onDismiss = close) }
         RoutingDialog.ConfirmReset -> Question(
@@ -139,7 +140,7 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel) {
         )
         is RoutingDialog.Trust -> TrustQuestion(open.app, onConfirm = { viewModel.trustApp(open.app) }, onDismiss = close)
         is RoutingDialog.Forget -> Question(
-            stringResource(R.string.notebook_routing_forget_title, open.app.packageName), stringResource(R.string.notebook_routing_forget_body),
+            stringResource(R.string.notebook_routing_forget_title, open.app.appName), stringResource(R.string.notebook_routing_forget_body),
             stringResource(R.string.notebook_routing_stop_trusting), onConfirm = { viewModel.forgetApp(open.app) }, onDismiss = close,
         )
     }
@@ -150,7 +151,7 @@ private fun LoadedRouting(config: RoutingConfig, busy: Boolean, open: (RoutingDi
     val entry = config.router(config.entry)
     Text(stringResource(R.string.notebook_routing_entry), style = MaterialTheme.typography.titleMedium)
     ListItem(
-        headlineContent = { Text(entry?.name ?: config.entry) },
+        headlineContent = { Text(entry?.name ?: config.entry.id) },
         supportingContent = { entry?.let { Text(RoutingEdits.summary(it, config)) } },
         trailingContent = { TextButton(onClick = { open(RoutingDialog.PickEntry) }, enabled = !busy) { Text(stringResource(R.string.notebook_routing_change)) } },
     )
@@ -181,14 +182,19 @@ private fun AppsSection(ui: RoutingUi, viewModel: RoutingViewModel, open: (Routi
     if (ui.apps.isEmpty()) Text(stringResource(R.string.notebook_routing_no_apps), color = MaterialTheme.colorScheme.onSurfaceVariant)
     ui.apps.forEach { app ->
         ListItem(
-            headlineContent = { Text(app.routers.joinToString { it.label }) },
+            overlineContent = { Text(app.routers.joinToString { it.label }) },
+            headlineContent = { Text(app.appName) },
             supportingContent = {
                 val standing = when {
                     app.byUser -> R.string.notebook_routing_trusted_by_you
                     app.trusted -> R.string.notebook_routing_trusted
                     else -> R.string.notebook_routing_not_trusted
                 }
-                Text("${app.packageName}\n${stringResource(standing)}")
+                Column {
+                    Text(app.packageName)
+                    Text(app.namespace, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(standing))
+                }
             },
             trailingContent = {
                 when {
@@ -231,12 +237,12 @@ private fun Question(title: String, body: String, confirm: String, onConfirm: ()
 
 @Composable
 private fun DeleteQuestion(router: RouterConfig, config: RoutingConfig, onConfirm: (RoutingConfig) -> Unit, onDismiss: () -> Unit) {
-    val without = RoutingEdits.withoutRouter(config, router.id)
+    val without = RoutingEdits.withoutRouter(config, router.ref)
     if (without == null) {
-        val reason = if (config.entry == router.id) {
+        val reason = if (config.entry == router.ref) {
             stringResource(R.string.notebook_routing_cannot_delete_entry, router.name)
         } else {
-            stringResource(R.string.notebook_routing_cannot_delete_target, RoutingEdits.referencedBy(config, router.id).joinToString { it.name }, router.name)
+            stringResource(R.string.notebook_routing_cannot_delete_target, RoutingEdits.referencedBy(config, router.ref).joinToString { it.name }, router.name)
         }
         AlertDialog(
             onDismissRequest = onDismiss,
@@ -252,16 +258,17 @@ private fun DeleteQuestion(router: RouterConfig, config: RoutingConfig, onConfir
     }
 }
 
-/** The signers are shown whole, so the user can check them against what the app's developer publishes. */
+/** The signer is shown whole, so the user can check it against what the app's developer publishes. */
 @Composable
 private fun TrustQuestion(app: RouterApp, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.notebook_routing_trust_title, app.packageName)) },
+        title = { Text(stringResource(R.string.notebook_routing_trust_title, app.appName)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.notebook_routing_trust_body))
-                app.signers.forEach { Text(it, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+                Text(app.packageName, style = MaterialTheme.typography.bodySmall)
+                Text(app.namespace, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {
@@ -275,7 +282,7 @@ private fun TrustQuestion(app: RouterApp, onConfirm: () -> Unit, onDismiss: () -
 }
 
 @Composable
-private fun RouterPicker(title: String, routers: List<RouterConfig>, current: String?, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+private fun RouterPicker(title: String, routers: List<RouterConfig>, current: RouterRef?, onPick: (RouterRef) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -284,12 +291,12 @@ private fun RouterPicker(title: String, routers: List<RouterConfig>, current: St
                 routers.forEach { router ->
                     Row(
                         Modifier.fillMaxWidth().clickable {
-                            onPick(router.id)
+                            onPick(router.ref)
                             onDismiss()
                         }.padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        RadioButton(selected = router.id == current, onClick = null)
+                        RadioButton(selected = router.ref == current, onClick = null)
                         Text(router.name, Modifier.padding(start = 8.dp))
                     }
                 }
@@ -306,7 +313,8 @@ private fun KindPicker(config: RoutingConfig, onPick: (RouterConfig) -> Unit, on
         Kind(R.string.notebook_routing_kind_note, R.string.notebook_routing_kind_note_hint) { id, name -> RouterConfig.Note(id, name) },
         Kind(R.string.notebook_routing_kind_reminder, R.string.notebook_routing_kind_reminder_hint) { id, name -> RouterConfig.Reminder(id, name) },
         Kind(R.string.notebook_routing_kind_switch, R.string.notebook_routing_kind_switch_hint) { id, name -> RouterConfig.Switch(id, name) },
-        Kind(R.string.notebook_routing_kind_app, R.string.notebook_routing_kind_app_hint) { id, name -> RouterConfig.App(id, name, "", "") },
+        // An app router's ref is the picked router's, so it starts with none.
+        Kind(R.string.notebook_routing_kind_app, R.string.notebook_routing_kind_app_hint) { _, name -> RouterConfig.App("", name, "", "", "") },
         Kind(R.string.notebook_routing_kind_network, R.string.notebook_routing_kind_network_hint) { id, name -> RouterConfig.Network(id, name, "") },
     )
     AlertDialog(
@@ -333,28 +341,51 @@ private fun KindPicker(config: RoutingConfig, onPick: (RouterConfig) -> Unit, on
 
 /**
  * Edits one router. Save validates the whole routing with this router in it, so a target that does not exist
- * or a pattern that does not compile is refused here with its reason, and nothing is stored.
+ * or a pattern that does not compile is refused here with its reason, and nothing is stored. Picking an
+ * app's router that is not trusted yet asks for the trust first, with the signer shown.
  */
 @Composable
-private fun RouterEditor(router: RouterConfig, config: RoutingConfig, apps: List<RouterApp>, onSave: (RouterConfig) -> Unit, onDismiss: () -> Unit) {
-    var name by remember(router.id) { mutableStateOf(router.name) }
-    var rules by remember(router.id) { mutableStateOf((router as? RouterConfig.Switch)?.rules.orEmpty()) }
-    var otherwise by remember(router.id) { mutableStateOf((router as? RouterConfig.Switch)?.otherwise) }
-    var picked by remember(router.id) { mutableStateOf((router as? RouterConfig.App)?.let { it.packageName to it.receiverClass }) }
-    var url by remember(router.id) { mutableStateOf((router as? RouterConfig.Network)?.url ?: "https://") }
-    var token by remember(router.id) { mutableStateOf((router as? RouterConfig.Network)?.bearerToken.orEmpty()) }
-    var problem by remember(router.id) { mutableStateOf<String?>(null) }
-    val others = config.routers.filter { it.id != router.id }
+private fun RouterEditor(
+    router: RouterConfig,
+    config: RoutingConfig,
+    apps: List<RouterApp>,
+    onSave: (RouterConfig) -> Unit,
+    onTrust: (RouterApp) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember(router.ref) { mutableStateOf(router.name) }
+    var rules by remember(router.ref) { mutableStateOf((router as? RouterConfig.Switch)?.rules.orEmpty()) }
+    var otherwise by remember(router.ref) { mutableStateOf((router as? RouterConfig.Switch)?.otherwise) }
+    var picked by remember(router.ref) {
+        mutableStateOf((router as? RouterConfig.App)?.let { app -> apps.flatMap { it.routers }.firstOrNull { it.packageName == app.packageName && it.receiverClass == app.receiverClass } })
+    }
+    var askTrust by remember(router.ref) { mutableStateOf<Pair<RouterApp, InstalledRouter>?>(null) }
+    var url by remember(router.ref) { mutableStateOf((router as? RouterConfig.Network)?.url ?: "https://") }
+    var token by remember(router.ref) { mutableStateOf((router as? RouterConfig.Network)?.bearerToken.orEmpty()) }
+    var problem by remember(router.ref) { mutableStateOf<String?>(null) }
+    val others = config.routers.filter { it.ref != router.ref }
     val appKindName = stringResource(R.string.notebook_routing_kind_app)
+    val pickOne = stringResource(R.string.notebook_routing_pick_one)
     fun built(): RouterConfig {
         val trimmed = name.trim()
         return when (router) {
             is RouterConfig.Note -> RouterConfig.Note(router.id, trimmed)
             is RouterConfig.Reminder -> RouterConfig.Reminder(router.id, trimmed)
             is RouterConfig.Switch -> RouterConfig.Switch(router.id, trimmed, rules, otherwise)
-            is RouterConfig.App -> RouterConfig.App(router.id, trimmed, picked?.first.orEmpty(), picked?.second.orEmpty())
+            is RouterConfig.App -> picked?.let { RouterConfig.App(it.id, trimmed, it.packageName, it.receiverClass, it.namespace) } ?: router.copy(name = trimmed)
             is RouterConfig.Network -> RouterConfig.Network(router.id, trimmed, url.trim(), token.trim().ifEmpty { null })
         }
+    }
+    fun take(choice: InstalledRouter) {
+        picked = choice
+        // A router still called by its kind takes the picked router's label as its name.
+        if (name.isBlank() || name == router.name && router.name == appKindName) name = choice.label
+    }
+    askTrust?.let { (app, choice) ->
+        TrustQuestion(app, onConfirm = {
+            onTrust(app)
+            take(choice)
+        }, onDismiss = { askTrust = null })
     }
     Dialog(onDismissRequest = onDismiss, properties = notebookDialogProperties()) {
         Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp) {
@@ -371,10 +402,9 @@ private fun RouterEditor(router: RouterConfig, config: RoutingConfig, apps: List
                     when (router) {
                         is RouterConfig.Note, is RouterConfig.Reminder -> Unit
                         is RouterConfig.Switch -> SwitchFields(rules, otherwise, others, onRules = { rules = it }, onOtherwise = { otherwise = it })
-                        is RouterConfig.App -> AppFields(apps, picked) { chosen ->
-                            picked = chosen.packageName to chosen.receiverClass
-                            // A router still called by its kind takes the picked router's label as its name.
-                            if (name.isBlank() || name == router.name && router.name == appKindName) name = chosen.label
+                        is RouterConfig.App -> {
+                            if (picked == null && router.packageName.isNotEmpty()) Text(stringResource(R.string.notebook_routing_app_gone), color = MaterialTheme.colorScheme.error)
+                            AppFields(apps, picked, onPick = { app, choice -> if (app.trusted) take(choice) else askTrust = app to choice })
                         }
                         is RouterConfig.Network -> NetworkFields(url, token, onUrl = { url = it }, onToken = { token = it })
                     }
@@ -383,8 +413,12 @@ private fun RouterEditor(router: RouterConfig, config: RoutingConfig, apps: List
                         TextButton(onClick = onDismiss) { Text(stringResource(R.string.notebook_cancel)) }
                         TextButton(onClick = {
                             val candidate = built()
+                            if (candidate is RouterConfig.App && candidate.packageName.isEmpty()) {
+                                problem = pickOne
+                                return@TextButton
+                            }
                             try {
-                                RoutingEdits.withRouter(config, candidate).requireWellFormed()
+                                RoutingEdits.withRouter(config, candidate, replacing = router.ref).requireWellFormed()
                                 onSave(candidate)
                             } catch (e: IllegalArgumentException) {
                                 problem = e.message
@@ -400,10 +434,10 @@ private fun RouterEditor(router: RouterConfig, config: RoutingConfig, apps: List
 @Composable
 private fun SwitchFields(
     rules: List<SwitchRule>,
-    otherwise: String?,
+    otherwise: RouterRef?,
     targets: List<RouterConfig>,
     onRules: (List<SwitchRule>) -> Unit,
-    onOtherwise: (String?) -> Unit,
+    onOtherwise: (RouterRef?) -> Unit,
 ) {
     Text(stringResource(R.string.notebook_routing_rules), style = MaterialTheme.typography.titleSmall)
     rules.forEachIndexed { index, rule ->
@@ -416,7 +450,7 @@ private fun SwitchFields(
             modifier = Modifier.fillMaxWidth(),
         )
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TargetPicker(stringResource(R.string.notebook_routing_forward_to), rule.target, targets, allowNone = false) { replace(rule.copy(target = it.orEmpty())) }
+            TargetPicker(stringResource(R.string.notebook_routing_forward_to), rule.router, targets, allowNone = false) { ref -> ref?.let { replace(rule.copy(router = it)) } }
             Checkbox(checked = rule.ignoreCase, onCheckedChange = { replace(rule.copy(ignoreCase = it)) })
             Text(stringResource(R.string.notebook_routing_ignore_case), style = MaterialTheme.typography.bodySmall)
             IconButton(onClick = { onRules(rules.filterIndexed { i, _ -> i != index }) }) {
@@ -425,16 +459,17 @@ private fun SwitchFields(
         }
     }
     if (rules.size < RoutingConfig.MAX_RULES) {
-        OutlinedButton(onClick = { onRules(rules + SwitchRule("", targets.firstOrNull()?.id.orEmpty())) }) { Text(stringResource(R.string.notebook_routing_add_rule)) }
+        val first = targets.firstOrNull()
+        OutlinedButton(onClick = { first?.let { onRules(rules + SwitchRule("", it.ref)) } }, enabled = first != null) { Text(stringResource(R.string.notebook_routing_add_rule)) }
     }
     TargetPicker(stringResource(R.string.notebook_routing_otherwise), otherwise, targets, allowNone = true, onPick = onOtherwise)
 }
 
 /** A button showing the current target's name, with a menu of the routers; [allowNone] adds a choice that flags the recording. */
 @Composable
-private fun TargetPicker(label: String, current: String?, targets: List<RouterConfig>, allowNone: Boolean, onPick: (String?) -> Unit) {
+private fun TargetPicker(label: String, current: RouterRef?, targets: List<RouterConfig>, allowNone: Boolean, onPick: (RouterRef?) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val shown = targets.firstOrNull { it.id == current }?.name ?: current?.takeIf { it.isNotEmpty() } ?: stringResource(R.string.notebook_routing_none)
+    val shown = targets.firstOrNull { it.ref == current }?.name ?: current?.id?.takeIf { it.isNotEmpty() } ?: stringResource(R.string.notebook_routing_none)
     Box {
         OutlinedButton(onClick = { open = true }) {
             Text("$label: $shown")
@@ -449,7 +484,7 @@ private fun TargetPicker(label: String, current: String?, targets: List<RouterCo
             }
             targets.forEach { target ->
                 DropdownMenuItem(text = { Text(target.name) }, onClick = {
-                    onPick(target.id)
+                    onPick(target.ref)
                     open = false
                 })
             }
@@ -457,17 +492,21 @@ private fun TargetPicker(label: String, current: String?, targets: List<RouterCo
     }
 }
 
+/** Every router the installed apps declare, trusted or not; the app's name and namespace tell two routers of one label apart. */
 @Composable
-private fun AppFields(apps: List<RouterApp>, picked: Pair<String, String>?, onPick: (InstalledRouter) -> Unit) {
-    val choices = apps.filter { it.trusted }.flatMap { it.routers }
+private fun AppFields(apps: List<RouterApp>, picked: InstalledRouter?, onPick: (RouterApp, InstalledRouter) -> Unit) {
     Text(stringResource(R.string.notebook_routing_pick_app), style = MaterialTheme.typography.titleSmall)
-    if (choices.isEmpty()) Text(stringResource(R.string.notebook_routing_no_trusted_apps), color = MaterialTheme.colorScheme.onSurfaceVariant)
-    choices.forEach { choice ->
-        Row(Modifier.fillMaxWidth().clickable { onPick(choice) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = picked == choice.packageName to choice.receiverClass, onClick = null)
-            Column(Modifier.padding(start = 8.dp)) {
-                Text(choice.label)
-                Text(choice.description ?: choice.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (apps.isEmpty()) Text(stringResource(R.string.notebook_routing_no_apps), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    apps.forEach { app ->
+        app.routers.forEach { choice ->
+            Row(Modifier.fillMaxWidth().clickable { onPick(app, choice) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(selected = picked?.ref == choice.ref && picked?.packageName == choice.packageName, onClick = null)
+                Column(Modifier.padding(start = 8.dp)) {
+                    Text(choice.label)
+                    choice.description?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Text("${app.appName} - ${app.namespace}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!app.trusted) Text(stringResource(R.string.notebook_routing_not_trusted), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
             }
         }
     }

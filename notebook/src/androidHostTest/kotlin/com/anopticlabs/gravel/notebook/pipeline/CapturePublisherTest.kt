@@ -308,7 +308,7 @@ class CapturePublisherTest {
 
     @Test
     fun aForwardPublishesAsForwardedWithNothingOfTheNotebooksWritten() = runBlocking<Unit> {
-        val router = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router")
+        val router = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router", "a".repeat(64))
         val published = publisher().publish(BuiltCapture.Forward(router, RoutedText("c1", "2026-09-22T17:00:00+02:00", "hello")), now, emptyList())
         assertEquals(PublishedCapture.Forwarded("Tasks"), published)
         assertTrue(notes.readMetadata(strict = true).isEmpty())

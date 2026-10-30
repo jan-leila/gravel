@@ -2,30 +2,42 @@ package com.anopticlabs.gravel.notebook.routers
 
 /** The edits the routing screen makes to a [RoutingConfig], each giving a new config to validate and store. */
 object RoutingEdits {
-    /** The kind's tag with the lowest number no router has, `switch-2` say; `[prefix]` alone when free. */
+    /** The kind's tag with the lowest number no router of Gravel's own has, `switch-2` say; `[prefix]` alone when free. */
     fun newId(config: RoutingConfig, prefix: String): String {
-        val taken = config.routers.mapTo(mutableSetOf()) { it.id }
+        val taken = config.routers.filter { it.namespace == RouterRef.GRAVEL }.mapTo(mutableSetOf()) { it.id }
         if (prefix !in taken) return prefix
         return generateSequence(2) { it + 1 }.map { "$prefix-$it" }.first { it !in taken }
     }
 
-    /** [router] in place of the router with its id, or appended. */
-    fun withRouter(config: RoutingConfig, router: RouterConfig): RoutingConfig {
-        val replaced = config.routers.map { if (it.id == router.id) router else it }
-        return config.copy(routers = if (replaced.any { it.id == router.id }) replaced else replaced + router)
+    /**
+     * [router] in place of the router [replacing] (its own ref unless the edit changed it, as picking
+     * another app does), with the entry and every rule that named the old ref now naming the new
+     * one; appended when no router has that ref.
+     */
+    fun withRouter(config: RoutingConfig, router: RouterConfig, replacing: RouterRef = router.ref): RoutingConfig {
+        fun RouterRef.moved() = if (this == replacing) router.ref else this
+        val routers = config.routers.map { existing ->
+            when {
+                existing.ref == replacing -> router
+                existing is RouterConfig.Switch -> existing.copy(rules = existing.rules.map { it.copy(router = it.router.moved()) }, otherwise = existing.otherwise?.moved())
+                else -> existing
+            }
+        }
+        val present = config.routers.any { it.ref == replacing }
+        return config.copy(entry = config.entry.moved(), routers = if (present) routers else routers + router)
     }
 
-    /** The switches whose rules or fallback forward to [id]; a router they name cannot be removed. */
-    fun referencedBy(config: RoutingConfig, id: String): List<RouterConfig.Switch> =
-        config.routers.filterIsInstance<RouterConfig.Switch>().filter { switch -> switch.otherwise == id || switch.rules.any { it.target == id } }
+    /** The switches whose rules or fallback forward to [ref]; a router they name cannot be removed. */
+    fun referencedBy(config: RoutingConfig, ref: RouterRef): List<RouterConfig.Switch> =
+        config.routers.filterIsInstance<RouterConfig.Switch>().filter { switch -> switch.otherwise == ref || switch.rules.any { it.router == ref } }
 
-    /** Without the router [id]; null when it is the entry or a switch forwards to it. */
-    fun withoutRouter(config: RoutingConfig, id: String): RoutingConfig? {
-        if (config.entry == id || referencedBy(config, id).isNotEmpty()) return null
-        return config.copy(routers = config.routers.filterNot { it.id == id })
+    /** Without the router [ref]; null when it is the entry or a switch forwards to it. */
+    fun withoutRouter(config: RoutingConfig, ref: RouterRef): RoutingConfig? {
+        if (config.entry == ref || referencedBy(config, ref).isNotEmpty()) return null
+        return config.copy(routers = config.routers.filterNot { it.ref == ref })
     }
 
-    fun withEntry(config: RoutingConfig, id: String): RoutingConfig = config.copy(entry = id)
+    fun withEntry(config: RoutingConfig, ref: RouterRef): RoutingConfig = config.copy(entry = ref)
 
     /** The kind as the screen names it. */
     fun kindName(router: RouterConfig): String = when (router) {

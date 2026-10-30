@@ -1732,7 +1732,11 @@ in the app's device suite:
   entry's capture time, which the phone recorder and the watch handler
   take at the recording's start), into a `RoutedText`, and `RouteWalk`
   follows the stored `RoutingConfig` from its entry router to the router
-  that consumes it: a `Note` router builds the note with the text model
+  that consumes it (every router is named by a `RouterRef`, a namespace
+  and an id: Gravel's own kinds are in the namespace `gravel`, and an
+  app's router in the namespace of the certificate that signed the app,
+  so nothing an app declares can occupy or collide with a router of
+  Gravel's or of another signer's): a `Note` router builds the note with the text model
   (the stamp goes into the front matter as `recorded:`), a `Reminder`
   router a reminder (the stamp is stored on the item and carried by the
   backup), and an `App` or `Network` router a `BuiltCapture.Forward` the
@@ -1748,9 +1752,9 @@ in the app's device suite:
   forwards to a Reminder router. Constraints the code relies on:
   - The routing is `routing`, an encrypted JSON value under the Notebook
     root (`RoutingConfigStore`), validated on read and on write
-    (`RoutingConfig.requireWellFormed`: ids, names, targets that exist,
-    https-only addresses, bounded patterns that compile, no circle of
-    switches). Absent reads as the default; a file that is present but
+    (`RoutingConfig.requireWellFormed`: ids, names, refs that exist, the
+    namespace rule above, https-only addresses, bounded patterns that
+    compile, no circle of switches). Absent reads as the default; a file that is present but
     cannot be read, or was written by a newer build, holds the drain with
     a remedy that opens Settings > Notebook > Text Routing, where Reset
     sets it aside, and is never taken for the default. It is settings, so
@@ -1766,13 +1770,19 @@ in the app's device suite:
     version, the capture id, the recording's start and the text, nothing
     else, acknowledged by the receiver's result code within
     `RouterApi.DELIVERY_WAIT_MILLIS`; no acknowledgement is a retry. The
-    receiver and the app's trust are checked again at every delivery.
-    Trust (`RouterTrust`) needs every current signer on the built-in list
+    receiver, its declared id, its app's signer against the ref's
+    namespace, and the app's trust are checked again at every delivery.
+    A receiver declares its id in meta-data, and an app signed by several
+    certificates has no namespace, so its receivers are not routers.
+    Trust (`RouterTrust`) needs the signer on the built-in list
     (`DEFAULT_TRUSTED_ROUTER_SIGNERS`, empty as shipped) or among the
     user's entries for that package, kept in a no-backup file
-    (`RouterTrustStore`) that reads as empty when it cannot be read; an
-    app with one signer is also trusted through the platform's signing
-    lineage. Gravel exports nothing for this; `NotebookManifestTest` pins
+    (`RouterTrustStore`) that reads as empty when it cannot be read; a
+    rotated signer still answers for its namespace and its trust through
+    the platform's signing lineage. The settings screen lists every router
+    the installed apps declare, trusted or not, with the app's name and
+    namespace, and asks for the trust (showing the signer) when an
+    untrusted one is picked. Gravel exports nothing for this; `NotebookManifestTest` pins
     the permission, the query and the absence of exported components.
   - A network router posts the payload (`NetworkPayload`: the same four
     fields) through a `TextPoster` the app binds to a Ktor client of its

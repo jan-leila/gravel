@@ -27,6 +27,7 @@ guarded by Gravel's permission:
             <intent-filter>
                 <action android:name="com.anopticlabs.gravel.notebook.action.ROUTE_TEXT" />
             </intent-filter>
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.id" android:value="tasks" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.label" android:value="Add as a task" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.description" android:value="Creates a task from what you said" />
         </receiver>
@@ -34,15 +35,45 @@ guarded by Gravel's permission:
 </manifest>
 ```
 
+- `id` names the router within your app's namespace (below): 1 to 32
+  lowercase letters, digits or dashes. It is required; a receiver without
+  one is not a router. Keep it stable across releases: the user's routing
+  refers to it, and a receiver that starts declaring another id is no
+  longer the router the user picked.
 - `label` (up to 64 characters) is what the router is called in Gravel's
   settings; without it Gravel shows the receiver's label. `description` (up
   to 200 characters) is a line shown under it. Both are plain text.
-- One app may declare several routers, one receiver each.
+- One app may declare several routers, one receiver each, with distinct
+  ids.
 - Gravel lists a receiver only when it is exported **and** guarded by exactly
   this permission. A receiver without the guard is not a router: any app on
   the phone could broadcast to it in Gravel's name. A receiver guarded by a
   different permission is skipped by the system without a word, which Gravel
   could not tell from "it ran and did not answer".
+
+## Namespaces
+
+Gravel's routing refers to every router by a pair, `namespace` and `id`.
+Routers the user makes in Gravel's settings are in the namespace `gravel`.
+A router your app declares is in the namespace of the certificate that
+signed your app: the lowercase hex SHA-256 of the certificate's DER bytes,
+as `apksigner verify --print-certs` prints it. So:
+
+- Nothing an app declares can name, replace or collide with a router in
+  Gravel's namespace, or in the namespace of an app signed by another key.
+  Gravel refuses a stored routing that breaks this rule.
+- Two apps signed by the same key share a namespace, so their router ids
+  must not collide; that is the signer's responsibility.
+- An app signed by several certificates has no single namespace, and its
+  receivers are not listed as routers.
+- At every delivery Gravel checks that the receiver still declares the id
+  the user picked and that the app is still signed by that namespace (a
+  rotated key answers for it through the platform's signing lineage).
+  Otherwise the recording is flagged and nothing is sent.
+
+In Gravel's settings every router an installed app declares is listed with
+the app's name and its namespace under it, so two routers with the same
+label from different apps can be told apart.
 
 ## The permission
 
@@ -63,12 +94,12 @@ nothing else. Your app does not request it and must not define it:
 
 Gravel forwards text only to apps the user trusts. An app is trusted when its
 signing certificate is on Gravel's built-in list or when the user marked the
-app as trusted under Settings > Notebook > Text Routing, where every
-installed router is listed with its app's certificate SHA-256 and a Trust
-This App button. The user's trust is for that app, not for every app from
-the same signer. An app with one signing certificate stays trusted across
-key rotation (the platform's signing lineage); an app with several
-signing certificates needs every one trusted. Trust is checked again at
+app as trusted under Settings > Notebook > Text Routing: picking one of
+its routers, or the Trust button under Apps with routers, shows the app's
+certificate SHA-256 (its namespace) and asks for the trust. The user's trust
+is for that app, not for every app from the same signer. An app stays
+trusted across key rotation (the platform's signing lineage). Trust is
+checked again at
 every delivery, so a package replaced under the same name, or a trust the
 user withdrew, stops deliveries at once.
 

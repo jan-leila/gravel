@@ -1134,7 +1134,7 @@ class CaptureDrainTest {
         assertEquals(0, ruled.waitingForPower.value)
     }
 
-    private val tasks = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router")
+    private val tasks = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router", "a".repeat(64))
 
     private fun forwardTo(router: RouterConfig) {
         backend.onProcess = { request, onStage ->

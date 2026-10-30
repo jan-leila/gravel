@@ -8,6 +8,7 @@ import com.anopticlabs.gravel.notebook.reminders.ReminderProposal
 import com.anopticlabs.gravel.notebook.reminders.ReminderTimeStatus
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.RouterRef
 import com.anopticlabs.gravel.notebook.routers.RoutingConfig
 import com.anopticlabs.gravel.notebook.routers.SwitchRule
 import com.anopticlabs.gravel.notebook.storage.CorruptFileException
@@ -76,9 +77,9 @@ class OnDeviceCaptureBackendTest {
 
     /** Today's behavior before routing existed: a reminder cue at the start makes a reminder, else a note. */
     private val split = RoutingConfig(
-        entry = "split",
+        entry = RouterRef.gravel("split"),
         routers = listOf(
-            RouterConfig.Switch("split", "Split", listOf(SwitchRule("^remind me", "reminders")), otherwise = "notes"),
+            RouterConfig.Switch("split", "Split", listOf(SwitchRule("^remind me", RouterRef.gravel("reminders"))), otherwise = RouterRef.gravel("notes")),
             RouterConfig.Note("notes", "Notes"),
             RouterConfig.Reminder("reminders", "Reminders"),
         ),
@@ -334,7 +335,7 @@ class OnDeviceCaptureBackendTest {
         assertTrue(memoryShortFor(needBytes = 0, availableBytes = 899, thresholdBytes = 900))
     }
 
-    private val tasks = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router")
+    private val tasks = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router", "a".repeat(64))
     private val hook = RouterConfig.Network("hook", "Webhook", "https://example.test/notes")
 
     @Test
@@ -349,7 +350,7 @@ class OnDeviceCaptureBackendTest {
 
     @Test
     fun aReminderRouterSetsAReminderWhateverTheWordsSay() = runBlocking<Unit> {
-        graph = RoutingConfig(entry = "r", routers = listOf(RouterConfig.Reminder("r", "Always a reminder")))
+        graph = RoutingConfig(entry = RouterRef.gravel("r"), routers = listOf(RouterConfig.Reminder("r", "Always a reminder")))
         val text = FakeText("""{"message": "Water the garden"}""")
         val stages = mutableListOf<CaptureStage>()
         val built = assertIs<BuiltCapture.Reminder>(run("thoughts on the garden", text, stages = stages))
@@ -362,7 +363,7 @@ class OnDeviceCaptureBackendTest {
     @Test
     fun anAppOrNetworkRouterGetsTheTranscriptWholeWithTheRecordingTimeAndNoModelRuns() = runBlocking<Unit> {
         for (router in listOf(tasks, hook)) {
-            graph = RoutingConfig(entry = router.id, routers = listOf(router))
+            graph = RoutingConfig(entry = router.ref, routers = listOf(router))
             val text = FakeText()
             val stages = mutableListOf<CaptureStage>()
             val transcript = "  remind me: the whole text, [noise] as heard  "
@@ -378,8 +379,8 @@ class OnDeviceCaptureBackendTest {
     @Test
     fun aSwitchRoutesByItsRulesAndTheCompletionClaimIsDecidedBeforeIt() = runBlocking<Unit> {
         graph = RoutingConfig(
-            entry = "split",
-            routers = listOf(RouterConfig.Switch("split", "Split", listOf(SwitchRule("garden", "tasks")), otherwise = "notes"), RouterConfig.Note("notes", "Notes"), tasks),
+            entry = RouterRef.gravel("split"),
+            routers = listOf(RouterConfig.Switch("split", "Split", listOf(SwitchRule("garden", tasks.ref)), otherwise = RouterRef.gravel("notes")), RouterConfig.Note("notes", "Notes"), tasks),
         )
         assertIs<BuiltCapture.Forward>(run("thoughts on the garden"))
         assertIs<BuiltCapture.Note>(run("thoughts on the kitchen"))

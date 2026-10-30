@@ -19,10 +19,10 @@ object RouteWalk {
      */
     fun terminal(config: RoutingConfig, text: RoutedText, ruleDeadline: Duration = SwitchMatcher.RULE_DEADLINE): RouterConfig {
         var current = config.router(config.entry) ?: notRouted("the entry router does not exist")
-        val visited = mutableSetOf<String>()
+        val visited = mutableSetOf<RouterRef>()
         var hops = 0
         while (current is RouterConfig.Switch) {
-            if (!visited.add(current.id)) notRouted("the routers lead in a circle at ${current.name}")
+            if (!visited.add(current.ref)) notRouted("the routers lead in a circle at ${current.name}")
             if (++hops > MAX_HOPS) notRouted("more than $MAX_HOPS switches in a row")
             val next = pick(current, text, ruleDeadline) ?: notRouted("no rule of ${current.name} matched and it has no fallback")
             current = config.router(next) ?: notRouted("${current.name} forwards to a router that does not exist")
@@ -30,7 +30,7 @@ object RouteWalk {
         return current
     }
 
-    private fun pick(switch: RouterConfig.Switch, text: RoutedText, ruleDeadline: Duration): String? {
+    private fun pick(switch: RouterConfig.Switch, text: RoutedText, ruleDeadline: Duration): RouterRef? {
         switch.rules.forEachIndexed { index, rule ->
             val n = index + 1
             val regex = try {
@@ -43,7 +43,7 @@ object RouteWalk {
             } catch (e: RuleTimeoutException) {
                 notRouted("rule $n of ${switch.name} took too long")
             }
-            if (hit) return rule.target
+            if (hit) return rule.router
         }
         return switch.otherwise
     }

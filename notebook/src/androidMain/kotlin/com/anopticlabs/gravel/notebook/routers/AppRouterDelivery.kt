@@ -19,9 +19,10 @@ fun interface RouterBroadcastSender {
 }
 
 /**
- * Delivers to an app's router. The receiver is resolved and its app's trust checked at delivery
- * time, so a package replaced under its name, a router the app no longer declares or a trust the
- * user withdrew since the router was picked refuses the delivery; then one broadcast, which the
+ * Delivers to an app's router. The receiver is resolved and checked against the config's ref and
+ * its app's trust at delivery time, so a package replaced under its name by another signer, a
+ * receiver that now declares a different router, or a trust the user withdrew since the router was
+ * picked refuses the delivery; then one broadcast, which the
  * receiver acknowledges with [RouterApi.RESULT_ACKNOWLEDGED] within [waitMillis]. No
  * acknowledgement is a retry: the receiver may be slow or not running yet.
  */
@@ -36,7 +37,12 @@ class AppRouterDelivery(
         require(router is RouterConfig.App) { "${router.name} is not an app router" }
         val receiver = installed.resolve(router.packageName, router.receiverClass)
             ?: unavailable("${router.name} is not installed, or its app no longer declares that router")
-        val trusted = RouterTrust.isTrusted(receiver.packageName, receiver.signers, trusted(), { installed.signedBy(receiver.packageName, it) }, defaults)
+        if (receiver.id != router.id) unavailable("the app behind ${router.name} now declares a different router there")
+        // The namespace is the signer the user saw when picking; a rotated key still answers for it through the lineage.
+        if (receiver.namespace != router.namespace && !installed.signedBy(receiver.packageName, router.namespace)) {
+            unavailable("the app behind ${router.name} is signed by a different key than when it was picked")
+        }
+        val trusted = RouterTrust.isTrusted(receiver.packageName, listOf(receiver.namespace), trusted(), { installed.signedBy(receiver.packageName, it) }, defaults)
         if (!trusted) unavailable("the app behind ${router.name} is not trusted")
         val code = try {
             withTimeout(waitMillis) { sender.send(receiver.packageName, receiver.receiverClass, text) }

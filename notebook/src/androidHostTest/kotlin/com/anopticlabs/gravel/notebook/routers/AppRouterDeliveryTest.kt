@@ -14,7 +14,7 @@ class AppRouterDeliveryTest {
 
     private val a = "a".repeat(64)
     private val old = "c".repeat(64)
-    private val tasks = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router")
+    private val tasks = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router", a)
     private val text = RoutedText("c1", "2026-09-22T17:00:00+02:00", "buy milk")
 
     private class FakeInstalled : InstalledRouters {
@@ -41,11 +41,18 @@ class AppRouterDeliveryTest {
     private var trusted = listOf(TrustedRouterApp("com.example.tasks", a, 1L))
     private val delivery = AppRouterDelivery(installed, { trusted }, sender, waitMillis = 200)
 
-    private fun installTasks(signers: List<String> = listOf(a)) {
-        installed.routers += InstalledRouter("com.example.tasks", "com.example.tasks.Router", "Tasks", null, signers)
+    private fun installTasks(namespace: String = a, id: String = "tasks") {
+        installed.routers += InstalledRouter("com.example.tasks", "com.example.tasks.Router", id, namespace, "Tasks", null, "Tasks app")
     }
 
     private fun failed(block: suspend () -> Unit): CaptureProcessingException = assertFailsWith { runBlocking { block() } }
+
+    private fun unavailable(block: suspend () -> Unit): CaptureProcessingException {
+        val e = failed(block)
+        assertEquals(CaptureFailureKind.FLAG, e.kind)
+        assertEquals(CaptureFailureReason.ROUTER_UNAVAILABLE, e.reason)
+        return e
+    }
 
     @Test
     fun aTrustedInstalledRouterGetsTheTextAndItsAcknowledgementEndsTheDelivery() = runBlocking<Unit> {
@@ -56,24 +63,31 @@ class AppRouterDeliveryTest {
 
     @Test
     fun aRouterThatIsGoneOrUntrustedIsFlaggedWithoutASend() {
-        val gone = failed { delivery.deliver(tasks, text) }
-        assertEquals(CaptureFailureKind.FLAG, gone.kind)
-        assertEquals(CaptureFailureReason.ROUTER_UNAVAILABLE, gone.reason)
+        unavailable { delivery.deliver(tasks, text) }
         installTasks()
         trusted = emptyList()
-        val untrusted = failed { delivery.deliver(tasks, text) }
-        assertEquals(CaptureFailureKind.FLAG, untrusted.kind)
-        assertEquals(CaptureFailureReason.ROUTER_UNAVAILABLE, untrusted.reason)
-        assertTrue(untrusted.message!!.contains("not trusted"))
+        assertTrue(unavailable { delivery.deliver(tasks, text) }.message!!.contains("not trusted"))
+        assertTrue(sender.sent.isEmpty())
+    }
+
+    /** The config's ref pins the router: the receiver has to declare that id, in an app signed by that namespace. */
+    @Test
+    fun aReceiverThatDeclaresAnotherIdOrIsSignedByAnotherKeyIsFlaggedWithoutASend() {
+        installTasks(id = "archive")
+        assertTrue(unavailable { delivery.deliver(tasks, text) }.message!!.contains("different router"))
+        installed.routers.clear()
+        installTasks(namespace = "d".repeat(64))
+        trusted = listOf(TrustedRouterApp("com.example.tasks", "d".repeat(64), 1L))
+        assertTrue(unavailable { delivery.deliver(tasks, text) }.message!!.contains("different key"))
         assertTrue(sender.sent.isEmpty())
     }
 
     @Test
-    fun aRotatedSignerIsTrustedThroughThePlatformsLineageCheck() = runBlocking<Unit> {
-        installTasks(signers = listOf("d".repeat(64)))
+    fun aRotatedSignerStillAnswersForItsNamespaceAndTrustThroughThePlatformsLineageCheck() = runBlocking<Unit> {
+        installTasks(namespace = "d".repeat(64))
         trusted = listOf(TrustedRouterApp("com.example.tasks", old, 1L))
         installed.lineage["com.example.tasks"] = setOf(old)
-        delivery.deliver(tasks, text)
+        delivery.deliver(tasks.copy(namespace = old), text)
         assertEquals(1, sender.sent.size)
     }
 

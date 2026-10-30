@@ -11,11 +11,14 @@ import kotlin.time.Duration.Companion.milliseconds
 
 class RouteWalkTest {
 
+    private val signer = "a".repeat(64)
+    private fun g(id: String) = RouterRef.gravel(id)
+
     private val note = RouterConfig.Note("notes", "Notes")
     private val reminder = RouterConfig.Reminder("reminders", "Reminders")
-    private val app = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router")
-    private val split = RouterConfig.Switch("split", "Split", listOf(SwitchRule("^remind me", "reminders"), SwitchRule("todo", "tasks")), otherwise = "notes")
-    private val config = RoutingConfig(entry = "split", routers = listOf(split, note, reminder, app))
+    private val app = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router", signer)
+    private val split = RouterConfig.Switch("split", "Split", listOf(SwitchRule("^remind me", g("reminders")), SwitchRule("todo", app.ref)), otherwise = g("notes"))
+    private val config = RoutingConfig(entry = g("split"), routers = listOf(split, note, reminder, app))
 
     private fun text(said: String) = RoutedText("c1", "2026-09-22T17:00:00+02:00", said)
 
@@ -38,11 +41,21 @@ class RouteWalkTest {
         assertEquals(note, RouteWalk.terminal(config, text("thoughts on the garden")))
     }
 
+    /** A ref names a router by namespace and id: the same id in Gravel's namespace is a different router. */
+    @Test
+    fun aRefIsMatchedByNamespaceAndId() {
+        val mine = RouterConfig.Note("tasks", "My tasks")
+        val both = config.copy(routers = config.routers + mine)
+        assertEquals(app, RouteWalk.terminal(both, text("todo: buy milk")))
+        val toMine = both.copy(routers = both.routers.map { if (it is RouterConfig.Switch) it.copy(rules = listOf(SwitchRule("todo", g("tasks")))) else it })
+        assertEquals(mine, RouteWalk.terminal(toMine, text("todo: buy milk")))
+    }
+
     @Test
     fun switchesChainAndADiamondIsFine() {
-        val second = RouterConfig.Switch("second", "Second", listOf(SwitchRule("urgent", "tasks")), otherwise = "notes")
-        val first = RouterConfig.Switch("first", "First", listOf(SwitchRule("work", "second")), otherwise = "second")
-        val chained = RoutingConfig(entry = "first", routers = listOf(first, second, note, app))
+        val second = RouterConfig.Switch("second", "Second", listOf(SwitchRule("urgent", app.ref)), otherwise = g("notes"))
+        val first = RouterConfig.Switch("first", "First", listOf(SwitchRule("work", g("second"))), otherwise = g("second"))
+        val chained = RoutingConfig(entry = g("first"), routers = listOf(first, second, note, app))
         assertEquals(app, RouteWalk.terminal(chained, text("work: urgent fix")))
         assertEquals(note, RouteWalk.terminal(chained, text("work: later")))
         assertEquals(app, RouteWalk.terminal(chained, text("home: urgent fix")))
@@ -56,31 +69,31 @@ class RouteWalkTest {
 
     @Test
     fun aGraphTheValidationWouldRefuseStillEndsInAFlagNotALoop() {
-        val missingEntry = RoutingConfig(entry = "gone", routers = listOf(note))
+        val missingEntry = RoutingConfig(entry = g("gone"), routers = listOf(note))
         assertTrue(flagged { RouteWalk.terminal(missingEntry, text("x")) }.message!!.contains("entry router"))
-        val missingTarget = RoutingConfig(entry = "s", routers = listOf(RouterConfig.Switch("s", "S", emptyList(), otherwise = "gone")))
+        val missingTarget = RoutingConfig(entry = g("s"), routers = listOf(RouterConfig.Switch("s", "S", emptyList(), otherwise = g("gone"))))
         assertTrue(flagged { RouteWalk.terminal(missingTarget, text("x")) }.message!!.contains("does not exist"))
         val circle = RoutingConfig(
-            entry = "a",
-            routers = listOf(RouterConfig.Switch("a", "A", emptyList(), otherwise = "b"), RouterConfig.Switch("b", "B", emptyList(), otherwise = "a")),
+            entry = g("a"),
+            routers = listOf(RouterConfig.Switch("a", "A", emptyList(), otherwise = g("b")), RouterConfig.Switch("b", "B", emptyList(), otherwise = g("a"))),
         )
         assertTrue(flagged { RouteWalk.terminal(circle, text("x")) }.message!!.contains("circle at A"))
-        val badRule = RoutingConfig(entry = "s", routers = listOf(RouterConfig.Switch("s", "S", listOf(SwitchRule("(open", "notes"))), note))
+        val badRule = RoutingConfig(entry = g("s"), routers = listOf(RouterConfig.Switch("s", "S", listOf(SwitchRule("(open", g("notes")))), note))
         assertTrue(flagged { RouteWalk.terminal(badRule, text("x")) }.message!!.contains("rule 1 of S is not a valid"))
     }
 
     @Test
     fun aChainLongerThanTheHopCapIsFlagged() {
-        val chain = (0..RouteWalk.MAX_HOPS).map { RouterConfig.Switch("s$it", "S$it", emptyList(), otherwise = "s${it + 1}") }
-        val config = RoutingConfig(entry = "s0", routers = chain + RouterConfig.Note("s${RouteWalk.MAX_HOPS + 1}", "End"))
+        val chain = (0..RouteWalk.MAX_HOPS).map { RouterConfig.Switch("s$it", "S$it", emptyList(), otherwise = g("s${it + 1}")) }
+        val config = RoutingConfig(entry = g("s0"), routers = chain + RouterConfig.Note("s${RouteWalk.MAX_HOPS + 1}", "End"))
         assertTrue(flagged { RouteWalk.terminal(config, text("x")) }.message!!.contains("in a row"))
-        val shorter = RoutingConfig(entry = "s1", routers = config.routers)
+        val shorter = RoutingConfig(entry = g("s1"), routers = config.routers)
         assertEquals(config.routers.last(), RouteWalk.terminal(shorter, text("x")))
     }
 
     @Test
     fun aRuleThatRunsPastItsDeadlineIsFlagged() {
-        val slow = RoutingConfig(entry = "s", routers = listOf(RouterConfig.Switch("s", "S", listOf(SwitchRule("(.*a){32}", "notes")), otherwise = "notes"), note))
+        val slow = RoutingConfig(entry = g("s"), routers = listOf(RouterConfig.Switch("s", "S", listOf(SwitchRule("(.*a){32}", g("notes"))), otherwise = g("notes")), note))
         assertTrue(flagged { RouteWalk.terminal(slow, text("a".repeat(31)), ruleDeadline = 30.milliseconds) }.message!!.contains("rule 1 of S took too long"))
     }
 }

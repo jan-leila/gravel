@@ -20,13 +20,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * An installed app that declares routers, as the screen lists it. [trusted] by the built-in list
- * or the user's entry; [byUser] when the user's entry is what trusts it, so it can be withdrawn.
+ * An installed app that declares routers, as the screen lists it. [namespace] is its signer, the
+ * namespace its routers are in; [trusted] by the built-in list or the user's entry; [byUser] when
+ * the user's entry is what trusts it, so it can be withdrawn.
  */
 data class RouterApp(
     val packageName: String,
+    val appName: String,
+    val namespace: String,
     val routers: List<InstalledRouter>,
-    val signers: List<String>,
     val trusted: Boolean,
     val byUser: Boolean,
 )
@@ -85,9 +87,9 @@ class RoutingViewModel(
         _ui.update { it.copy(store = RoutingStoreState.Loaded(RoutingConfig.DEFAULT)) }
     }
 
-    /** Trusts [app] by every signer it has now; the screen asked the user first, showing them. */
+    /** Trusts [app] by its signer; the screen asked the user first, showing it. */
     fun trustApp(app: RouterApp) = run {
-        if (!trust.trustAll(app.packageName, app.signers)) _ui.update { it.copy(error = TRUST_FAILED) }
+        if (!trust.trust(app.packageName, app.namespace)) _ui.update { it.copy(error = TRUST_FAILED) }
         refreshApps()
     }
 
@@ -105,12 +107,13 @@ class RoutingViewModel(
 
     private fun apps(entries: List<TrustedRouterApp>): List<RouterApp> =
         installed.discover().groupBy { it.packageName }.map { (packageName, routers) ->
-            val signers = routers.first().signers
+            val namespace = routers.first().namespace
             RouterApp(
                 packageName,
+                routers.first().appName,
+                namespace,
                 routers.sortedBy { it.label },
-                signers,
-                trusted = RouterTrust.isTrusted(packageName, signers, entries, { installed.signedBy(packageName, it) }),
+                trusted = RouterTrust.isTrusted(packageName, listOf(namespace), entries, { installed.signedBy(packageName, it) }),
                 byUser = entries.any { it.packageName == packageName },
             )
         }.sortedBy { it.packageName }

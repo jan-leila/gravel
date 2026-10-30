@@ -21,9 +21,9 @@ class RoutingConfigStoreTest {
     private val store = RoutingConfigStore(root, crypto)
     private val file = File(root, RoutingConfigStore.FILE_NAME)
     private val split = RoutingConfig(
-        entry = "split",
+        entry = RouterRef.gravel("split"),
         routers = listOf(
-            RouterConfig.Switch("split", "Split", listOf(SwitchRule("^remind me", "reminders")), otherwise = "notes"),
+            RouterConfig.Switch("split", "Split", listOf(SwitchRule("^remind me", RouterRef.gravel("reminders"))), otherwise = RouterRef.gravel("notes")),
             RouterConfig.Note("notes", "Notes"),
             RouterConfig.Reminder("reminders", "Reminders"),
         ),
@@ -48,7 +48,7 @@ class RoutingConfigStoreTest {
         assertEquals(split, store.read())
         assertEquals(RoutingStoreState.Loaded(split), store.state.value)
         assertEquals(split, RoutingConfigStore(root, crypto).read(), "another instance reads the file")
-        assertFailsWith<IllegalArgumentException> { store.write(split.copy(entry = "gone")) }
+        assertFailsWith<IllegalArgumentException> { store.write(split.copy(entry = RouterRef.gravel("gone"))) }
         assertEquals(split, store.read())
     }
 
@@ -67,7 +67,7 @@ class RoutingConfigStoreTest {
 
     @Test
     fun aConfigThisBuildRefusesIsUnreadable() = runBlocking<Unit> {
-        val newer = """{"v":2,"entry":"notebook","routers":[{"type":"note","id":"notebook","name":"Notebook"}]}"""
+        val newer = """{"v":2,"entry":{"namespace":"gravel","id":"notebook"},"routers":[{"type":"note","namespace":"gravel","id":"notebook","name":"Notebook"}]}"""
         EncryptedFiles(root, crypto).write(file, newer.encodeToByteArray())
         assertFailsWith<PersistedFormatException> { store.read() }
         assertEquals(RoutingStoreState.Unreadable, store.load())

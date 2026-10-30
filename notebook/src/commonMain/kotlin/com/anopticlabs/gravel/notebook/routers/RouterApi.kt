@@ -18,7 +18,12 @@ object RouterApi {
      */
     const val PERMISSION_ROUTE_TEXT = "com.anopticlabs.gravel.permission.ROUTE_NOTEBOOK_TEXT"
 
-    /** `<meta-data>` on the receiver: what the router is called in Gravel's settings, and a line about it. */
+    /**
+     * `<meta-data>` on the receiver: the router's id within its app's namespace (the id grammar of
+     * [RoutingConfig.isRouterId]; a receiver without one is not a router), what the router is called in
+     * Gravel's settings, and a line about it.
+     */
+    const val META_ID = "com.anopticlabs.gravel.notebook.router.id"
     const val META_LABEL = "com.anopticlabs.gravel.notebook.router.label"
     const val META_DESCRIPTION = "com.anopticlabs.gravel.notebook.router.description"
 
