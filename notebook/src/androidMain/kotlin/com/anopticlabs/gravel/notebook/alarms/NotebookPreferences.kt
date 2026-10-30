@@ -71,6 +71,12 @@ class NotebookPreferences(context: Context) : NotebookSettingsStore {
 
     fun setTextModelId(id: String?) = prefs.edit().putString(KEY_TEXT_MODEL_ID, id).apply()
 
+    /** Whether the record button has asked for the location permission; it asks once, Settings offers it again. */
+    val locationAsked: Boolean
+        get() = prefs.getBoolean(KEY_LOCATION_ASKED, false)
+
+    fun markLocationAsked() = prefs.edit().putBoolean(KEY_LOCATION_ASKED, true).apply()
+
     /** Whether the Notebook tab is in the bottom bar; shown until the user turns it off. */
     val tabShown: Boolean
         get() = prefs.getBoolean(KEY_TAB_SHOWN, true)
@@ -90,5 +96,6 @@ class NotebookPreferences(context: Context) : NotebookSettingsStore {
         const val KEY_PHONE_CALENDARS = "phone_calendars"
         const val KEY_INTERRUPT_LONG_CAPTURES = "interrupt_long_captures"
         const val KEY_LONG_CAPTURES_WAIT_FOR_POWER = "long_captures_wait_for_power"
+        const val KEY_LOCATION_ASKED = "location_asked"
     }
 }

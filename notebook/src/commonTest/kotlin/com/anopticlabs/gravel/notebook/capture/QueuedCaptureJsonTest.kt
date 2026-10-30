@@ -1,5 +1,6 @@
 package com.anopticlabs.gravel.notebook.capture
 
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.storage.NotebookJson
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
@@ -36,6 +37,17 @@ class QueuedCaptureJsonTest {
     fun aMissingCounterReadsAsItsDefaultAndAnUnknownKeyIsIgnored() {
         val e = NotebookJson.decodeFromString<QueuedCapture>("""{"id":"x","originalFileName":"x.m4a","queuedAtMillis":5,"future":1}""")
         assertEquals(QueuedCapture("x", "x.m4a", 5L, 0, false), e)
+    }
+
+    @Test
+    fun anEntryCarriesWhereItWasMadeOnlyWhenBothCoordinatesAreThere() {
+        val placed = QueuedCapture("p", "p.wav", 1L, latitude = 52.52, longitude = 13.405, accuracyMeters = 12.5f)
+        assertEquals(setOf("id", "originalFileName", "queuedAtMillis", "latitude", "longitude", "accuracyMeters"), NotebookJson.parseToJsonElement(NotebookJson.encodeToString(placed)).jsonObject.keys)
+        assertEquals(placed, NotebookJson.decodeFromString<QueuedCapture>(NotebookJson.encodeToString(placed)))
+        assertEquals(RoutedLocation(52.52, 13.405, 12.5f), placed.location)
+        assertEquals(RoutedLocation(52.52, 13.405), placed.copy(accuracyMeters = null).location)
+        assertEquals(null, placed.copy(longitude = null).location)
+        assertEquals(null, QueuedCapture("x", "x.m4a", 5L).location)
     }
 
     @Test

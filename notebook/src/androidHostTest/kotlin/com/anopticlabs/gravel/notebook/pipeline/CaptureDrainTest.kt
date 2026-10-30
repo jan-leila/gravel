@@ -18,6 +18,7 @@ import com.anopticlabs.gravel.notebook.capture.isLong
 import com.anopticlabs.gravel.notebook.notes.BuiltNote
 import com.anopticlabs.gravel.notebook.reminders.ReminderProposal
 import com.anopticlabs.gravel.notebook.reminders.ReminderRefreshSignal
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import com.anopticlabs.gravel.notebook.routers.TextDeliverer
@@ -162,6 +163,15 @@ class CaptureDrainTest {
         assertEquals(listOf("first", "second"), backend.requests.map { it.audio.decodeToString() })
         assertEquals(now - 2_000, backend.requests.first().capturedAt.toEpochMilliseconds())
         assertTrue(backend.requests.all { it.settings == settings && it.zone == TimeZone.UTC })
+    }
+
+    @Test
+    fun aCaptureIsProcessedWithTheLocationItsEntryCarries() = runBlocking<Unit> {
+        queue.enqueue(QueuedCapture("placed", "p.wav", now, latitude = 52.52, longitude = 13.405, accuracyMeters = 30f), "p".encodeToByteArray())
+        queue.enqueue(QueuedCapture("nowhere", "n.wav", now), "n".encodeToByteArray())
+        drain.drain()
+        assertEquals(RoutedLocation(52.52, 13.405, 30f), backend.requests.single { it.id == "placed" }.location)
+        assertEquals(null, backend.requests.single { it.id == "nowhere" }.location)
     }
 
     @Test

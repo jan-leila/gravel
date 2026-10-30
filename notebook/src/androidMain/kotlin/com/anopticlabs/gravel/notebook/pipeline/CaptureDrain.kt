@@ -11,6 +11,7 @@ import com.anopticlabs.gravel.notebook.capture.applyQueueDrainResults
 import com.anopticlabs.gravel.notebook.capture.captureZone
 import com.anopticlabs.gravel.notebook.capture.flagQueuedCapture
 import com.anopticlabs.gravel.notebook.capture.isLong
+import com.anopticlabs.gravel.notebook.capture.location
 import com.anopticlabs.gravel.notebook.capture.markPhoneTried
 import com.anopticlabs.gravel.notebook.capture.markServerTry
 import com.anopticlabs.gravel.notebook.capture.mayStart
@@ -393,6 +394,7 @@ class CaptureDrain(
                 serverTries = entry.serverTries,
                 serverTriedAtMillis = entry.serverTriedAtMillis,
                 markServerTry = { at -> recordServerTry(entry.id, at) },
+                location = entry.location,
             )
             val built = backend.process(request) { stage ->
                 rows.stage(entry.id, stage)

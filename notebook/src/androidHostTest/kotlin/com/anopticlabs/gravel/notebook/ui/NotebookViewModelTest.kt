@@ -93,10 +93,13 @@ class NotebookViewModelTest {
     private var retryRequests = 0
     @Volatile
     private var processingId: String? = null
+    @Volatile
+    private var locationAsked = false
     private val viewModel = NotebookViewModel(
         rows, drain, NotebookStatusReader(queue, publisher, recovery), navigator, recording.recorder, TypedNotes(notes), completions.revision,
         { drainRequests++ }, StorageRecoveryRunner(recovery, restoreFile = {}, restoreAutomatic = {}),
         controls, FailedCaptureActions(queue, processing = { it == processingId }) { retryRequests++ },
+        locationAsked = { locationAsked }, markLocationAsked = { locationAsked = true },
     )
 
     @AfterTest
@@ -320,6 +323,35 @@ class NotebookViewModelTest {
         assertEquals(1, asked)
         assertNull(viewModel.micProblem)
         assertIs<RecorderState.Recording>(viewModel.recorderState.value)
+        stopRecording()
+    }
+
+    @Test
+    fun theLocationIsAskedForOnceAndTheRecordingStartsWhateverTheAnswer() = runBlocking<Unit> {
+        var asked = 0
+        viewModel.record(hasMic = { true }, requestMic = null, hasLocation = { false }, requestLocation = { asked++; PermissionResult.Rejected })
+        assertEquals(1, asked)
+        assertTrue(locationAsked)
+        assertIs<RecorderState.Recording>(viewModel.recorderState.value)
+        stopRecording()
+        viewModel.record(hasMic = { true }, requestMic = null, hasLocation = { false }, requestLocation = { asked++; PermissionResult.Granted })
+        assertEquals(1, asked, "asked once ever")
+        assertIs<RecorderState.Recording>(viewModel.recorderState.value)
+        recording.awaitReads(55)
+        viewModel.stopRecording()
+        recording.awaitIdle()
+        assertEquals(2, recording.ingested.size)
+    }
+
+    @Test
+    fun aGrantedLocationOrNoWindowToAskFromIsNotAskedFor() = runBlocking<Unit> {
+        var asked = 0
+        viewModel.record(hasMic = { true }, requestMic = null, hasLocation = { true }, requestLocation = { asked++; PermissionResult.Granted })
+        assertEquals(0, asked)
+        assertFalse(locationAsked)
+        stopRecording()
+        viewModel.record(hasMic = { true }, requestMic = null, hasLocation = { false }, requestLocation = null)
+        assertFalse(locationAsked, "a tap with no window to ask from leaves the one ask for later")
         stopRecording()
     }
 

@@ -1,6 +1,8 @@
 package com.anopticlabs.gravel.notebook.pipeline
 
 import com.anopticlabs.gravel.notebook.capture.QueuedCapture
+import com.anopticlabs.gravel.notebook.capture.location
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.capture.RecordingBuffer
 import com.anopticlabs.gravel.notebook.storage.BlobRead
 import com.anopticlabs.gravel.notebook.storage.FakeCryptographer
@@ -58,6 +60,14 @@ class CaptureIngestTest {
         assertContentEquals(audio, assertIs<BlobRead.Present>(queue.readBlob("c-1")).bytes)
         assertEquals(listOf(listOf(entry)), queuedCalls)
         assertEquals(listOf(entry), entriesQueued)
+    }
+
+    @Test
+    fun aRecordingIsQueuedWhereItWasMade() = runBlocking<Unit> {
+        val here = RoutedLocation(52.52, 13.405, 12.5f)
+        assertEquals(IngestResult.QUEUED, ingest.ingest(audio, "wav", location = here))
+        assertEquals(here, queue.readQueue(strict = true).single().location)
+        assertEquals(here, entriesQueued.single().location)
     }
 
     @Test

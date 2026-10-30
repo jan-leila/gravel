@@ -4,10 +4,12 @@ import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.notebook.capture.MAX_RECORDING_SAMPLES
 import com.anopticlabs.gravel.notebook.capture.MIN_RECORDING_MILLIS
 import com.anopticlabs.gravel.notebook.capture.pcm16Wav
+import com.anopticlabs.gravel.notebook.capture.RecordingLocation
 import com.anopticlabs.gravel.notebook.pipeline.CaptureIngest
 import com.anopticlabs.gravel.notebook.pipeline.CaptureProcessingException
 import com.anopticlabs.gravel.notebook.pipeline.CaptureText
 import com.anopticlabs.gravel.notebook.pipeline.IngestResult
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.storage.DeviceStateFile
 import com.anopticlabs.gravel.notebook.storage.QueueStore
 import com.anopticlabs.gravel.ui.NotebookTab
@@ -26,6 +28,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -126,7 +129,8 @@ suspend fun storedRecordingWait(textReady: suspend () -> Boolean, speech: suspen
  * Gravel: recordings from the Notebook watch app go into the Notebook as watch recordings, and the watch is told
  * what happened. [installedSha256] is the digest of the copy the phone serves the watch, [notebookOn] whether the
  * Notebook takes watch recordings, [watchRecordingsQueued] how many it holds, [store] queues a WAV dated at its
- * start, [waitFor] what a stored watch recording waits for; [marks] times the hourly limit.
+ * start and placed by [locate], which runs beside the recording; [waitFor] what a stored watch recording waits for;
+ * [marks] times the hourly limit.
  */
 class NotebookWatchApp(
     private val installedSha256: suspend () -> String?,
@@ -134,8 +138,9 @@ class NotebookWatchApp(
     private val notebookOn: suspend () -> Boolean,
     private val watchRecordingsQueued: suspend () -> Int,
     private val decode: suspend (VoiceEncoderInfo.Speex, List<UByteArray>) -> ByteArray,
-    private val store: suspend (wav: ByteArray, capturedAtMillis: Long) -> IngestResult,
+    private val store: suspend (wav: ByteArray, capturedAtMillis: Long, location: RoutedLocation?) -> IngestResult,
     private val waitFor: suspend () -> RecordingWait,
+    private val locate: suspend () -> RoutedLocation? = { null },
     private val clock: () -> Long = System::currentTimeMillis,
     private val marks: TimeSource.WithComparableMarks = TimeSource.Monotonic,
     private val cancelWait: Duration = WATCH_CANCEL_WAIT,
@@ -163,6 +168,7 @@ class NotebookWatchApp(
         val startedAt = clock()
         val recording = Recording()
         current.set(recording)
+        val location = lookups.async { located() }
         try {
             val digestAtStart = installedDigest()
             val audio = ArrayList<UByteArray>()
@@ -173,8 +179,9 @@ class NotebookWatchApp(
             }
             recording.endedAt = marks.markNow()
             // The audio is all here, so a dropped connection or a superseding session no longer loses it.
-            return withContext(NonCancellable) { afterRecording(encoderInfo, audio, bytes, digestAtStart, startedAt, recording) }
+            return withContext(NonCancellable) { afterRecording(encoderInfo, audio, bytes, digestAtStart, startedAt, location, recording) }
         } finally {
+            location.cancel()
             current.compareAndSet(recording, null)
         }
     }
@@ -185,6 +192,7 @@ class NotebookWatchApp(
         bytes: Int,
         digestAtStart: String?,
         startedAt: Long,
+        location: Deferred<RoutedLocation?>,
         recording: Recording,
     ): String {
         val stored = try {
@@ -192,7 +200,7 @@ class NotebookWatchApp(
             if (canceledInTime(recording)) return WatchAnswers.NOTHING
             val speex = encoderInfo as VoiceEncoderInfo.Speex
             val wav = withContext(Dispatchers.Default) { pcm16Wav(decode(speex, audio), WATCH_SPEEX_SAMPLE_RATE) }
-            store(wav, startedAt)
+            store(wav, startedAt, location.await())
         } catch (e: Exception) {
             logger.w(e) { "a watch recording was not saved" }
             return WatchAnswers.NOT_SAVED
@@ -241,6 +249,15 @@ class NotebookWatchApp(
         if (watchRecordingsQueued() >= MAX_WATCH_RECORDINGS_QUEUED) return WatchAnswers.FULL
         if (storedInPastHour() >= MAX_WATCH_RECORDINGS_PER_HOUR) return WatchAnswers.TOO_MANY
         return null
+    }
+
+    private suspend fun located(): RoutedLocation? = try {
+        locate()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        logger.i { "a watch recording's location was not found: ${e::class.simpleName}" }
+        null
     }
 
     private suspend fun installedDigest(): String? = try {
@@ -295,7 +312,8 @@ val notebookWatchAppModule = module {
                 withContext(Dispatchers.IO) { queue.readQueue().count { it.fromWatch } } + queue.retainedWatchCount()
             },
             decode = { speex, frames -> decodeWatchSpeex(speex, frames) },
-            store = { wav, at -> get<CaptureIngest>().ingest(wav, "wav", capturedAtMillis = at, fromWatch = true) },
+            store = { wav, at, location -> get<CaptureIngest>().ingest(wav, "wav", capturedAtMillis = at, fromWatch = true, location = location) },
+            locate = { get<RecordingLocation>().current() },
             waitFor = {
                 storedRecordingWait(
                     textReady = {

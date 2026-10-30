@@ -3,17 +3,20 @@ package com.anopticlabs.gravel.notebook.sources
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.notebook.AppVisibility
 import com.anopticlabs.gravel.notebook.capture.RecordingBuffer
+import com.anopticlabs.gravel.notebook.capture.RecordingLocation
 import com.anopticlabs.gravel.notebook.pipeline.CaptureCoordinator
 import com.anopticlabs.gravel.notebook.pipeline.CaptureIngest
 import com.anopticlabs.gravel.notebook.pipeline.CaptureText
 import com.anopticlabs.gravel.notebook.pipeline.IngestResult
 import com.anopticlabs.gravel.notebook.pipeline.RecordingKeepAlive
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,15 +44,16 @@ sealed interface RecorderState {
 
 enum class RecorderNotice { TOO_SHORT, INTERRUPTED, LIMIT_REACHED, MIC_LOST, NOT_STARTED, NOT_SAVED }
 
-/** A recording ready to be queued, with the time and zone its microphone started in. */
-class FinishedRecording(val wav: ByteArray, val startedAtMillis: Long, val zone: TimeZone)
+/** A recording ready to be queued, with the time and zone its microphone started in, and where the phone was then. */
+class FinishedRecording(val wav: ByteArray, val startedAtMillis: Long, val zone: TimeZone, val location: RoutedLocation? = null)
 
 /**
  * Records the phone microphone into memory, one recording at a time, and hands a finished one to
  * the capture ingest. A recording ends on [stop], at the length limit, when the microphone is
  * lost, when the last resumed activity pauses or when no activity is left started; what was
  * recorded until then is handed to the ingest unless it is under a second. It is stamped with
- * the time and zone the microphone started in. The text model is loaded while the user speaks,
+ * the time and zone the microphone started in, and the location the phone finds while the user
+ * speaks (the lookup runs beside the recording, so it never delays the microphone). The text model is loaded while the user speaks,
  * unless a capture run is under way.
  *
  * The recording keep-alive is held from [record] until the ingest returns: a task swiped out of
@@ -64,6 +68,7 @@ class PhoneRecorder internal constructor(
     private val preload: suspend () -> Unit,
     private val processing: () -> Boolean,
     private val scope: CoroutineScope,
+    private val locate: suspend () -> RoutedLocation? = { null },
     private val clock: () -> Long = System::currentTimeMillis,
     private val zone: () -> TimeZone = TimeZone::currentSystemDefault,
 ) {
@@ -73,9 +78,10 @@ class PhoneRecorder internal constructor(
         keepAlive: RecordingKeepAlive,
         text: CaptureText,
         coordinator: CaptureCoordinator,
+        location: RecordingLocation,
     ) : this(
         microphone = microphone,
-        ingest = { ingest.ingest(it.wav, "wav", it.startedAtMillis, it.zone) },
+        ingest = { ingest.ingest(it.wav, "wav", it.startedAtMillis, it.zone, location = it.location) },
         keepAlive = keepAlive,
         preload = {
             text.checkReady()
@@ -83,6 +89,7 @@ class PhoneRecorder internal constructor(
         },
         processing = { coordinator.working.value },
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e -> logger.w(e) { "recording failed" } }),
+        locate = location::current,
     )
 
     private val lock = Any()
@@ -148,14 +155,16 @@ class PhoneRecorder internal constructor(
             }
             val startedAt = clock()
             val startZone = zone()
+            val location = scope.async { located() }
             // The drain frees the text model when memory is short; a load during its run would undo that.
             if (!processing()) scope.launch { preloadText() }
             val buffer = RecordingBuffer()
             val lost = capture.use { readUntilDone(it, buffer) }
             _state.value = RecorderState.Saving
+            val fix = if (buffer.isTooShort) null.also { location.cancel() } else location.await()
             _notice.value = when {
                 buffer.isTooShort -> if (stoppedByLeaving) RecorderNotice.INTERRUPTED else RecorderNotice.TOO_SHORT
-                save { FinishedRecording(buffer.toWav(), startedAt, startZone) } == IngestResult.LOST -> RecorderNotice.NOT_SAVED
+                save { FinishedRecording(buffer.toWav(), startedAt, startZone, fix) } == IngestResult.LOST -> RecorderNotice.NOT_SAVED
                 buffer.isFull -> RecorderNotice.LIMIT_REACHED
                 lost -> RecorderNotice.MIC_LOST
                 else -> null
@@ -197,6 +206,15 @@ class PhoneRecorder internal constructor(
             if ((_state.value as? RecorderState.Recording)?.seconds != seconds) _state.value = RecorderState.Recording(seconds)
         }
         return false
+    }
+
+    private suspend fun located(): RoutedLocation? = try {
+        locate()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        logger.i { "location not found: ${e::class.simpleName}" }
+        null
     }
 
     private suspend fun preloadText() {

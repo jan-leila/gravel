@@ -33,6 +33,8 @@ object NotebookSettingsText {
     const val WAIT_FOR_POWER =
         "Recordings over 30 seconds that this phone transcribes start only while it is plugged in. The Notebook tab offers Process now"
     const val QUICK_REMIND = "A voice reminder with no clear time is set to this default time from when it was processed"
+    const val RECORDING_LOCATION =
+        "Recordings note where they were made, so Text Routing can go by place and a router you allow can be told. Needs location access"
     const val TEXT_ROUTING = "Where the text of a recording goes: your notes, a reminder, another app or a server, by rules you set"
     const val AUTO_BACKUPS = "Back up your notes and reminders to a folder you choose, sealed with a recovery key you keep from setup"
     const val SET_UP_AGAIN =

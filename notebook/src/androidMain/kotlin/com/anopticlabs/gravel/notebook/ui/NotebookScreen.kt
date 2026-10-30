@@ -146,6 +146,8 @@ private fun NotebookContent(topBarParams: TopBarParams, links: HoldActions, reco
                         viewModel.record(
                             hasMic = { permissions.hasPermission(Permission.RecordAudio) },
                             requestMic = uiContext?.let { ctx -> { permissions.requestPermission(Permission.RecordAudio, ctx) } },
+                            hasLocation = { permissions.hasPermission(Permission.Location) },
+                            requestLocation = uiContext?.let { ctx -> { permissions.requestPermission(Permission.Location, ctx) } },
                         )
                     }
                 },

@@ -3,6 +3,7 @@ package com.anopticlabs.gravel.notebook.pipeline
 import com.anopticlabs.gravel.notebook.capture.CaptureStage
 import com.anopticlabs.gravel.notebook.notes.BuiltNote
 import com.anopticlabs.gravel.notebook.reminders.ReminderProposal
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import kotlin.time.Instant
@@ -29,7 +30,8 @@ data class CaptureSettings(
 /**
  * One queued recording to process. [capturedAt] is when the recording started, on the phone or on
  * the watch, never when it was queued or processed: it dates the note, stamps what is built from
- * the transcript, and is the "now" the reminder's time is read against. [folders] are the ones a note may be routed to.
+ * the transcript, and is the "now" the reminder's time is read against; [location] is where it was made, when known.
+ * [folders] are the ones a note may be routed to.
  * [phoneTried], [markPhoneTried], [long], [fromWatch], [serverTries], [serverTriedAtMillis] and [markServerTry] are what
  * the entry gives its [SpeechCapture].
  */
@@ -48,6 +50,7 @@ class CaptureRequest(
     val serverTries: Int = 0,
     val serverTriedAtMillis: Long? = null,
     val markServerTry: suspend (atMillis: Long) -> Boolean = { false },
+    val location: RoutedLocation? = null,
 )
 
 /** Turns a recording into what it asked for; failures as [CaptureProcessingException]. */

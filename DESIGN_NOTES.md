@@ -1730,7 +1730,11 @@ in the app's device suite:
   and the recording's start, one ISO-8601 instant with the offset of the
   zone it was recorded in (`RecordedAt`, rendered once from the queue
   entry's capture time, which the phone recorder and the watch handler
-  take at the recording's start), into a `RoutedText`, and `RouteWalk`
+  take at the recording's start) and, when the phone knew it, where the
+  recording was made (a `RecordingLocation` lookup runs beside every
+  recording, phone or watch, with the location permission the record
+  button asks for once; the fix is stored on the queue entry), into a
+  `RoutedText`, and `RouteWalk`
   follows the stored `RoutingConfig` from its entry router to the router
   that consumes it (every router is named by a `RouterRef`, an id and a
   namespace: Gravel's own kinds have none, and an app's router has the

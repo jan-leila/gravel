@@ -71,7 +71,7 @@ class OnDeviceCaptureBackend(
             return BuiltCapture.Completion(utterance)
         }
         val config = readRouting()
-        val routed = RoutedText.of(request.id, request.capturedAt, request.zone, transcript)
+        val routed = RoutedText.of(request.id, request.capturedAt, request.zone, transcript, request.location)
         return when (val terminal = RouteWalk.terminal(config, routed)) {
             is RouterConfig.Note -> buildNote(request, routed, onStage)
             is RouterConfig.Reminder -> buildReminder(request, routed, onStage)

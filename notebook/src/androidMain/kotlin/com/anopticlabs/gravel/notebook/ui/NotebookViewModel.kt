@@ -111,6 +111,8 @@ class NotebookViewModel(
     private val recovery: StorageRecoveryRunner,
     private val controls: ProcessingControls,
     private val failedCaptures: FailedCaptureActions,
+    private val locationAsked: () -> Boolean = { true },
+    private val markLocationAsked: () -> Unit = {},
     private val serverTryAgain: () -> Unit = {},
 ) : ViewModel() {
 
@@ -133,8 +135,15 @@ class NotebookViewModel(
     /**
      * Starts a recording once the microphone permission is granted, asking for it through
      * [requestMic] when [hasMic] says it is missing; [requestMic] is null without a window to ask from.
+     * The location permission is asked for the same way, once ever, and the recording starts whatever
+     * the answer: a recording without a location is still a recording.
      */
-    suspend fun record(hasMic: suspend () -> Boolean, requestMic: (suspend () -> PermissionResult)?) {
+    suspend fun record(
+        hasMic: suspend () -> Boolean,
+        requestMic: (suspend () -> PermissionResult)?,
+        hasLocation: suspend () -> Boolean = { true },
+        requestLocation: (suspend () -> PermissionResult)? = null,
+    ) {
         if (askingForMic) return
         micProblem = null
         if (!hasMic()) {
@@ -158,6 +167,15 @@ class NotebookViewModel(
                     micProblem = MicProblem.DENIED
                     return
                 }
+            }
+        }
+        if (requestLocation != null && !locationAsked() && !hasLocation()) {
+            markLocationAsked()
+            askingForMic = true
+            try {
+                requestLocation()
+            } finally {
+                askingForMic = false
             }
         }
         recorder.record()

@@ -1,5 +1,6 @@
 package com.anopticlabs.gravel.notebook.capture
 
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.Serializable
 
@@ -9,6 +10,7 @@ import kotlinx.serialization.Serializable
  * [durationMillis] its length when known, see [isLong]; [failure] the code of why it was flagged, see [failureReason];
  * [phoneTried] that the phone's speech step already failed it under a phone-then-server route; [serverTries] how
  * often the server could not be reached for it under a server-then-phone route, the last at [serverTriedAtMillis].
+ * [latitude], [longitude] and [accuracyMeters] are where it was made when the phone knew, see [location].
  */
 @Serializable
 data class QueuedCapture(
@@ -24,7 +26,14 @@ data class QueuedCapture(
     val phoneTried: Boolean = false,
     val serverTries: Int = 0,
     val serverTriedAtMillis: Long? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val accuracyMeters: Float? = null,
 )
+
+/** The location an entry carries, or null when it has none. */
+val QueuedCapture.location: RoutedLocation?
+    get() = if (latitude != null && longitude != null) RoutedLocation(latitude, longitude, accuracyMeters) else null
 
 const val MAX_ZONE_ID_CHARS = 64
 

@@ -6,6 +6,7 @@ import com.anopticlabs.gravel.notebook.llm.PROMPT_CONTENT_BUDGET
 import com.anopticlabs.gravel.notebook.llm.Prompts
 import com.anopticlabs.gravel.notebook.reminders.ReminderProposal
 import com.anopticlabs.gravel.notebook.reminders.ReminderTimeStatus
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import com.anopticlabs.gravel.notebook.routers.RouterRef
@@ -96,16 +97,18 @@ class OnDeviceCaptureBackendTest {
         id: String = "c1",
         phoneTried: Boolean = false,
         markPhoneTried: suspend () -> Unit = {},
-    ) = CaptureRequest(byteArrayOf(9), capturedAt, berlin, folders, folderTags, settings, id, phoneTried, markPhoneTried)
+        location: RoutedLocation? = null,
+    ) = CaptureRequest(byteArrayOf(9), capturedAt, berlin, folders, folderTags, settings, id, phoneTried, markPhoneTried, location = location)
 
     private suspend fun run(
         transcript: String,
         text: FakeText = FakeText(),
         settings: CaptureSettings = CaptureSettings(),
         stages: MutableList<CaptureStage> = mutableListOf(),
+        location: RoutedLocation? = null,
     ): BuiltCapture {
         val speech = FakeSpeech(transcript)
-        val built = OnDeviceCaptureBackend(decoder, speech, text, plenty, routing = { graph }).process(request(settings)) { stages += it }
+        val built = OnDeviceCaptureBackend(decoder, speech, text, plenty, routing = { graph }).process(request(settings, location = location)) { stages += it }
         assertTrue(speech.heard.contentEquals(decoded), "the speech engine did not get the decoded audio")
         return built
     }
@@ -359,17 +362,19 @@ class OnDeviceCaptureBackendTest {
         assertEquals(Prompts.REMINDER_MESSAGE_SYSTEM, text.generations.single().system)
     }
 
-    /** What the router API promises: the transcript whole, the recording's start, and no text model run. */
+    /** What the router API promises: the transcript whole, the recording's start and place, and no text model run. */
     @Test
-    fun anAppOrNetworkRouterGetsTheTranscriptWholeWithTheRecordingTimeAndNoModelRuns() = runBlocking<Unit> {
+    fun anAppOrNetworkRouterGetsTheTranscriptWholeWithTheRecordingTimeAndPlaceAndNoModelRuns() = runBlocking<Unit> {
+        val here = RoutedLocation(52.52, 13.405, 30f)
         for (router in listOf(tasks, hook)) {
             graph = RoutingConfig(entry = router.ref, routers = listOf(router))
             val text = FakeText()
             val stages = mutableListOf<CaptureStage>()
             val transcript = "  remind me: the whole text, [noise] as heard  "
-            val built = assertIs<BuiltCapture.Forward>(run(transcript, text, stages = stages))
+            val built = assertIs<BuiltCapture.Forward>(run(transcript, text, stages = stages, location = here))
             assertEquals(router, built.router)
-            assertEquals(RoutedText("c1", "2026-09-22T17:00:00+02:00", transcript), built.text)
+            assertEquals(RoutedText("c1", "2026-09-22T17:00:00+02:00", transcript, here), built.text)
+            assertEquals(null, assertIs<BuiltCapture.Forward>(run(transcript)).text.location)
             assertEquals(listOf(CaptureStage.TRANSCRIBING, CaptureStage.FORWARDING), stages)
             assertEquals(0, text.prepared)
             assertTrue(text.generations.isEmpty())

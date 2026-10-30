@@ -31,6 +31,7 @@ import com.anopticlabs.gravel.notebook.backup.WorkAutoBackupScheduler
 import com.anopticlabs.gravel.notebook.backup.BackupStaging
 import com.anopticlabs.gravel.notebook.backup.FileRunRecord
 import com.anopticlabs.gravel.notebook.backup.NotebookBackup
+import com.anopticlabs.gravel.notebook.capture.RecordingLocation
 import com.anopticlabs.gravel.notebook.pipeline.CaptureAudioDecoder
 import com.anopticlabs.gravel.notebook.pipeline.AndroidCaptureKeepAlive
 import com.anopticlabs.gravel.notebook.pipeline.CaptureBackend
@@ -71,6 +72,7 @@ import com.anopticlabs.gravel.notebook.routers.RoutingConfigStore
 import com.anopticlabs.gravel.notebook.routers.TextDeliverer
 import com.anopticlabs.gravel.notebook.sources.AudioRecordMicrophone
 import com.anopticlabs.gravel.notebook.sources.Microphone
+import com.anopticlabs.gravel.notebook.sources.LocationManagerRecordingLocation
 import com.anopticlabs.gravel.notebook.sources.PhoneRecorder
 import com.anopticlabs.gravel.notebook.sources.TypedNotes
 import com.anopticlabs.gravel.notebook.reminders.ReminderSettings
@@ -260,7 +262,8 @@ val notebookModule = module {
     single { CaptureCoordinator(drain = get(), housekeeping = get(), rows = get(), keepAlive = get()) }
     single { CaptureIngest(get(), captureQueued = { get<CaptureCoordinator>().captureQueued() }, entryQueued = { get<ProcessingControls>().captureQueued(it) }) }
     single<Microphone> { AudioRecordMicrophone(androidContext()) }
-    single { PhoneRecorder(microphone = get(), ingest = get(), keepAlive = get(), text = get(), coordinator = get()) }
+    single<RecordingLocation> { LocationManagerRecordingLocation(androidContext()) }
+    single { PhoneRecorder(microphone = get(), ingest = get(), keepAlive = get(), text = get(), coordinator = get(), location = get()) }
     single { TypedNotes(get()) }
     single { NotebookNavigator() }
     single<PhoneCalendar> { AndroidPhoneCalendar(androidContext()) }
@@ -274,6 +277,8 @@ val notebookModule = module {
     viewModel {
         NotebookViewModel(
             get(), get(), get(), get(), get(), get(), get<VoiceCompletionStore>().revision, get<CaptureCoordinator>()::request, get(), get(), get(),
+            locationAsked = { get<NotebookPreferences>().locationAsked },
+            markLocationAsked = { get<NotebookPreferences>().markLocationAsked() },
             serverTryAgain = {
                 get<ServerCheck>().tryAgain()
                 get<CaptureCoordinator>().requestAgain()

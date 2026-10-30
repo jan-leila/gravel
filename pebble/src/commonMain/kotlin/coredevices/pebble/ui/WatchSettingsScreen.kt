@@ -146,6 +146,7 @@ import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigHolder
 import coredevices.util.Permission
 import coredevices.util.PermissionRequester
+import coredevices.util.PermissionResult
 import coredevices.util.granted
 import coredevices.util.emailOrNull
 import coredevices.util.models.CactusSTTMode
@@ -618,6 +619,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
         notebookTab?.PhoneCalendarsDialog(onDismiss = { showPhoneCalendarsDialog = false })
     }
     val calendarAccess by permissionRequester.granted(Permission.Calendar).collectAsState(false)
+    val locationAccess by permissionRequester.granted(Permission.Location).collectAsState(false)
     fun showPhoneCalendarInNotebook(pickedNone: Boolean) {
         notebookTab?.setPhoneCalendarShown(true)
         if (pickedNone) showPhoneCalendarsDialog = true
@@ -683,6 +685,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
             notebookSettings,
             notebookAutoBackup,
             calendarAccess,
+            locationAccess,
             textModelFacts,
             notebookGuideDone,
             notebookWatchAppItems,
@@ -948,6 +951,24 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                             action = { nav.navigateTo(PebbleNavBarRoutes.NotebookRoutingRoute) },
                         )
                     }
+                },
+                notebookSettings?.let {
+                    basicSettingsActionItem(
+                        title = "Recording Location",
+                        description = NotebookSettingsText.RECORDING_LOCATION + if (locationAccess) ": allowed" else ": not allowed, tap to allow",
+                        topLevelType = TopLevelType.Phone,
+                        section = Section.Notebook,
+                        keywords = "notebook recording location place gps where",
+                        action = {
+                            uiContext?.let { ctx ->
+                                scope.launch {
+                                    if (permissionRequester.requestPermission(Permission.Location, ctx) == PermissionResult.RejectedForever) {
+                                        permissionRequester.openPermissionsScreen(ctx)
+                                    }
+                                }
+                            }
+                        },
+                    )
                 },
                 notebookSettings?.let { notebook ->
                     basicSettingsToggleItem(
