@@ -414,6 +414,7 @@ private fun RouterEditor(
     var url by remember(router.ref) { mutableStateOf((router as? RouterConfig.Network)?.url ?: "https://") }
     var token by remember(router.ref) { mutableStateOf((router as? RouterConfig.Network)?.bearerToken.orEmpty()) }
     var shares by remember(router.ref) { mutableStateOf(router.shares ?: Shares()) }
+    var confirm by remember(router.ref) { mutableStateOf(router.confirm) }
     var problem by remember(router.ref) { mutableStateOf<String?>(null) }
     val others = config.routers.filter { it.ref != router.ref }
     val appKindName = stringResource(R.string.notebook_routing_kind_app)
@@ -421,11 +422,11 @@ private fun RouterEditor(
     fun built(): RouterConfig {
         val trimmed = name.trim()
         return when (router) {
-            is RouterConfig.Note -> RouterConfig.Note(router.id, trimmed, confirm = router.confirm)
-            is RouterConfig.Reminder -> RouterConfig.Reminder(router.id, trimmed, confirm = router.confirm)
+            is RouterConfig.Note -> RouterConfig.Note(router.id, trimmed, confirm = confirm)
+            is RouterConfig.Reminder -> RouterConfig.Reminder(router.id, trimmed, confirm = confirm)
             is RouterConfig.Switch -> RouterConfig.Switch(router.id, trimmed, rules, otherwise)
-            is RouterConfig.App -> picked?.let { RouterConfig.App(it.id, trimmed, it.packageName, it.receiverClass, it.namespace, it.needs, shares, router.confirm) } ?: router.copy(name = trimmed, shares = shares)
-            is RouterConfig.Network -> RouterConfig.Network(router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares, confirm = router.confirm)
+            is RouterConfig.App -> picked?.let { RouterConfig.App(it.id, trimmed, it.packageName, it.receiverClass, it.namespace, it.needs, shares, confirm) } ?: router.copy(name = trimmed, shares = shares, confirm = confirm)
+            is RouterConfig.Network -> RouterConfig.Network(router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares, confirm = confirm)
         }
     }
     fun take(choice: InstalledRouter) {
@@ -462,6 +463,15 @@ private fun RouterEditor(
                         is RouterConfig.Network -> {
                             NetworkFields(url, token, onUrl = { url = it }, onToken = { token = it })
                             SharesFields(needed = Need.entries.toSet(), shares, onShares = { shares = it })
+                        }
+                    }
+                    if (router !is RouterConfig.Switch) {
+                        Row(Modifier.fillMaxWidth().clickable { confirm = !confirm }, verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = confirm, onCheckedChange = { confirm = it })
+                            Column(Modifier.padding(start = 4.dp)) {
+                                Text(stringResource(R.string.notebook_routing_confirm))
+                                Text(stringResource(R.string.notebook_routing_confirm_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                     problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }

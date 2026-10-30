@@ -132,8 +132,11 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   to a reminder, to another app that declares a router
   ([ROUTER_API.md](ROUTER_API.md); only apps signed by a certificate you
   trust, a list that is yours to edit, export and import with the
-  routing), or to an https:// address of yours. Every note and
-  reminder made from a recording carries the time the recording started.
+  routing), or to an https:// address of yours. A router can be set to
+  ask you first, and what a recording carries beyond its text (where and
+  when it was made) leaves the phone only for routers you allow, each
+  one asked about or decided once. Every note and reminder made from a
+  recording carries the time the recording started.
   Notes, reminders and waiting recordings are stored as encrypted files
   whose keys are sealed by a key in the phone's keystore;
   `KNOWN_ISSUES.md` records gaps of that storage. A reminder that goes

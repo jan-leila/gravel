@@ -109,6 +109,8 @@
     <string name="notebook_routing_refresh">Refresh</string>
     <string name="notebook_routing_trusted">Trusted</string>
     <string name="notebook_routing_not_trusted">Not trusted</string>
+    <string name="notebook_routing_confirm">Ask me before the text goes here</string>
+    <string name="notebook_routing_confirm_hint">The recording waits in the Notebook until you send or dismiss it</string>
     <string name="notebook_routing_shares">What goes with the text</string>
     <string name="notebook_routing_shares_hint">Only what you allow leaves the phone. Ask pauses a recording routed here until you answer.</string>
     <string name="notebook_routing_need_location">Your location</string>

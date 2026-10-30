@@ -182,6 +182,11 @@ after the acknowledgement arrives, and an app end or a storage failure
 between the two makes it deliver again on the next run. `capture_id` is the
 key to recognize that with.
 
+A delivery can also come long after the recording: a router the user set to
+ask first, or a question about a part your router needs, parks the
+recording in the Notebook until the user answers, which may be days later.
+`recorded_at`, when you get it, is still the moment the recording started.
+
 ## What Gravel does not do
 
 - It does not take text back. A router that wants to hand text on to

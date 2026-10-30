@@ -1780,6 +1780,29 @@ Gravel; encrypting it would need a password flow of its own, which the
 manual backup already has for the notes and could be extended to this file
 later.
 
+## A rebuilt queue entry loses the transcript it was waiting with
+
+**Status: accepted; the recording is kept and asked about again.**
+
+A recording parked by the routing (a router set to ask first, or a
+question about what it may receive) keeps its transcript on its queue
+entry. A queue entry rebuilt from the recording alone (a recording salvaged
+from `pending_captures/`, or a queue file restored over) has no transcript,
+so the recording is transcribed again and the user asked again. The
+transcript is the one thing that could be rebuilt from the recording, and
+transcribing it again is exactly what happens.
+
+## The notification for recordings waiting on you is not re-posted after a reboot
+
+**Status: accepted; the rows are on screen whenever the Notebook is.**
+
+The notice that recordings are waiting for an answer is posted when a
+recording is parked while the app is off screen, and cancelled when the
+Notebook's capture area is shown. A reboot clears every notification and
+nothing posts this one again until another recording is parked; the
+recordings themselves wait in the Notebook, where their rows are. The
+completed-tasks notice has the same gap.
+
 ## An app router gets no answer back
 
 **Status: accepted; the API is one-way.**

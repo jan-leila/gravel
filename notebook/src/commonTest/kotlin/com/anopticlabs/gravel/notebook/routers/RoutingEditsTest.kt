@@ -75,6 +75,8 @@ class RoutingEditsTest {
         val wanting = app.copy(needs = setOf(Need.LOCATION), shares = Shares(location = Grant.ALWAYS, recordedAt = Grant.ALWAYS))
         assertEquals("Sends to com.example.tasks, shares your location", RoutingEdits.summary(wanting, config), "a grant for a part the app never asked for is not mentioned")
         assertEquals("Note", RoutingEdits.kindName(note))
+        assertEquals("Writes the text as a note, asks you first", RoutingEdits.summary(note.copy(confirm = true), config))
+        assertEquals("Posts to hooks.example.test:8443, shares the recording time, asks you first", RoutingEdits.summary(hook.copy(shares = Shares(Grant.NEVER, Grant.ALWAYS), confirm = true), config))
     }
 
     @Test

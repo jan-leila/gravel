@@ -63,8 +63,10 @@ object RoutingEdits {
     /** The id prefix a new router of the same kind as [router] gets. */
     fun idPrefix(router: RouterConfig): String = kindName(router).lowercase()
 
-    /** One line under a router's name: what it does with the text. */
-    fun summary(router: RouterConfig, config: RoutingConfig): String = when (router) {
+    /** One line under a router's name: what it does with the text, and that it asks first when it does. */
+    fun summary(router: RouterConfig, config: RoutingConfig): String = describe(router, config) + if (router.confirm) ", asks you first" else ""
+
+    private fun describe(router: RouterConfig, config: RoutingConfig): String = when (router) {
         is RouterConfig.Note -> "Writes the text as a note"
         is RouterConfig.Reminder -> "Sets a reminder from the text"
         is RouterConfig.Switch -> {

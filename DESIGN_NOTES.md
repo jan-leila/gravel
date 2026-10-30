@@ -1801,8 +1801,23 @@ in the app's device suite:
     Access Framework like a manual backup); an import replaces both only
     after the whole file validated. Gravel exports nothing for this; `NotebookManifestTest` pins
     the permission, the query and the absence of exported components.
-  - A network router posts the payload (`NetworkPayload`: the same four
-    fields) through a `TextPoster` the app binds to a Ktor client of its
+  - A router can wait on the user: one set to ask first (`confirm`), or
+    one with an Ask grant for a part it needs. The walk then ends in a
+    `BuiltCapture.ToConfirm` and the drain parks the capture on its queue
+    entry (`AwaitingUser`: the transcript as routed, the router's ref and
+    name, the open questions, the one-time grants), giving the attempt
+    back in the same write, and leaves it out of every pass until
+    `CaptureDrain.requestResume` names it; the resume is served inside a
+    pass, before the next capture, through `CaptureBackend.resume`, which
+    reads the router as it is now and builds from the kept transcript
+    without a speech step. The rows show the parked capture with its
+    questions (`UserAnswers` records an answer, makes it the router's
+    grant when asked to, and resumes on the last one), Send, Dismiss and
+    Re-record; the rows are rebuilt from the queue on every status read,
+    and a count-only notification (`notebook_awaiting`) says recordings
+    wait while the app is off screen.
+  - A network router posts the payload (`NetworkPayload`: the same
+    fields, the shared parts only) through a `TextPoster` the app binds to a Ktor client of its
     own (`KtorTextPoster`), answered by the status alone: a 2xx is taken,
     a 4xx other than 408 and 429 flags the capture, no network or a server
     out of reach makes it wait for the network, and the rest is tried
