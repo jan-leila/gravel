@@ -6,6 +6,8 @@ import com.anopticlabs.gravel.notebook.capture.ProcessingRules
 import com.anopticlabs.gravel.notebook.capture.failedCaptures
 import com.anopticlabs.gravel.notebook.capture.isLong
 import com.anopticlabs.gravel.notebook.capture.mayStart
+import com.anopticlabs.gravel.notebook.capture.QueuedCapture
+import com.anopticlabs.gravel.notebook.capture.awaitsUser
 import com.anopticlabs.gravel.notebook.capture.needsReview
 import com.anopticlabs.gravel.notebook.capture.waitsForPower
 import com.anopticlabs.gravel.notebook.pipeline.CapturePublisher
@@ -29,9 +31,10 @@ internal fun storageProblemOf(e: Throwable): StorageProblem = when {
 }
 
 /**
- * What the capture area shows besides the live rows; [failed] are the flagged captures the drain is not running; [trouble] set means only [retained] was read, [automaticBackupAt] is
- * read only with damage. [waitingForPower] are the long captures the charger rule holds, which [waiting] leaves out;
- * [longToRun] is whether a long one may start or is under way.
+ * What the capture area shows besides the live rows; [failed] are the flagged captures the drain is not running,
+ * [awaiting] the captures parked for the user that it is not serving; [trouble] set means only [retained] was read,
+ * [automaticBackupAt] is read only with damage. [waitingForPower] are the long captures the charger rule holds, which
+ * [waiting] leaves out; [longToRun] is whether a long one may start or is under way.
  */
 data class NotebookStatus(
     val waiting: Int = 0,
@@ -42,6 +45,7 @@ data class NotebookStatus(
     val automaticBackupAt: Long? = null,
     val waitingForPower: Set<String> = emptySet(),
     val longToRun: Boolean = false,
+    val awaiting: List<QueuedCapture> = emptyList(),
 )
 
 class NotebookStatusReader(
@@ -53,8 +57,9 @@ class NotebookStatusReader(
 ) {
     /**
      * Strict reads of every store part ([NotebookRecovery.diagnose]), the queue and the parked
-     * claims (an empty list clears their notification, see [CapturePublisher.readParked]), and a
-     * count of the recordings kept for a later attempt to queue them. [inFlight] are the captures
+     * claims (an empty list clears their notification, see [CapturePublisher.readParked]), the
+     * captures waiting on the user (whose notification a read clears: a read happens with the
+     * rows on screen), and a count of the recordings kept for a later attempt to queue them. [inFlight] are the captures
      * a drain is working on, counted as neither waiting nor flagged.
      */
     suspend fun read(inFlight: Set<String>): NotebookStatus = withContext(Dispatchers.IO) {
@@ -62,7 +67,8 @@ class NotebookStatusReader(
             recovery.diagnose()?.let { return@withContext troubled(it, null) }
             val queued = queue.readQueue(strict = true)
             val parked = publisher.readParked()
-            val pending = queued.filterNot { it.needsReview }
+            publisher.awaitingShown()
+            val pending = queued.filterNot { it.needsReview || it.awaitsUser }
             val now = rules()
             val forPower = pending.filter { it.id !in inFlight && now.waitsForPower(it) }.mapTo(HashSet()) { it.id }
             NotebookStatus(
@@ -72,6 +78,7 @@ class NotebookStatusReader(
                 retained = queue.retainedCount(),
                 waitingForPower = forPower,
                 longToRun = pending.any { it.isLong && (it.id in inFlight || now.mayStart(it)) },
+                awaiting = queued.filter { it.awaitsUser && it.id !in inFlight },
             )
         } catch (e: CancellationException) {
             throw e

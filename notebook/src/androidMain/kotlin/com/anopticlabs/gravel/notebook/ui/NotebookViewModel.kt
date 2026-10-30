@@ -53,7 +53,7 @@ enum class NotebookSection { NOTES, REMINDERS, CALENDAR }
  */
 internal fun sectionFor(link: NotebookLink, current: NotebookSection): NotebookSection = when (link) {
     is NotebookLink.Calendar -> NotebookSection.CALENDAR
-    NotebookLink.Reminders, NotebookLink.Completions, is NotebookLink.Edit, is NotebookLink.Occurrence -> remindersFrom(current)
+    NotebookLink.Reminders, NotebookLink.Completions, NotebookLink.Awaiting, is NotebookLink.Edit, is NotebookLink.Occurrence -> remindersFrom(current)
     NotebookLink.BackupSettings, NotebookLink.KeyCheck -> current
 }
 
@@ -355,7 +355,14 @@ class NotebookViewModel(
     suspend fun watch() = coroutineScope {
         requestDrain()
         launch {
-            navigator.pending.filterNotNull().collect { select(sectionFor(it, section)) }
+            navigator.pending.filterNotNull().collect { link ->
+                select(sectionFor(link, section))
+                // The rows are the destination: nothing opens, so the tab's ViewModel takes the link itself.
+                if (link == NotebookLink.Awaiting) {
+                    navigator.consume(link)
+                    refresh()
+                }
+            }
         }
         merge(
             rows.items.map(::statusKey).distinctUntilChanged(),
@@ -371,6 +378,8 @@ class NotebookViewModel(
         val inFlight = rows.items.value.filter { it.inFlight }.mapTo(HashSet()) { it.id }
         _status.value = statusReader.read(inFlight).also {
             recovery.seen(it.trouble)
+            // A troubled read saw no queue, so it has nothing to say about the rows.
+            if (it.trouble == null) rows.syncAwaiting(it.awaiting)
             if (it.failed.isEmpty() && failedNotice == null && it.trouble != StorageTrouble.Unreadable) closeFailed()
         }
     }

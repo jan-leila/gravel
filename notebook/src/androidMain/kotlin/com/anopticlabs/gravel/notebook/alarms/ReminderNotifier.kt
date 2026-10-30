@@ -15,6 +15,7 @@ import com.anopticlabs.gravel.notebook.reminders.ReminderEvent
 import com.anopticlabs.gravel.notebook.reminders.ReminderEventKey
 import com.anopticlabs.gravel.notebook.reminders.ReminderItem
 import com.anopticlabs.gravel.notebook.reminders.missedWhileOffNotice
+import com.anopticlabs.gravel.notebook.reminders.awaitingNotificationText
 import com.anopticlabs.gravel.notebook.reminders.voiceCompletionNotificationText
 import com.anopticlabs.gravel.notebook.ui.ReminderTimes
 
@@ -43,6 +44,10 @@ interface ReminderNotifier {
     fun postedSetNotices(): List<PostedSetNotice>
     fun postCompletionsToReview(count: Int)
     fun cancelCompletionsToReview()
+
+    /** One notice for the recordings parked by the routing until the user answers; its tap opens the Notebook. */
+    fun postAwaitingToReview(count: Int)
+    fun cancelAwaitingToReview()
 }
 
 /** A set notice showing for reminder [reminderId]; [toCheck] when it is the one asking to check the time. */
@@ -176,6 +181,22 @@ class AndroidReminderNotifier(
 
     override fun cancelCompletionsToReview() = manager.cancel(TAG_COMPLETIONS, COMPLETIONS_ID)
 
+    override fun postAwaitingToReview(count: Int) {
+        ensureChannels()
+        val notification = NotificationCompat.Builder(context, CHANNEL_AWAITING)
+            .setSmallIcon(ICON)
+            .setContentTitle(awaitingNotificationText(count))
+            .setContentText("Tap to answer.")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(open(ReminderIntents.ACTION_OPEN_AWAITING, AWAITING_ID))
+            .setAutoCancel(false)
+            .build()
+        post(TAG_AWAITING, AWAITING_ID, CHANNEL_AWAITING, notification)
+    }
+
+    override fun cancelAwaitingToReview() = manager.cancel(TAG_AWAITING, AWAITING_ID)
+
     private fun post(tag: String, id: Int, channelId: String, notification: Notification): Boolean {
         if (!manager.areNotificationsEnabled()) return false
         val channel = manager.getNotificationChannel(channelId)
@@ -193,6 +214,7 @@ class AndroidReminderNotifier(
         manager.createNotificationChannel(NotificationChannel(CHANNEL_COMPLETIONS, "Notebook completed tasks", NotificationManager.IMPORTANCE_DEFAULT))
         manager.createNotificationChannel(NotificationChannel(CHANNEL_TIME_CHECK, "Notebook reminders to check", NotificationManager.IMPORTANCE_DEFAULT))
         manager.createNotificationChannel(NotificationChannel(CHANNEL_SET, "Notebook reminders set", NotificationManager.IMPORTANCE_DEFAULT))
+        manager.createNotificationChannel(NotificationChannel(CHANNEL_AWAITING, "Notebook recordings waiting for you", NotificationManager.IMPORTANCE_DEFAULT))
     }
 
     private fun button(title: String, intent: PendingIntent, showsUi: Boolean) =
@@ -226,14 +248,17 @@ class AndroidReminderNotifier(
         const val CHANNEL_COMPLETIONS = "notebook_voice_completions"
         const val CHANNEL_TIME_CHECK = "notebook_reminder_time_check"
         const val CHANNEL_SET = "notebook_reminder_set"
+        const val CHANNEL_AWAITING = "notebook_awaiting"
         const val TAG_REMINDER_PREFIX = "notebook_reminder:"
         const val TAG_SUMMARY = "notebook_reminder_summary:"
         const val TAG_COMPLETIONS = "notebook_completions"
+        const val TAG_AWAITING = "notebook_awaiting"
         const val TAG_SET_NOTICE = "notebook_set_notice"
 
         /** Above every reminder id, which stays at or below [com.anopticlabs.gravel.notebook.storage.ReminderFile.MAX_REMINDER_ID]. */
         const val MISSED_SUMMARY_ID = Int.MAX_VALUE
         const val COMPLETIONS_ID = 1
+        const val AWAITING_ID = 2
         private val ICON = coredevices.util.R.drawable.ic_notification
 
         fun fireTag(key: ReminderEventKey): String = TAG_REMINDER_PREFIX + key.originalFireMillis

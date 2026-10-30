@@ -503,8 +503,15 @@ class CaptureDrain(
         val awaiting = AwaitingUser(
             built.router.ref, built.router.name, built.text.text, built.text.recordedAt, built.router.confirm, built.text.location, built.asks,
         )
-        withContext(NonCancellable) { queue.update { awaitUser(it, entry.id, awaiting, entry.attempts) } }
+        val parked = withContext(NonCancellable) { queue.update { awaitUser(it, entry.id, awaiting, entry.attempts) } }
         rowBack(entry.copy(awaiting = awaiting))
+        try {
+            publisher.awaitingParked(parked.count { it.awaitsUser })
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.w { "awaiting notice not posted: ${e::class.simpleName}" }
+        }
         logger.i { "capture ${entry.id} waits on the user for ${built.router.name}" }
         return Outcome.Awaiting
     }

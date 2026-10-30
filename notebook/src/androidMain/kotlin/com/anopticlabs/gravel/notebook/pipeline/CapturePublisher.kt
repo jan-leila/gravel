@@ -55,6 +55,9 @@ class CapturePublisher(
     // Orders a park's save and notice against readParked's read and cancel.
     private val completionNotice = Mutex()
 
+    // Orders a parked capture's notice against the status read that cancels it.
+    private val awaitingNotice = Mutex()
+
     /** Strict reads of every store file a publish writes, so one that cannot be used is found before any engine runs. */
     fun checkStores() {
         notes.readMetadata(strict = true)
@@ -86,6 +89,19 @@ class CapturePublisher(
             }
         }
         return PublishedCapture.Parked(completion.completionId)
+    }
+
+    /** [count] recordings now wait on the user: says so with a notification while the app is off screen, best effort. */
+    suspend fun awaitingParked(count: Int) = awaitingNotice.withLock {
+        bestEffort("awaiting notice") {
+            if (shouldPostVoiceCompletionNotification(appBackgrounded(), count)) notifier.postAwaitingToReview(count)
+        }
+    }
+
+    /** The waiting recordings are on screen, so their notification goes. */
+    suspend fun awaitingShown() = awaitingNotice.withLock {
+        currentCoroutineContext().ensureActive()
+        notifier.cancelAwaitingToReview()
     }
 
     /**

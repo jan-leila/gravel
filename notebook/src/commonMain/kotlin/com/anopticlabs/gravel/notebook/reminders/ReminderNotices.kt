@@ -7,6 +7,10 @@ fun shouldPostVoiceCompletionNotification(appBackgrounded: Boolean, pendingCount
 fun voiceCompletionNotificationText(count: Int): String =
     if (count <= 1) "1 completed task to review" else "$count completed tasks to review"
 
+/** The recordings waiting on the user, as the lock screen may show them: a count, never a word of a transcript. */
+fun awaitingNotificationText(count: Int): String =
+    if (count <= 1) "1 recording waiting for you" else "$count recordings waiting for you"
+
 /** The notice for occurrences MISSED before they could be shown: one line per reminder, oldest first. */
 data class MissedWhileOffNotice(val title: String, val lines: List<String>)
 

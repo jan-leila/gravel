@@ -283,6 +283,26 @@ class CapturePublisherTest {
     }
 
     @Test
+    fun theAwaitingNoticePostsOnlyOffScreenWithRecordingsBehindItAndGoesWhenTheyAreShown() = runBlocking<Unit> {
+        publisher().awaitingParked(2)
+        assertEquals(2, notifier.awaitingCount)
+        publisher().awaitingShown()
+        assertNull(notifier.awaitingCount)
+        publisher().awaitingParked(0)
+        assertNull(notifier.awaitingCount)
+        backgrounded = false
+        publisher().awaitingParked(1)
+        assertNull(notifier.awaitingCount)
+    }
+
+    @Test
+    fun aCaptureWaitingOnTheUserIsNeverPublished() = runBlocking<Unit> {
+        val hook = RouterConfig.Network("hook", "Hook", "https://example.test/notes")
+        val parked = BuiltCapture.ToConfirm(hook, RoutedText("c1", "2026-09-22T17:00:00+02:00", "hello"), emptySet())
+        assertFailsWith<IllegalArgumentException> { publisher().publish(parked, now, emptyList()) }
+    }
+
+    @Test
     fun aClaimTheStoreCannotKeepFailsThePublish() = runBlocking<Unit> {
         crypto.failSealWhenAadContains = VoiceCompletionStore.FILE_NAME
         assertFailsWith<TransientCryptoException> { publisher().publish(BuiltCapture.Completion("one"), now, emptyList()) }

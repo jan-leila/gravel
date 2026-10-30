@@ -5,6 +5,10 @@ import com.anopticlabs.gravel.notebook.alarms.FakeScheduler
 import com.anopticlabs.gravel.notebook.alarms.FakeSettings
 import com.anopticlabs.gravel.notebook.alarms.ReminderAlarms
 import com.anopticlabs.gravel.notebook.capture.CaptureQueueItem
+import com.anopticlabs.gravel.notebook.routers.RouterRef
+import com.anopticlabs.gravel.notebook.routers.Need
+import com.anopticlabs.gravel.notebook.capture.answerUser
+import com.anopticlabs.gravel.notebook.capture.AwaitingUser
 import com.anopticlabs.gravel.notebook.capture.CaptureStage
 import com.anopticlabs.gravel.notebook.capture.MAX_QUEUE_ATTEMPTS
 import com.anopticlabs.gravel.notebook.capture.ProcessingPause
@@ -204,6 +208,36 @@ class NotebookViewModelTest {
         navigator.open(NotebookLink.Completions)
         withTimeout(5.seconds) { while (viewModel.section != NotebookSection.REMINDERS) delay(10) }
         assertEquals(NotebookLink.Completions, navigator.pending.value)
+        watching.cancelAndJoin()
+    }
+
+    @Test
+    fun anAwaitingLinkOpensTheRemindersSectionAndIsTakenByThisScreen() = runBlocking<Unit> {
+        val watching = launch(Dispatchers.Default) { viewModel.watch() }
+        navigator.open(NotebookLink.Awaiting)
+        withTimeout(5.seconds) { while (viewModel.section != NotebookSection.REMINDERS || navigator.pending.value != null) delay(10) }
+        watching.cancelAndJoin()
+    }
+
+    /** The queue is the record: a parked capture gets its row from the first status read, so it is there after the process died. */
+    @Test
+    fun aParkedCaptureHasItsRowAfterARestartAndLosesItWhenTheQueueDoes() = runBlocking<Unit> {
+        val waiting = AwaitingUser(RouterRef.gravel("hook"), "Hook", "buy milk", "2026-09-22T17:00:00+02:00", confirm = true, asks = setOf(Need.LOCATION))
+        queue.enqueue(QueuedCapture("parked", "parked.wav", now, awaiting = waiting), byteArrayOf(1))
+        val watching = launch(Dispatchers.Default) { viewModel.watch() }
+        withTimeout(5.seconds) { while (viewModel.items.value.none { it.id == "parked" }) delay(10) }
+        val row = viewModel.items.value.single { it.id == "parked" }
+        assertEquals(CaptureQueueItem.Status.AWAITING_USER, row.status)
+        assertEquals("buy milk", row.transcript)
+        assertEquals("Hook", row.target)
+        assertEquals(setOf(Need.LOCATION), row.asks)
+        assertTrue(row.confirm)
+        queue.update { q -> answerUser(q, "parked", Need.LOCATION, allow = true) }
+        viewModel.refresh()
+        withTimeout(5.seconds) { while (viewModel.items.value.single { it.id == "parked" }.asks.isNotEmpty()) delay(10) }
+        queue.remove("parked")
+        viewModel.refresh()
+        withTimeout(5.seconds) { while (viewModel.items.value.any { it.id == "parked" }) delay(10) }
         watching.cancelAndJoin()
     }
 
