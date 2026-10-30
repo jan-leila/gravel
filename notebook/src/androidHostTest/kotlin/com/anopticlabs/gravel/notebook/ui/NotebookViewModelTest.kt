@@ -22,6 +22,8 @@ import com.anopticlabs.gravel.notebook.pipeline.CaptureProcessingException
 import com.anopticlabs.gravel.notebook.pipeline.CapturePublisher
 import com.anopticlabs.gravel.notebook.pipeline.CaptureRequest
 import com.anopticlabs.gravel.notebook.pipeline.CaptureResume
+import com.anopticlabs.gravel.notebook.routers.RoutingConfigStore
+import com.anopticlabs.gravel.notebook.pipeline.UserAnswers
 import com.anopticlabs.gravel.notebook.pipeline.CaptureRows
 import com.anopticlabs.gravel.notebook.pipeline.FailedCaptureActions
 import com.anopticlabs.gravel.notebook.pipeline.ProcessingControls
@@ -105,6 +107,7 @@ class NotebookViewModelTest {
         rows, drain, NotebookStatusReader(queue, publisher, recovery), navigator, recording.recorder, TypedNotes(notes), completions.revision,
         { drainRequests++ }, StorageRecoveryRunner(recovery, restoreFile = {}, restoreAutomatic = {}),
         controls, FailedCaptureActions(queue, processing = { it == processingId }) { retryRequests++ },
+        UserAnswers(queue, RoutingConfigStore(root, crypto), drain, processing = { it == processingId }) { drainRequests++ },
         locationAsked = { locationAsked }, markLocationAsked = { locationAsked = true },
     )
 
@@ -239,6 +242,54 @@ class NotebookViewModelTest {
         viewModel.refresh()
         withTimeout(5.seconds) { while (viewModel.items.value.any { it.id == "parked" }) delay(10) }
         watching.cancelAndJoin()
+    }
+
+    private suspend fun park(id: String, confirm: Boolean, asks: Set<Need>) {
+        val waiting = AwaitingUser(RouterRef.gravel("hook"), "Hook", "buy milk", "2026-09-22T17:00:00+02:00", confirm = confirm, asks = asks)
+        queue.enqueue(QueuedCapture(id, "$id.wav", now, awaiting = waiting), byteArrayOf(1))
+    }
+
+    private fun awaiting(id: String) = queue.readQueue(strict = true).firstOrNull { it.id == id }?.awaiting
+
+    @Test
+    fun theWaitingRowsButtonsReachTheQueueAndAskForARun() = runBlocking<Unit> {
+        park("p1", confirm = true, asks = setOf(Need.LOCATION))
+        val watching = launch(Dispatchers.Default) { viewModel.watch() }
+        withTimeout(5.seconds) { while (viewModel.items.value.none { it.id == "p1" }) delay(10) }
+        val runsBefore = drainRequests
+        viewModel.answer("p1", Need.LOCATION, allow = true, remember = false)
+        withTimeout(5.seconds) { while (viewModel.items.value.single { it.id == "p1" }.asks.isNotEmpty()) delay(10) }
+        assertEquals(setOf(Need.LOCATION), awaiting("p1")!!.granted)
+        assertEquals(runsBefore, drainRequests, "the confirmation is still wanted")
+        viewModel.confirm("p1")
+        withTimeout(5.seconds) { while (drainRequests == runsBefore) delay(10) }
+        assertTrue(awaiting("p1")!!.settled)
+        assertNull(viewModel.answerNotice)
+        viewModel.dismissAwaiting("p1")
+        withTimeout(5.seconds) { while (viewModel.items.value.any { it.id == "p1" }) delay(10) }
+        assertNull(awaiting("p1"))
+        viewModel.answer("p1", Need.LOCATION, allow = true, remember = false)
+        withTimeout(5.seconds) { while (viewModel.answerNotice != AnswerNotice.NOT_WAITING) delay(10) }
+        viewModel.clearAnswerNotice()
+        assertNull(viewModel.answerNotice)
+        watching.cancelAndJoin()
+    }
+
+    @Test
+    fun aReRecordDropsTheWaitingCaptureThenRecordsAndRecordsNothingWhenItCannotDrop() = runBlocking<Unit> {
+        park("p1", confirm = true, asks = emptySet())
+        viewModel.reRecord("p1", hasMic = { true }, requestMic = null)
+        assertNull(awaiting("p1"))
+        assertIs<RecorderState.Recording>(viewModel.recorderState.value)
+        stopRecording()
+        assertEquals(1, recording.ingested.size)
+        park("p2", confirm = true, asks = emptySet())
+        processingId = "p2"
+        viewModel.reRecord("p2", hasMic = { true }, requestMic = null)
+        assertEquals(AnswerNotice.BUSY, viewModel.answerNotice)
+        assertTrue(awaiting("p2") != null, "a capture the drain has is kept")
+        assertEquals(RecorderState.Idle, viewModel.recorderState.value)
+        assertEquals(1, recording.ingested.size)
     }
 
     @Test

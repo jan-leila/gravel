@@ -53,6 +53,7 @@ import com.anopticlabs.gravel.notebook.pipeline.CaptureSpeech
 import com.anopticlabs.gravel.notebook.pipeline.ServerCheck
 import com.anopticlabs.gravel.notebook.pipeline.ServerNetworkWatch
 import com.anopticlabs.gravel.notebook.pipeline.SpeechSettingWatch
+import com.anopticlabs.gravel.notebook.pipeline.UserAnswers
 import com.anopticlabs.gravel.notebook.pipeline.WorkManagerNetworkWork
 import com.anopticlabs.gravel.notebook.pipeline.WorkManagerServerTryWork
 import com.anopticlabs.gravel.network.UnmeteredWifi
@@ -256,6 +257,7 @@ val notebookModule = module {
         )
     }
     single { FailedCaptureActions(get(), processing = { get<CaptureDrain>().isProcessing(it) }, requestAgain = { get<CaptureCoordinator>().requestAgain() }) }
+    single { UserAnswers(get(), get(), get(), processing = { get<CaptureDrain>().isProcessing(it) }, requestAgain = { get<CaptureCoordinator>().requestAgain() }) }
     single { LongCaptureCharger(androidContext(), get<CaptureDrain>().passes, get<CaptureDrain>().waitingForPower, controls = { get() }, WorkManagerChargingWork(androidContext())) }
     single { NotebookHousekeeping(get(), get(), get(), removeStartOverLeftovers = { get<NotebookRecovery>().removeStartOverLeftovers() }) }
     single { AndroidCaptureKeepAlive(androidContext()) } binds arrayOf(CaptureKeepAlive::class, RecordingKeepAlive::class)
@@ -276,7 +278,7 @@ val notebookModule = module {
     }
     viewModel {
         NotebookViewModel(
-            get(), get(), get(), get(), get(), get(), get<VoiceCompletionStore>().revision, get<CaptureCoordinator>()::request, get(), get(), get(),
+            get(), get(), get(), get(), get(), get(), get<VoiceCompletionStore>().revision, get<CaptureCoordinator>()::request, get(), get(), get(), get(),
             locationAsked = { get<NotebookPreferences>().locationAsked },
             markLocationAsked = { get<NotebookPreferences>().markLocationAsked() },
             serverTryAgain = {

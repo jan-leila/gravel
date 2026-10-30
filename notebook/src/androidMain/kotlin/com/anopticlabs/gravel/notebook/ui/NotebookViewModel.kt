@@ -15,6 +15,8 @@ import com.anopticlabs.gravel.notebook.pipeline.CaptureHold
 import com.anopticlabs.gravel.notebook.pipeline.CaptureNotice
 import com.anopticlabs.gravel.notebook.pipeline.CaptureRows
 import com.anopticlabs.gravel.notebook.pipeline.FailedCaptureActions
+import com.anopticlabs.gravel.notebook.pipeline.UserAnswers
+import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.pipeline.ProcessingControls
 import com.anopticlabs.gravel.notebook.routing.UNCLASSIFIED_FOLDER
 import com.anopticlabs.gravel.notebook.sources.PhoneRecorder
@@ -22,6 +24,7 @@ import com.anopticlabs.gravel.notebook.sources.RecorderNotice
 import com.anopticlabs.gravel.notebook.sources.RecorderState
 import com.anopticlabs.gravel.notebook.sources.TypedNoteResult
 import com.anopticlabs.gravel.notebook.sources.TypedNotes
+import com.anopticlabs.gravel.notebook.storage.QueueStore.AwaitingRemoval
 import com.anopticlabs.gravel.notebook.storage.QueueStore.FailedRemoval
 import com.anopticlabs.gravel.notebook.storage.StorageTrouble
 import coredevices.util.PermissionResult
@@ -67,6 +70,13 @@ enum class FailedNotice { FAILED, NOT_DELETED }
 /** Why a record tap did not start a recording before the microphone was reached. */
 enum class MicProblem { DENIED, DENIED_FOR_GOOD, NO_WINDOW }
 
+/**
+ * What a waiting capture's buttons could not do: the store failed, the capture was no longer
+ * waiting, the answer was taken but the grant to keep could not be written, or the drain had the
+ * capture at that moment.
+ */
+enum class AnswerNotice { FAILED, NOT_WAITING, GRANT_NOT_KEPT, BUSY }
+
 /** A listed note an edit replaces, as the editor opened it: its whole text and the hash the index listed it with. */
 data class EditTarget(val id: String, val hash: String, val content: String)
 
@@ -111,6 +121,7 @@ class NotebookViewModel(
     private val recovery: StorageRecoveryRunner,
     private val controls: ProcessingControls,
     private val failedCaptures: FailedCaptureActions,
+    private val answers: UserAnswers,
     private val locationAsked: () -> Boolean = { true },
     private val markLocationAsked: () -> Unit = {},
     private val serverTryAgain: () -> Unit = {},
@@ -322,6 +333,79 @@ class NotebookViewModel(
             } catch (e: Exception) {
                 logger.w { "failed recording action not done: ${e::class.simpleName}" }
                 failedNotice = FailedNotice.FAILED
+            }
+            refresh()
+        }
+    }
+
+    var answerNotice by mutableStateOf<AnswerNotice?>(null)
+        private set
+
+    fun clearAnswerNotice() {
+        answerNotice = null
+    }
+
+    fun answer(id: String, need: Need, allow: Boolean, remember: Boolean) = awaitingAction {
+        when (answer(id, need, allow, remember)) {
+            UserAnswers.Answered.TAKEN -> null
+            UserAnswers.Answered.GRANT_NOT_KEPT -> AnswerNotice.GRANT_NOT_KEPT
+            UserAnswers.Answered.NOT_WAITING -> AnswerNotice.NOT_WAITING
+        }
+    }
+
+    fun confirm(id: String) = awaitingAction {
+        confirm(id)
+        null
+    }
+
+    fun dismissAwaiting(id: String) = awaitingAction { dismissed(id) }
+
+    /**
+     * Drops the waiting capture [id] and starts a new recording in its place, with the permissions
+     * asked for as [record] asks; a capture that could not be dropped is kept and nothing is recorded,
+     * so the user never ends up with both without knowing.
+     */
+    suspend fun reRecord(
+        id: String,
+        hasMic: suspend () -> Boolean,
+        requestMic: (suspend () -> PermissionResult)?,
+        hasLocation: suspend () -> Boolean = { true },
+        requestLocation: (suspend () -> PermissionResult)? = null,
+    ) {
+        val notice = try {
+            withContext(controlDispatcher) { answers.dismissed(id) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.w { "waiting recording not dropped: ${e::class.simpleName}" }
+            AnswerNotice.FAILED
+        }
+        refresh()
+        if (notice != null) {
+            answerNotice = notice
+            return
+        }
+        record(hasMic, requestMic, hasLocation, requestLocation)
+    }
+
+    private suspend fun UserAnswers.dismissed(id: String): AnswerNotice? = when (dismiss(id)) {
+        AwaitingRemoval.REMOVED, AwaitingRemoval.GONE -> {
+            rows.remove(id)
+            null
+        }
+        AwaitingRemoval.NOT_AWAITING -> AnswerNotice.BUSY
+    }
+
+    // The actions outlive a closed screen (an answer given is never dropped) and run one at a time, in tap order.
+    private fun awaitingAction(action: suspend UserAnswers.() -> AnswerNotice?) {
+        viewModelScope.launch(controlDispatcher) {
+            answerNotice = try {
+                withContext(NonCancellable) { answers.action() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.w { "waiting recording action not done: ${e::class.simpleName}" }
+                AnswerNotice.FAILED
             }
             refresh()
         }
