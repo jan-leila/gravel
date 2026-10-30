@@ -13,9 +13,12 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 
-/** Sends one delivery to a router receiver, [share] saying what goes with the text, and returns the result code the receiver left; the caller bounds the wait. */
+/** What a receiver left: its result code, and its result data when it set any. */
+data class BroadcastAnswer(val code: Int, val data: String? = null)
+
+/** Sends one delivery to a router receiver, [share] saying what goes with the text, and returns what the receiver left; the caller bounds the wait. */
 fun interface RouterBroadcastSender {
-    suspend fun send(packageName: String, receiverClass: String, text: RoutedText, share: Set<Need>): Int
+    suspend fun send(packageName: String, receiverClass: String, text: RoutedText, share: Set<Need>): BroadcastAnswer
 }
 
 /**
@@ -23,8 +26,9 @@ fun interface RouterBroadcastSender {
  * its app's trust at delivery time, so a package replaced under its name by another signer, a
  * receiver that now declares a different router, or a trust the user withdrew since the router was
  * picked refuses the delivery; then one broadcast, which the
- * receiver acknowledges with [RouterApi.RESULT_ACKNOWLEDGED] within [waitMillis]. No
- * acknowledgement is a retry: the receiver may be slow or not running yet.
+ * receiver acknowledges with [RouterApi.RESULT_ACKNOWLEDGED] within [waitMillis], or refuses for
+ * good with [RouterApi.RESULT_REFUSED] and a reason. No acknowledgement is a retry: the receiver
+ * may be slow or not running yet.
  */
 class AppRouterDelivery(
     private val installed: InstalledRouters,
@@ -43,16 +47,28 @@ class AppRouterDelivery(
         }
         val trusted = RouterTrust.isTrusted(receiver.namespace, trusted()) { installed.signedBy(receiver.packageName, it) }
         if (!trusted) unavailable("the app behind ${router.name} is not trusted")
-        val code = try {
+        val answer = try {
             withTimeout(waitMillis) { sender.send(receiver.packageName, receiver.receiverClass, text, share) }
         } catch (e: TimeoutCancellationException) {
             throw CaptureProcessingException(CaptureFailureKind.RETRY, "${router.name} did not answer in time", e)
         }
-        if (code != RouterApi.RESULT_ACKNOWLEDGED) throw CaptureProcessingException(CaptureFailureKind.RETRY, "${router.name} did not take the text")
+        when (answer.code) {
+            RouterApi.RESULT_ACKNOWLEDGED -> Unit
+            RouterApi.RESULT_REFUSED -> throw CaptureProcessingException(
+                CaptureFailureKind.FLAG, "${router.name} refused it: ${refusalReason(answer.data)}", reason = CaptureFailureReason.ROUTER_REFUSED,
+            )
+            else -> throw CaptureProcessingException(CaptureFailureKind.RETRY, "${router.name} did not take the text")
+        }
     }
 
     private fun unavailable(why: String): Nothing =
         throw CaptureProcessingException(CaptureFailureKind.FLAG, why, reason = CaptureFailureReason.ROUTER_UNAVAILABLE)
+
+    private companion object {
+        // Text another app wrote, shown in the Notebook: bounded, one line, no control characters.
+        fun refusalReason(data: String?): String =
+            data?.filterNot { it.isISOControl() }?.trim()?.take(RouterApi.MAX_REFUSAL_CHARS)?.ifEmpty { null } ?: "no reason given"
+    }
 }
 
 /**
@@ -62,7 +78,7 @@ class AppRouterDelivery(
  * API's payload, the shared parts and nothing else.
  */
 class AndroidRouterBroadcastSender(private val context: Context) : RouterBroadcastSender {
-    override suspend fun send(packageName: String, receiverClass: String, text: RoutedText, share: Set<Need>): Int = suspendCancellableCoroutine { continuation ->
+    override suspend fun send(packageName: String, receiverClass: String, text: RoutedText, share: Set<Need>): BroadcastAnswer = suspendCancellableCoroutine { continuation ->
         val intent = Intent(RouterApi.ACTION_ROUTE_TEXT)
             .setComponent(ComponentName(packageName, receiverClass))
             .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
@@ -77,7 +93,7 @@ class AndroidRouterBroadcastSender(private val context: Context) : RouterBroadca
         }
         val result = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                if (continuation.isActive) continuation.resume(resultCode)
+                if (continuation.isActive) continuation.resume(BroadcastAnswer(resultCode, resultData))
             }
         }
         context.sendOrderedBroadcast(intent, null, result, null, Activity.RESULT_CANCELED, null, null)

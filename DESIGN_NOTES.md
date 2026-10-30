@@ -1777,7 +1777,9 @@ in the app's device suite:
     one `Grant` per `Need`: ask, always or never; a Network router has the
     grants alone, its needs being whatever is not refused), nothing else,
     acknowledged by the receiver's result code within
-    `RouterApi.DELIVERY_WAIT_MILLIS`; no acknowledgement is a retry. The
+    `RouterApi.DELIVERY_WAIT_MILLIS`; no acknowledgement is a retry, and a
+    receiver can refuse for good with its own result code and a reason,
+    which flags the recording with that reason (`ROUTER_REFUSED`). The
     receiver, its declared id, its app's signer against the ref's
     namespace, and the app's trust are checked again at every delivery.
     A receiver declares its id in meta-data, and an app signed by several

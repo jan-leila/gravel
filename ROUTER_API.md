@@ -150,6 +150,14 @@ again on a later run, up to its usual attempt limit. A receiver gets the
 system's foreground broadcast budget (about 10 seconds): acknowledge first
 and hand longer work to a service or a job.
 
+A receiver that can tell at once that it can never take this recording
+(it needs a location the delivery does not carry, say, or heard no amount
+in the text) **refuses** it instead: result code `Activity.RESULT_FIRST_USER`
+(`1`) with the reason as the result data, up to 200 characters of plain
+text. Gravel flags the recording with that reason for the user to see and
+never delivers it again. Refuse only for a reason that will not change;
+anything transient is a missing acknowledgement, which is retried.
+
 ```kotlin
 class NotebookRouter : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -157,6 +165,11 @@ class NotebookRouter : BroadcastReceiver() {
         val id = intent.getStringExtra("capture_id") ?: return
         val text = intent.getStringExtra("text") ?: return
         val recordedAt = intent.getStringExtra("recorded_at")   // null unless needed and granted
+        if (text.isBlank()) {
+            resultCode = Activity.RESULT_FIRST_USER   // refuse for good, with the reason
+            resultData = "Nothing to make a task from"
+            return
+        }
         // Persist, then acknowledge; keep this quick.
         TaskStore(context).addFromNotebook(id, recordedAt, text)
         resultCode = Activity.RESULT_OK

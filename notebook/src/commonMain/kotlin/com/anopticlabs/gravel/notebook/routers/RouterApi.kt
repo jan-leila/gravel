@@ -47,8 +47,16 @@ object RouterApi {
     const val EXTRA_LOCATION_LONGITUDE = "location_longitude"
     const val EXTRA_LOCATION_ACCURACY_METERS = "location_accuracy_m"
 
-    /** The result code a receiver sets to acknowledge a delivery: `Activity.RESULT_OK`. Any other code is no acknowledgement. */
+    /** The result code a receiver sets to acknowledge a delivery: `Activity.RESULT_OK`. Any other code but [RESULT_REFUSED] is no acknowledgement. */
     const val RESULT_ACKNOWLEDGED = -1
+
+    /**
+     * The result code a receiver sets to refuse a delivery for good (`Activity.RESULT_FIRST_USER`),
+     * its result data saying why in up to [MAX_REFUSAL_CHARS]: the recording is flagged with that
+     * reason and never delivered again.
+     */
+    const val RESULT_REFUSED = 1
+    const val MAX_REFUSAL_CHARS = 200
 
     /** Longer than the system's foreground receiver timeout, so a receiver that runs out of time is never acknowledged late. */
     const val DELIVERY_WAIT_MILLIS = 12_000L

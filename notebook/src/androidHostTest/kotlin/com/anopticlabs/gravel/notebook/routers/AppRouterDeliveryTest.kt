@@ -28,13 +28,13 @@ class AppRouterDeliveryTest {
     private class FakeSender : RouterBroadcastSender {
         val sent = mutableListOf<Triple<String, String, RoutedText>>()
         val shared = mutableListOf<Set<Need>>()
-        var code = RouterApi.RESULT_ACKNOWLEDGED
+        var answer = BroadcastAnswer(RouterApi.RESULT_ACKNOWLEDGED)
         var answerAfterMillis = 0L
-        override suspend fun send(packageName: String, receiverClass: String, text: RoutedText, share: Set<Need>): Int {
+        override suspend fun send(packageName: String, receiverClass: String, text: RoutedText, share: Set<Need>): BroadcastAnswer {
             sent += Triple(packageName, receiverClass, text)
             shared += share
             delay(answerAfterMillis)
-            return code
+            return answer
         }
     }
 
@@ -99,14 +99,32 @@ class AppRouterDeliveryTest {
     @Test
     fun noAcknowledgementOrNoAnswerInTimeIsARetry() {
         installTasks()
-        sender.code = 0
+        sender.answer = BroadcastAnswer(0)
         val refused = failed { delivery.deliver(tasks, text, emptySet()) }
         assertEquals(CaptureFailureKind.RETRY, refused.kind)
-        sender.code = RouterApi.RESULT_ACKNOWLEDGED
+        sender.answer = BroadcastAnswer(RouterApi.RESULT_ACKNOWLEDGED)
         sender.answerAfterMillis = 10_000
         val late = failed { delivery.deliver(tasks, text, emptySet()) }
         assertEquals(CaptureFailureKind.RETRY, late.kind)
         assertTrue(late.message!!.contains("did not answer"))
+    }
+
+    /** A refusal is for good: the recording is flagged with the receiver's reason, bounded and cleaned, and never sent again. */
+    @Test
+    fun aRefusalFlagsTheRecordingWithTheReceiversReason() {
+        installTasks()
+        sender.answer = BroadcastAnswer(RouterApi.RESULT_REFUSED, "No amount heard")
+        val refused = failed { delivery.deliver(tasks, text, emptySet()) }
+        assertEquals(CaptureFailureKind.FLAG, refused.kind)
+        assertEquals(CaptureFailureReason.ROUTER_REFUSED, refused.reason)
+        assertEquals("Tasks refused it: No amount heard", refused.message)
+        sender.answer = BroadcastAnswer(RouterApi.RESULT_REFUSED)
+        assertEquals("Tasks refused it: no reason given", failed { delivery.deliver(tasks, text, emptySet()) }.message)
+        sender.answer = BroadcastAnswer(RouterApi.RESULT_REFUSED, "  \u0007 ")
+        assertEquals("Tasks refused it: no reason given", failed { delivery.deliver(tasks, text, emptySet()) }.message)
+        sender.answer = BroadcastAnswer(RouterApi.RESULT_REFUSED, "line\nbreak " + "x".repeat(300))
+        val long = failed { delivery.deliver(tasks, text, emptySet()) }.message!!
+        assertEquals("Tasks refused it: linebreak " + "x".repeat(RouterApi.MAX_REFUSAL_CHARS - "linebreak ".length), long)
     }
 
     @Test

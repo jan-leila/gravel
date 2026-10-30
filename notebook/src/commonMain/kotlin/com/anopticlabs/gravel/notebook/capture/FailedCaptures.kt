@@ -26,6 +26,9 @@ enum class CaptureFailureReason(val code: String) {
     /** The app or server it was routed to is gone, untrusted or refused it. */
     ROUTER_UNAVAILABLE("router_unavailable"),
 
+    /** The app's router it was sent to answered that it cannot take this recording (`ROUTER_API.md`, refusing). */
+    ROUTER_REFUSED("router_refused"),
+
     /** What a flagged entry with no code reads as: it ran out of attempts. */
     TRIES_RAN_OUT("tries_ran_out"),
 

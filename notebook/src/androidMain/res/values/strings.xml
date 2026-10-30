@@ -185,6 +185,7 @@
     <string name="notebook_failed_tries_ran_out">It couldn\'t be processed after %1$d tries</string>
     <string name="notebook_failed_not_routed">Text Routing couldn\'t take it to a router: no rule matched, or a rule is broken. Check Settings > Notebook > Text Routing</string>
     <string name="notebook_failed_router_unavailable">The app or server it was routed to isn\'t there, isn\'t trusted or refused it. Check Settings > Notebook > Text Routing</string>
+    <string name="notebook_failed_router_refused">The app it was sent to said it can\'t take this recording. Its row in the Notebook said why</string>
     <string name="notebook_failed_unknown">Gravel doesn\'t know why it failed</string>
 
     <plurals name="notebook_retained">
