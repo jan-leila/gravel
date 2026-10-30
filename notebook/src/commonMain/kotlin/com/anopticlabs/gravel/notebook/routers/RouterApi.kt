@@ -27,10 +27,25 @@ object RouterApi {
     const val META_LABEL = "com.anopticlabs.gravel.notebook.router.label"
     const val META_DESCRIPTION = "com.anopticlabs.gravel.notebook.router.description"
 
+    /**
+     * `<meta-data>` on the receiver: what it wants beyond the text, as a comma-separated list of
+     * [NEED_LOCATION] and [NEED_RECORDED_AT]; absent, the text alone. See [parseNeeds].
+     */
+    const val META_NEEDS = "com.anopticlabs.gravel.notebook.router.needs"
+    const val NEED_LOCATION = "location"
+    const val NEED_RECORDED_AT = "recorded_at"
+
     const val EXTRA_API_VERSION = "api_version"
     const val EXTRA_CAPTURE_ID = "capture_id"
-    const val EXTRA_RECORDED_AT = "recorded_at"
     const val EXTRA_TEXT = "text"
+
+    /** Present only when the receiver declared the need and the user granted it. */
+    const val EXTRA_RECORDED_AT = "recorded_at"
+
+    /** Present together, under the same rule as [EXTRA_RECORDED_AT]; the accuracy may be absent when the fix had none. */
+    const val EXTRA_LOCATION_LATITUDE = "location_latitude"
+    const val EXTRA_LOCATION_LONGITUDE = "location_longitude"
+    const val EXTRA_LOCATION_ACCURACY_METERS = "location_accuracy_m"
 
     /** The result code a receiver sets to acknowledge a delivery: `Activity.RESULT_OK`. Any other code is no acknowledgement. */
     const val RESULT_ACKNOWLEDGED = -1
@@ -40,4 +55,13 @@ object RouterApi {
 
     const val MAX_LABEL_CHARS = 64
     const val MAX_DESCRIPTION_CHARS = 200
+
+    /** The needs a [META_NEEDS] value declares; a word that is not a need is ignored, so a newer app lists one an older Gravel does not know. */
+    fun parseNeeds(value: String?): Set<Need> = value.orEmpty().split(',').mapNotNullTo(mutableSetOf()) {
+        when (it.trim()) {
+            NEED_LOCATION -> Need.LOCATION
+            NEED_RECORDED_AT -> Need.RECORDED_AT
+            else -> null
+        }
+    }
 }

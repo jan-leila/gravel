@@ -67,8 +67,24 @@ class RoutingEditsTest {
         assertEquals("1 rule, else to Notebook", RoutingEdits.summary(switch, config))
         assertEquals("No rules", RoutingEdits.summary(RouterConfig.Switch("s", "S"), config))
         assertEquals("2 rules", RoutingEdits.summary(switch.copy(rules = switch.rules + SwitchRule("x", g("notebook")), otherwise = null), config))
-        assertEquals("Sends to com.example.tasks", RoutingEdits.summary(app, config))
-        assertEquals("Posts to hooks.example.test:8443", RoutingEdits.summary(RouterConfig.Network("n", "N", "https://hooks.example.test:8443/notes?k=secret", "tok"), config))
+        assertEquals("Sends to com.example.tasks", RoutingEdits.summary(app, config), "nothing needed, nothing said")
+        val hook = RouterConfig.Network("n", "N", "https://hooks.example.test:8443/notes?k=secret", "tok")
+        assertEquals("Posts to hooks.example.test:8443, asks about your location, asks about the recording time", RoutingEdits.summary(hook, config))
+        assertEquals("Posts to hooks.example.test:8443", RoutingEdits.summary(hook.copy(shares = Shares(Grant.NEVER, Grant.NEVER)), config))
+        assertEquals("Posts to hooks.example.test:8443, shares the recording time", RoutingEdits.summary(hook.copy(shares = Shares(Grant.NEVER, Grant.ALWAYS)), config))
+        val wanting = app.copy(needs = setOf(Need.LOCATION), shares = Shares(location = Grant.ALWAYS, recordedAt = Grant.ALWAYS))
+        assertEquals("Sends to com.example.tasks, shares your location", RoutingEdits.summary(wanting, config), "a grant for a part the app never asked for is not mentioned")
         assertEquals("Note", RoutingEdits.kindName(note))
+    }
+
+    @Test
+    fun aGrantIsSetOnTheOneRouterAndIgnoredForAKindWithoutGrants() {
+        val withApp = RoutingEdits.withRouter(config, app)
+        val granted = RoutingEdits.withGrant(withApp, app.ref, Need.LOCATION, Grant.ALWAYS)
+        assertEquals(Shares(location = Grant.ALWAYS, recordedAt = Grant.ASK), (granted.router(app.ref) as RouterConfig.App).shares)
+        assertEquals(withApp.routers.filter { it.ref != app.ref }, granted.routers.filter { it.ref != app.ref })
+        assertEquals(Shares(location = Grant.ALWAYS, recordedAt = Grant.NEVER), (RoutingEdits.withGrant(granted, app.ref, Need.RECORDED_AT, Grant.NEVER).router(app.ref) as RouterConfig.App).shares)
+        assertEquals(withApp, RoutingEdits.withGrant(withApp, g("notebook"), Need.LOCATION, Grant.ALWAYS))
+        assertEquals(withApp, RoutingEdits.withGrant(withApp, g("nowhere"), Need.LOCATION, Grant.ALWAYS))
     }
 }

@@ -18,6 +18,7 @@ import com.anopticlabs.gravel.notebook.capture.isLong
 import com.anopticlabs.gravel.notebook.notes.BuiltNote
 import com.anopticlabs.gravel.notebook.reminders.ReminderProposal
 import com.anopticlabs.gravel.notebook.reminders.ReminderRefreshSignal
+import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
@@ -96,11 +97,13 @@ class CaptureDrainTest {
 
     private class FakeDeliverer : TextDeliverer {
         val delivered = mutableListOf<Pair<RouterConfig, RoutedText>>()
+        val shared = mutableListOf<Set<Need>>()
         var onDeliver: suspend (RouterConfig, RoutedText) -> Unit = { _, _ -> }
 
-        override suspend fun deliver(router: RouterConfig, text: RoutedText) {
+        override suspend fun deliver(router: RouterConfig, text: RoutedText, share: Set<Need>) {
             onDeliver(router, text)
             delivered += router to text
+            shared += share
         }
     }
 
@@ -1146,23 +1149,24 @@ class CaptureDrainTest {
 
     private val tasks = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router", "a".repeat(64))
 
-    private fun forwardTo(router: RouterConfig) {
+    private fun forwardTo(router: RouterConfig, share: Set<Need> = emptySet()) {
         backend.onProcess = { request, onStage ->
             onStage(CaptureStage.FORWARDING)
-            BuiltCapture.Forward(router, RoutedText.of(request.id, request.capturedAt, request.zone, "said: ${request.audio.decodeToString()}"))
+            BuiltCapture.Forward(router, RoutedText.of(request.id, request.capturedAt, request.zone, "said: ${request.audio.decodeToString()}"), share)
         }
     }
 
     @Test
     fun aForwardedCaptureIsDeliveredWithItsRecordingTimeBeforeItLeavesTheQueue() = runBlocking<Unit> {
         assertTrue(queue.enqueue(QueuedCapture("f1", "f1.m4a", now, zoneId = "Europe/Berlin"), "hello".encodeToByteArray()))
-        forwardTo(tasks)
+        forwardTo(tasks, share = setOf(Need.RECORDED_AT))
         var queuedAtDelivery = false
         deliverer.onDeliver = { _, _ -> queuedAtDelivery = entry("f1") != null }
         assertEquals(DrainReport(published = 1), drain.drain())
         val (router, text) = deliverer.delivered.single()
         assertEquals(tasks, router)
         assertEquals(RoutedText("f1", "2026-09-22T17:00:00+02:00", "said: hello"), text)
+        assertEquals(listOf(setOf(Need.RECORDED_AT)), deliverer.shared, "the shared parts the backend decided reach the deliverer")
         assertTrue(queuedAtDelivery, "delivered while still queued")
         assertNull(entry("f1"))
         assertFalse(blob("f1").exists())

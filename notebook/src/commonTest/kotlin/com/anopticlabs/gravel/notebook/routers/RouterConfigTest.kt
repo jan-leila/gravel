@@ -51,6 +51,59 @@ class RouterConfigTest {
         assertEquals(mapOf("id" to "reminders"), routers[0].jsonObject.getValue("rules").jsonArray[0].jsonObject.getValue("router").jsonObject.mapValues { it.value.jsonPrimitive.content })
     }
 
+    /** Grants are stored under the words of the API and left out while untouched, so an older file reads as "ask about everything". */
+    @Test
+    fun needsAndGrantsRoundTripAndAreLeftOutWhileUntouched() {
+        val untouched = NotebookJson.parseToJsonElement(NotebookJson.encodeToString(full)).jsonObject.getValue("routers").jsonArray
+        assertFalse(untouched[3].jsonObject.containsKey("shares") || untouched[3].jsonObject.containsKey("needs"))
+        assertFalse(untouched[4].jsonObject.containsKey("shares"))
+        val wanting = app.copy(needs = setOf(Need.LOCATION, Need.RECORDED_AT), shares = Shares(location = Grant.ALWAYS, recordedAt = Grant.NEVER))
+        val json = NotebookJson.encodeToString(RouterConfig.serializer(), wanting)
+        val fields = NotebookJson.parseToJsonElement(json).jsonObject
+        assertEquals(listOf("location", "recorded_at"), fields.getValue("needs").jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(mapOf("location" to "always", "recordedAt" to "never"), fields.getValue("shares").jsonObject.mapValues { it.value.jsonPrimitive.content })
+        assertEquals(wanting, NotebookJson.decodeFromString(RouterConfig.serializer(), json))
+        val asking = NotebookJson.decodeFromString(RouterConfig.serializer(), """{"type":"app","id":"t","name":"T","packageName":"a.b","receiverClass":"a.b.R","namespace":"$signer"}""")
+        assertEquals(Shares(Grant.ASK, Grant.ASK), (asking as RouterConfig.App).shares)
+        assertEquals(emptySet(), asking.needs)
+    }
+
+    /** What leaves the phone: an app's declared needs, a server's every part not refused, nothing from Gravel's own kinds. */
+    @Test
+    fun whatARouterNeedsAsksAboutAndSharesFollowsItsKindAndGrants() {
+        val always = Shares(Grant.ALWAYS, Grant.ALWAYS)
+        assertEquals(emptySet(), app.needed())
+        assertEquals(emptySet(), app.copy(shares = always).shared(emptySet()), "an app gets only what it declared")
+        val wanting = app.copy(needs = setOf(Need.LOCATION))
+        assertEquals(setOf(Need.LOCATION), wanting.needed())
+        assertEquals(setOf(Need.LOCATION), wanting.asked())
+        assertEquals(emptySet(), wanting.shared(emptySet()))
+        assertEquals(setOf(Need.LOCATION), wanting.shared(setOf(Need.LOCATION, Need.RECORDED_AT)), "a one-time grant covers only what is needed")
+        assertEquals(setOf(Need.LOCATION), wanting.copy(shares = always).shared(emptySet()))
+        assertEquals(emptySet(), wanting.copy(shares = always).asked())
+        assertEquals(emptySet(), wanting.copy(shares = Shares(Grant.NEVER, Grant.ASK)).shared(setOf(Need.LOCATION)), "never is never, even for this one time")
+        assertEquals(setOf(Need.LOCATION, Need.RECORDED_AT), network.needed())
+        assertEquals(setOf(Need.LOCATION, Need.RECORDED_AT), network.asked())
+        assertEquals(setOf(Need.RECORDED_AT), network.copy(shares = Shares(Grant.NEVER, Grant.ASK)).needed())
+        assertEquals(setOf(Need.RECORDED_AT), network.copy(shares = Shares(Grant.NEVER, Grant.ALWAYS)).shared(emptySet()))
+        for (own in listOf(note, reminder, switch)) {
+            assertEquals(null, own.shares)
+            assertEquals(emptySet(), own.needed())
+            assertEquals(emptySet(), own.asked())
+            assertEquals(emptySet(), own.shared(setOf(Need.LOCATION)))
+        }
+    }
+
+    @Test
+    fun theNeedsMetaDataIsACommaListWhoseUnknownWordsAreIgnored() {
+        assertEquals(emptySet(), RouterApi.parseNeeds(null))
+        assertEquals(emptySet(), RouterApi.parseNeeds(""))
+        assertEquals(setOf(Need.LOCATION), RouterApi.parseNeeds("location"))
+        assertEquals(setOf(Need.LOCATION, Need.RECORDED_AT), RouterApi.parseNeeds(" recorded_at , location "))
+        assertEquals(setOf(Need.RECORDED_AT), RouterApi.parseNeeds("recorded_at,mood,"))
+        assertEquals(emptySet(), RouterApi.parseNeeds("Location"))
+    }
+
     @Test
     fun aConfigFromANewerVersionOrWithoutRoutersIsRefused() {
         assertTrue(refused(full.copy(version = 2)).contains("newer version"))

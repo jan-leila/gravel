@@ -12,8 +12,8 @@ import java.security.MessageDigest
 /**
  * A router another app declares, as installed now. [id] is what the receiver declares and
  * [namespace] the lowercase hex SHA-256 of the app's one signing certificate, so [ref] is the
- * name the routing config forwards to; [label], [description] and [appName] are text another
- * app wrote.
+* name the routing config forwards to; [label], [description] and [appName] are text another
+ * app wrote; [needs] what it declared it wants beyond the text.
  */
 data class InstalledRouter(
     val packageName: String,
@@ -23,6 +23,7 @@ data class InstalledRouter(
     val label: String,
     val description: String?,
     val appName: String,
+    val needs: Set<Need> = emptySet(),
 ) {
     val ref: RouterRef get() = RouterRef(namespace, id)
 }
@@ -85,7 +86,7 @@ class AndroidInstalledRouters(private val context: Context) : InstalledRouters {
             ?: info.packageName
         val description = meta.getString(RouterApi.META_DESCRIPTION)?.clean(RouterApi.MAX_DESCRIPTION_CHARS)
         val appName = info.applicationInfo?.loadLabel(pm)?.toString()?.clean(RouterApi.MAX_LABEL_CHARS) ?: info.packageName
-        return InstalledRouter(info.packageName, info.name, id, namespace, label, description, appName)
+        return InstalledRouter(info.packageName, info.name, id, namespace, label, description, appName, RouterApi.parseNeeds(meta.getString(RouterApi.META_NEEDS)))
     }
 
     private fun String.clean(max: Int): String? = filterNot { it.isISOControl() }.trim().take(max).ifEmpty { null }

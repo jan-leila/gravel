@@ -27,10 +27,12 @@ class AppRouterDeliveryTest {
 
     private class FakeSender : RouterBroadcastSender {
         val sent = mutableListOf<Triple<String, String, RoutedText>>()
+        val shared = mutableListOf<Set<Need>>()
         var code = RouterApi.RESULT_ACKNOWLEDGED
         var answerAfterMillis = 0L
-        override suspend fun send(packageName: String, receiverClass: String, text: RoutedText): Int {
+        override suspend fun send(packageName: String, receiverClass: String, text: RoutedText, share: Set<Need>): Int {
             sent += Triple(packageName, receiverClass, text)
+            shared += share
             delay(answerAfterMillis)
             return code
         }
@@ -57,16 +59,19 @@ class AppRouterDeliveryTest {
     @Test
     fun aTrustedInstalledRouterGetsTheTextAndItsAcknowledgementEndsTheDelivery() = runBlocking<Unit> {
         installTasks()
-        delivery.deliver(tasks, text)
+        delivery.deliver(tasks, text, emptySet())
         assertEquals(listOf(Triple("com.example.tasks", "com.example.tasks.Router", text)), sender.sent)
+        assertEquals(listOf(emptySet()), sender.shared)
+        delivery.deliver(tasks, text, setOf(Need.LOCATION, Need.RECORDED_AT))
+        assertEquals(setOf(Need.LOCATION, Need.RECORDED_AT), sender.shared.last(), "the shared parts reach the sender as decided upstream")
     }
 
     @Test
     fun aRouterThatIsGoneOrUntrustedIsFlaggedWithoutASend() {
-        unavailable { delivery.deliver(tasks, text) }
+        unavailable { delivery.deliver(tasks, text, emptySet()) }
         installTasks()
         trusted = emptySet()
-        assertTrue(unavailable { delivery.deliver(tasks, text) }.message!!.contains("not trusted"))
+        assertTrue(unavailable { delivery.deliver(tasks, text, emptySet()) }.message!!.contains("not trusted"))
         assertTrue(sender.sent.isEmpty())
     }
 
@@ -74,11 +79,11 @@ class AppRouterDeliveryTest {
     @Test
     fun aReceiverThatDeclaresAnotherIdOrIsSignedByAnotherKeyIsFlaggedWithoutASend() {
         installTasks(id = "archive")
-        assertTrue(unavailable { delivery.deliver(tasks, text) }.message!!.contains("different router"))
+        assertTrue(unavailable { delivery.deliver(tasks, text, emptySet()) }.message!!.contains("different router"))
         installed.routers.clear()
         installTasks(namespace = "d".repeat(64))
         trusted = setOf("d".repeat(64))
-        assertTrue(unavailable { delivery.deliver(tasks, text) }.message!!.contains("different key"))
+        assertTrue(unavailable { delivery.deliver(tasks, text, emptySet()) }.message!!.contains("different key"))
         assertTrue(sender.sent.isEmpty())
     }
 
@@ -87,7 +92,7 @@ class AppRouterDeliveryTest {
         installTasks(namespace = "d".repeat(64))
         trusted = setOf(old)
         installed.lineage["com.example.tasks"] = setOf(old)
-        delivery.deliver(tasks.copy(namespace = old), text)
+        delivery.deliver(tasks.copy(namespace = old), text, emptySet())
         assertEquals(1, sender.sent.size)
     }
 
@@ -95,17 +100,17 @@ class AppRouterDeliveryTest {
     fun noAcknowledgementOrNoAnswerInTimeIsARetry() {
         installTasks()
         sender.code = 0
-        val refused = failed { delivery.deliver(tasks, text) }
+        val refused = failed { delivery.deliver(tasks, text, emptySet()) }
         assertEquals(CaptureFailureKind.RETRY, refused.kind)
         sender.code = RouterApi.RESULT_ACKNOWLEDGED
         sender.answerAfterMillis = 10_000
-        val late = failed { delivery.deliver(tasks, text) }
+        val late = failed { delivery.deliver(tasks, text, emptySet()) }
         assertEquals(CaptureFailureKind.RETRY, late.kind)
         assertTrue(late.message!!.contains("did not answer"))
     }
 
     @Test
     fun onlyAnAppRouterCanBeDeliveredHere() {
-        assertFailsWith<IllegalArgumentException> { runBlocking { delivery.deliver(RouterConfig.Note("n", "Notes"), text) } }
+        assertFailsWith<IllegalArgumentException> { runBlocking { delivery.deliver(RouterConfig.Note("n", "Notes"), text, emptySet()) } }
     }
 }

@@ -21,6 +21,39 @@ data class RouterRef(val namespace: String?, val id: String) {
 }
 
 /**
+ * The parts of a delivery beyond the text: where the recording was made and when. A router that
+ * sends out of the phone receives one only when it needs it and the user granted it (see [Shares]).
+ * The serial names are the words of the router API's `needs` meta-data (`ROUTER_API.md`).
+ */
+@Serializable
+enum class Need {
+    @SerialName("location") LOCATION,
+    @SerialName("recorded_at") RECORDED_AT,
+}
+
+/** What the user decided about one [Need] for one router: ask at each recording, always send it, never send it. */
+@Serializable
+enum class Grant {
+    @SerialName("ask") ASK,
+    @SerialName("always") ALWAYS,
+    @SerialName("never") NEVER,
+}
+
+/** The user's grant for each [Need]; everything is asked about until the user decides. */
+@Serializable
+data class Shares(val location: Grant = Grant.ASK, val recordedAt: Grant = Grant.ASK) {
+    fun of(need: Need): Grant = when (need) {
+        Need.LOCATION -> location
+        Need.RECORDED_AT -> recordedAt
+    }
+
+    fun with(need: Need, grant: Grant): Shares = when (need) {
+        Need.LOCATION -> copy(location = grant)
+        Need.RECORDED_AT -> copy(recordedAt = grant)
+    }
+}
+
+/**
  * One router in the graph a voice recording's transcript goes through. A router either forwards
  * the whole [RoutedText] to another router, named by its [ref], or consumes it; [name] is what the
  * user sees. The type tags and field names are a stored format (the `routing` store file): a new
@@ -66,6 +99,8 @@ sealed interface RouterConfig {
     /**
      * Forwards to a router another app declares (`ROUTER_API.md`): the receiver, named by package
      * and class, that declared [id] when the user picked it, in an app signed by [namespace].
+     * [needs] is what the receiver declared it wants beyond the text, as read when it was picked;
+     * [shares] what the user grants of that.
      */
     @Serializable
     @SerialName("app")
@@ -75,9 +110,15 @@ sealed interface RouterConfig {
         val packageName: String,
         val receiverClass: String,
         override val namespace: String,
+        val needs: Set<Need> = emptySet(),
+        val shares: Shares = Shares(),
     ) : RouterConfig
 
-    /** Posts the text as JSON to [url]; [bearerToken], when set, goes in the Authorization header. */
+    /**
+     * Posts the text as JSON to [url]; [bearerToken], when set, goes in the Authorization header.
+     * [shares] is what goes with the text: the user is also the one who set the server up, so a
+     * grant is the only declaration of need there is.
+     */
     @Serializable
     @SerialName("network")
     data class Network(
@@ -86,7 +127,35 @@ sealed interface RouterConfig {
         val url: String,
         val bearerToken: String? = null,
         override val namespace: String? = null,
+        val shares: Shares = Shares(),
     ) : RouterConfig
+}
+
+/** The grants of a router that sends out of the phone; null for one the Notebook consumes. */
+val RouterConfig.shares: Shares?
+    get() = when (this) {
+        is RouterConfig.App -> shares
+        is RouterConfig.Network -> shares
+        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch -> null
+    }
+
+/** What a delivery to this router may carry beyond the text: an app's declared needs, a server's every need not refused. */
+fun RouterConfig.needed(): Set<Need> = when (this) {
+    is RouterConfig.App -> needs
+    is RouterConfig.Network -> Need.entries.filterTo(mutableSetOf()) { shares.of(it) != Grant.NEVER }
+    is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch -> emptySet()
+}
+
+/** The needs the user has to be asked about before a delivery to this router. */
+fun RouterConfig.asked(): Set<Need> = needed().filterTo(mutableSetOf()) { shares?.of(it) == Grant.ASK }
+
+/** What a delivery to this router carries, given the needs the user [granted] for this one recording; a one-time grant answers an Ask, never a Never. */
+fun RouterConfig.shared(granted: Set<Need>): Set<Need> = needed().filterTo(mutableSetOf()) {
+    when (shares?.of(it)) {
+        Grant.ALWAYS -> true
+        Grant.ASK -> it in granted
+        Grant.NEVER, null -> false
+    }
 }
 
 /** [pattern] is a regular expression looked for anywhere in the text; [router] is where a match goes. */

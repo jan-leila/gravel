@@ -7,18 +7,26 @@ import com.anopticlabs.gravel.notebook.storage.NotebookJson
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** The body a Network router posts: the router API's payload under its snake-case names (`ROUTER_API.md`). */
+/** The body a Network router posts: the router API's payload under its snake-case names (`ROUTER_API.md`); a part not shared is left out. */
 @Serializable
 data class NetworkPayload(
     @SerialName("api_version") val apiVersion: Int,
     @SerialName("capture_id") val captureId: String,
-    @SerialName("recorded_at") val recordedAt: String,
     val text: String,
+    @SerialName("recorded_at") val recordedAt: String? = null,
+    val location: NetworkLocation? = null,
 ) {
     companion object {
-        fun of(text: RoutedText): NetworkPayload = NetworkPayload(RouterApi.VERSION, text.captureId, text.recordedAt, text.text)
+        fun of(text: RoutedText, share: Set<Need>): NetworkPayload = NetworkPayload(
+            RouterApi.VERSION, text.captureId, text.text,
+            recordedAt = text.recordedAt.takeIf { Need.RECORDED_AT in share },
+            location = text.location?.takeIf { Need.LOCATION in share }?.let { NetworkLocation(it.latitude, it.longitude, it.accuracyMeters) },
+        )
     }
 }
+
+@Serializable
+data class NetworkLocation(val latitude: Double, val longitude: Double, @SerialName("accuracy_m") val accuracyMeters: Float? = null)
 
 /**
  * Delivers to a Network router: one POST of the payload to its address, the token as a bearer
@@ -30,11 +38,11 @@ class NetworkRouterDelivery(
     private val poster: TextPoster,
     private val hasNetwork: () -> Boolean,
 ) : TextDeliverer {
-    override suspend fun deliver(router: RouterConfig, text: RoutedText) {
+    override suspend fun deliver(router: RouterConfig, text: RoutedText, share: Set<Need>) {
         require(router is RouterConfig.Network) { "${router.name} is not a network router" }
         if (!RoutingConfig.isHttpsUrl(router.url)) unavailable("${router.name} has no https:// address")
         if (!hasNetwork()) waitForNetwork("${router.name} waits for a network")
-        val body = NotebookJson.encodeToString(NetworkPayload.serializer(), NetworkPayload.of(text))
+        val body = NotebookJson.encodeToString(NetworkPayload.serializer(), NetworkPayload.of(text, share))
         when (val result = poster.post(router.url, router.bearerToken, body)) {
             is PostResult.Answered -> when (result.status) {
                 in 200..299 -> Unit

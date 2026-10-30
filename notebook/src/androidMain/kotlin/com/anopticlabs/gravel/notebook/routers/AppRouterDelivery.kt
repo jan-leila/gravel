@@ -13,9 +13,9 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 
-/** Sends one delivery to a router receiver and returns the result code the receiver left; the caller bounds the wait. */
+/** Sends one delivery to a router receiver, [share] saying what goes with the text, and returns the result code the receiver left; the caller bounds the wait. */
 fun interface RouterBroadcastSender {
-    suspend fun send(packageName: String, receiverClass: String, text: RoutedText): Int
+    suspend fun send(packageName: String, receiverClass: String, text: RoutedText, share: Set<Need>): Int
 }
 
 /**
@@ -32,7 +32,7 @@ class AppRouterDelivery(
     private val sender: RouterBroadcastSender,
     private val waitMillis: Long = RouterApi.DELIVERY_WAIT_MILLIS,
 ) : TextDeliverer {
-    override suspend fun deliver(router: RouterConfig, text: RoutedText) {
+    override suspend fun deliver(router: RouterConfig, text: RoutedText, share: Set<Need>) {
         require(router is RouterConfig.App) { "${router.name} is not an app router" }
         val receiver = installed.resolve(router.packageName, router.receiverClass)
             ?: unavailable("${router.name} is not installed, or its app no longer declares that router")
@@ -44,7 +44,7 @@ class AppRouterDelivery(
         val trusted = RouterTrust.isTrusted(receiver.namespace, trusted()) { installed.signedBy(receiver.packageName, it) }
         if (!trusted) unavailable("the app behind ${router.name} is not trusted")
         val code = try {
-            withTimeout(waitMillis) { sender.send(receiver.packageName, receiver.receiverClass, text) }
+            withTimeout(waitMillis) { sender.send(receiver.packageName, receiver.receiverClass, text, share) }
         } catch (e: TimeoutCancellationException) {
             throw CaptureProcessingException(CaptureFailureKind.RETRY, "${router.name} did not answer in time", e)
         }
@@ -58,18 +58,23 @@ class AppRouterDelivery(
 /**
  * The sender on Android: an explicit ordered broadcast on the foreground queue (the receiver gets
  * the foreground timeout, shorter than [RouterApi.DELIVERY_WAIT_MILLIS], so an answer never comes
- * after the wait gave up), its result code read by a result receiver. The extras are the router
- * API's payload and nothing else.
+* after the wait gave up), its result code read by a result receiver. The extras are the router
+ * API's payload, the shared parts and nothing else.
  */
 class AndroidRouterBroadcastSender(private val context: Context) : RouterBroadcastSender {
-    override suspend fun send(packageName: String, receiverClass: String, text: RoutedText): Int = suspendCancellableCoroutine { continuation ->
+    override suspend fun send(packageName: String, receiverClass: String, text: RoutedText, share: Set<Need>): Int = suspendCancellableCoroutine { continuation ->
         val intent = Intent(RouterApi.ACTION_ROUTE_TEXT)
             .setComponent(ComponentName(packageName, receiverClass))
             .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
             .putExtra(RouterApi.EXTRA_API_VERSION, RouterApi.VERSION)
             .putExtra(RouterApi.EXTRA_CAPTURE_ID, text.captureId)
-            .putExtra(RouterApi.EXTRA_RECORDED_AT, text.recordedAt)
             .putExtra(RouterApi.EXTRA_TEXT, text.text)
+        if (Need.RECORDED_AT in share) intent.putExtra(RouterApi.EXTRA_RECORDED_AT, text.recordedAt)
+        text.location?.takeIf { Need.LOCATION in share }?.let { location ->
+            intent.putExtra(RouterApi.EXTRA_LOCATION_LATITUDE, location.latitude)
+            intent.putExtra(RouterApi.EXTRA_LOCATION_LONGITUDE, location.longitude)
+            location.accuracyMeters?.let { intent.putExtra(RouterApi.EXTRA_LOCATION_ACCURACY_METERS, it) }
+        }
         val result = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 if (continuation.isActive) continuation.resume(resultCode)

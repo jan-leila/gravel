@@ -402,7 +402,7 @@ class CaptureDrain(
             }
             // A delivery can take seconds and is the one write a forward has, so it runs before the
             // capture settles, cancellable; a failure is read like any other processing failure.
-            if (built is BuiltCapture.Forward) deliverer.deliver(built.router, built.text)
+            if (built is BuiltCapture.Forward) deliverer.deliver(built.router, built.text, built.share)
             if (!settling(entry)) throw CancellationException("capture interrupted")
             // Once published, the entry must go even if the drain is being canceled.
             val published = withContext(NonCancellable) {

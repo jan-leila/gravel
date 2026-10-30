@@ -109,6 +109,15 @@
     <string name="notebook_routing_refresh">Refresh</string>
     <string name="notebook_routing_trusted">Trusted</string>
     <string name="notebook_routing_not_trusted">Not trusted</string>
+    <string name="notebook_routing_shares">What goes with the text</string>
+    <string name="notebook_routing_shares_hint">Only what you allow leaves the phone. Ask pauses a recording routed here until you answer.</string>
+    <string name="notebook_routing_need_location">Your location</string>
+    <string name="notebook_routing_need_recorded_at">When it was recorded</string>
+    <string name="notebook_routing_grant_ask">Ask each time</string>
+    <string name="notebook_routing_grant_always">Always</string>
+    <string name="notebook_routing_grant_never">Never</string>
+    <string name="notebook_routing_not_requested">Not requested by this router</string>
+    <string name="notebook_routing_wants">Wants: %1$s</string>
     <string name="notebook_routing_trust">Trust</string>
     <string name="notebook_routing_stop_trusting">Stop trusting</string>
     <string name="notebook_routing_trust_title">Trust %1$s?</string>

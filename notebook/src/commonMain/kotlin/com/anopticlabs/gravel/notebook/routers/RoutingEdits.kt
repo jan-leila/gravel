@@ -39,6 +39,18 @@ object RoutingEdits {
 
     fun withEntry(config: RoutingConfig, ref: RouterRef): RoutingConfig = config.copy(entry = ref)
 
+    /** With the grant of [ref] for [need] set to [grant]; unchanged when no router has that ref or it has no grants. */
+    fun withGrant(config: RoutingConfig, ref: RouterRef, need: Need, grant: Grant): RoutingConfig = config.copy(
+        routers = config.routers.map { router ->
+            when {
+                router.ref != ref -> router
+                router is RouterConfig.App -> router.copy(shares = router.shares.with(need, grant))
+                router is RouterConfig.Network -> router.copy(shares = router.shares.with(need, grant))
+                else -> router
+            }
+        },
+    )
+
     /** The kind as the screen names it. */
     fun kindName(router: RouterConfig): String = when (router) {
         is RouterConfig.Note -> "Note"
@@ -64,8 +76,27 @@ object RoutingEdits {
             val otherwise = router.otherwise?.let { config.router(it)?.name }
             if (otherwise == null) rules else "$rules, else to $otherwise"
         }
-        is RouterConfig.App -> "Sends to ${router.packageName}"
-        is RouterConfig.Network -> "Posts to ${hostOf(router.url)}"
+        is RouterConfig.App -> "Sends to ${router.packageName}" + sharesSummary(router)
+        is RouterConfig.Network -> "Posts to ${hostOf(router.url)}" + sharesSummary(router)
+    }
+
+    // Only what is needed is mentioned: a grant for a part the router never asked for changes nothing.
+    private fun sharesSummary(router: RouterConfig): String {
+        val shares = router.shares ?: return ""
+        val parts = router.needed().sortedBy { it.ordinal }.mapNotNull { need ->
+            when (shares.of(need)) {
+                Grant.ALWAYS -> "shares ${needName(need)}"
+                Grant.ASK -> "asks about ${needName(need)}"
+                Grant.NEVER -> null
+            }
+        }
+        return parts.joinToString(separator = ", ", prefix = ", ").takeIf { parts.isNotEmpty() }.orEmpty()
+    }
+
+    /** The need as a line names it. */
+    fun needName(need: Need): String = when (need) {
+        Need.LOCATION -> "your location"
+        Need.RECORDED_AT -> "the recording time"
     }
 
     /** The host of an https address, for a line that should not show a token or a path. */

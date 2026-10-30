@@ -1771,8 +1771,12 @@ in the app's device suite:
     any app could reach an unguarded one in Gravel's name. A delivery is
     one explicit ordered broadcast on the foreground queue
     (`AppRouterDelivery`, `AndroidRouterBroadcastSender`) carrying the API
-    version, the capture id, the recording's start and the text, nothing
-    else, acknowledged by the receiver's result code within
+    version, the capture id and the text, plus the recording's start and
+    its location only when the receiver declared it needs them (the
+    `needs` meta-data) and the user granted them for that router (`Shares`,
+    one `Grant` per `Need`: ask, always or never; a Network router has the
+    grants alone, its needs being whatever is not refused), nothing else,
+    acknowledged by the receiver's result code within
     `RouterApi.DELIVERY_WAIT_MILLIS`; no acknowledgement is a retry. The
     receiver, its declared id, its app's signer against the ref's
     namespace, and the app's trust are checked again at every delivery.

@@ -6,11 +6,14 @@ import com.anopticlabs.gravel.notebook.llm.PROMPT_CONTENT_BUDGET
 import com.anopticlabs.gravel.notebook.llm.Prompts
 import com.anopticlabs.gravel.notebook.reminders.ReminderProposal
 import com.anopticlabs.gravel.notebook.reminders.ReminderTimeStatus
+import com.anopticlabs.gravel.notebook.routers.Grant
+import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import com.anopticlabs.gravel.notebook.routers.RouterRef
 import com.anopticlabs.gravel.notebook.routers.RoutingConfig
+import com.anopticlabs.gravel.notebook.routers.Shares
 import com.anopticlabs.gravel.notebook.routers.SwitchRule
 import com.anopticlabs.gravel.notebook.storage.CorruptFileException
 import java.io.IOException
@@ -362,6 +365,22 @@ class OnDeviceCaptureBackendTest {
         assertEquals(Prompts.REMINDER_MESSAGE_SYSTEM, text.generations.single().system)
     }
 
+    /** What goes with the text is what the router needs and the user granted; an Ask grant shares nothing on its own. */
+    @Test
+    fun aForwardSharesTheNeededPartsTheUserGrantedAlways() = runBlocking<Unit> {
+        suspend fun shareTo(router: RouterConfig): Set<Need> {
+            graph = RoutingConfig(entry = router.ref, routers = listOf(router))
+            return assertIs<BuiltCapture.Forward>(run("hello")).share
+        }
+        val always = Shares(location = Grant.ALWAYS, recordedAt = Grant.ALWAYS)
+        assertEquals(setOf(Need.LOCATION, Need.RECORDED_AT), shareTo(hook.copy(shares = always)))
+        assertEquals(setOf(Need.RECORDED_AT), shareTo(hook.copy(shares = Shares(location = Grant.NEVER, recordedAt = Grant.ALWAYS))))
+        assertEquals(emptySet(), shareTo(hook.copy(shares = Shares(location = Grant.ASK, recordedAt = Grant.NEVER))))
+        assertEquals(emptySet(), shareTo(tasks.copy(shares = always)), "an app router gets only what it declared")
+        assertEquals(setOf(Need.LOCATION), shareTo(tasks.copy(needs = setOf(Need.LOCATION), shares = always)))
+        assertEquals(emptySet(), shareTo(tasks.copy(needs = setOf(Need.LOCATION))))
+    }
+
     /** What the router API promises: the transcript whole, the recording's start and place, and no text model run. */
     @Test
     fun anAppOrNetworkRouterGetsTheTranscriptWholeWithTheRecordingTimeAndPlaceAndNoModelRuns() = runBlocking<Unit> {
@@ -375,6 +394,7 @@ class OnDeviceCaptureBackendTest {
             assertEquals(router, built.router)
             assertEquals(RoutedText("c1", "2026-09-22T17:00:00+02:00", transcript, here), built.text)
             assertEquals(null, assertIs<BuiltCapture.Forward>(run(transcript)).text.location)
+            assertEquals(emptySet(), built.share, "nothing is granted until the user decides")
             assertEquals(listOf(CaptureStage.TRANSCRIBING, CaptureStage.FORWARDING), stages)
             assertEquals(0, text.prepared)
             assertTrue(text.generations.isEmpty())

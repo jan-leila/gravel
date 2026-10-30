@@ -30,6 +30,7 @@ guarded by Gravel's permission:
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.id" android:value="tasks" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.label" android:value="Add as a task" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.description" android:value="Creates a task from what you said" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.needs" android:value="recorded_at" />
         </receiver>
     </application>
 </manifest>
@@ -43,6 +44,10 @@ guarded by Gravel's permission:
 - `label` (up to 64 characters) is what the router is called in Gravel's
   settings; without it Gravel shows the receiver's label. `description` (up
   to 200 characters) is a line shown under it. Both are plain text.
+- `needs` (optional) lists what the router wants beyond the text, as a
+  comma-separated list of `recorded_at` and `location`. A word Gravel does
+  not know is ignored. See "What a delivery carries" below: declaring a
+  need does not get it, the user does.
 - One app may declare several routers, one receiver each, with distinct
   ids.
 - Gravel lists a receiver only when it is exported **and** guarded by exactly
@@ -112,6 +117,17 @@ The same screen exports the whole routing and the trusted list as one JSON
 file, and imports such a file in place of both. The file holds the bearer
 tokens of Network routers in clear; the screen says so before writing it.
 
+## What a delivery carries
+
+Every delivery carries the text and the capture id. Two more parts exist,
+and each reaches a router only when the router declared it in `needs`
+**and** the user granted it for that router in Gravel's settings: Always,
+Never, or Ask, which pauses the recording until the user answers for that
+one recording (and may make the answer permanent). A router therefore
+never knows whether a part was withheld or simply unknown (a recording
+made without a location fix has none to give), and must work without it or
+refuse the delivery (below) when it cannot.
+
 ## The delivery
 
 Gravel sends one **explicit ordered broadcast** to the receiver, with the
@@ -121,8 +137,10 @@ foreground flag set, carrying these extras and nothing else:
 | --- | --- | --- |
 | `api_version` | int | `1` for this document. |
 | `capture_id` | String | Identifies the recording. The same recording can be delivered more than once (below); treat a repeated id as the same text. |
-| `recorded_at` | String | When the recording started, as ISO-8601 with the offset of the zone it was recorded in, to the second: `2026-10-29T14:03:11-04:00`. This is the moment the user pressed record, not when Gravel processed the recording. |
 | `text` | String | The complete transcript, exactly as transcribed. |
+| `recorded_at` | String | Only with the `recorded_at` need granted. When the recording started, as ISO-8601 with the offset of the zone it was recorded in, to the second: `2026-10-29T14:03:11-04:00`. This is the moment the user pressed record, not when Gravel processed the recording. |
+| `location_latitude`, `location_longitude` | double | Only with the `location` need granted and a fix known: where the phone was when the recording started, in degrees. Always present together. |
+| `location_accuracy_m` | float | With the location, when the fix had an accuracy: its radius in metres. |
 
 The receiver **acknowledges** by setting the result code to
 `Activity.RESULT_OK`. Gravel waits up to 12 seconds for the broadcast to
@@ -137,8 +155,8 @@ class NotebookRouter : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.getIntExtra("api_version", 0) != 1) return
         val id = intent.getStringExtra("capture_id") ?: return
-        val recordedAt = intent.getStringExtra("recorded_at") ?: return
         val text = intent.getStringExtra("text") ?: return
+        val recordedAt = intent.getStringExtra("recorded_at")   // null unless needed and granted
         // Persist, then acknowledge; keep this quick.
         TaskStore(context).addFromNotebook(id, recordedAt, text)
         resultCode = Activity.RESULT_OK

@@ -50,7 +50,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.anopticlabs.gravel.notebook.R
+import com.anopticlabs.gravel.notebook.routers.Grant
 import com.anopticlabs.gravel.notebook.routers.InstalledRouter
+import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import com.anopticlabs.gravel.notebook.routers.RouterRef
 import com.anopticlabs.gravel.notebook.routers.RouterTrust
@@ -58,8 +60,10 @@ import com.anopticlabs.gravel.notebook.routers.RoutingConfig
 import com.anopticlabs.gravel.notebook.routers.RoutingEdits
 import com.anopticlabs.gravel.notebook.routers.RoutingExport
 import com.anopticlabs.gravel.notebook.routers.RoutingStoreState
+import com.anopticlabs.gravel.notebook.routers.Shares
 import com.anopticlabs.gravel.notebook.routers.SwitchRule
 import com.anopticlabs.gravel.notebook.routers.TrustedCertificate
+import com.anopticlabs.gravel.notebook.routers.shares
 import coredevices.pebble.ui.TopBarParams
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -409,6 +413,7 @@ private fun RouterEditor(
     var askTrust by remember(router.ref) { mutableStateOf<Pair<RouterApp, InstalledRouter>?>(null) }
     var url by remember(router.ref) { mutableStateOf((router as? RouterConfig.Network)?.url ?: "https://") }
     var token by remember(router.ref) { mutableStateOf((router as? RouterConfig.Network)?.bearerToken.orEmpty()) }
+    var shares by remember(router.ref) { mutableStateOf(router.shares ?: Shares()) }
     var problem by remember(router.ref) { mutableStateOf<String?>(null) }
     val others = config.routers.filter { it.ref != router.ref }
     val appKindName = stringResource(R.string.notebook_routing_kind_app)
@@ -419,8 +424,8 @@ private fun RouterEditor(
             is RouterConfig.Note -> RouterConfig.Note(router.id, trimmed)
             is RouterConfig.Reminder -> RouterConfig.Reminder(router.id, trimmed)
             is RouterConfig.Switch -> RouterConfig.Switch(router.id, trimmed, rules, otherwise)
-            is RouterConfig.App -> picked?.let { RouterConfig.App(it.id, trimmed, it.packageName, it.receiverClass, it.namespace) } ?: router.copy(name = trimmed)
-            is RouterConfig.Network -> RouterConfig.Network(router.id, trimmed, url.trim(), token.trim().ifEmpty { null })
+            is RouterConfig.App -> picked?.let { RouterConfig.App(it.id, trimmed, it.packageName, it.receiverClass, it.namespace, it.needs, shares) } ?: router.copy(name = trimmed, shares = shares)
+            is RouterConfig.Network -> RouterConfig.Network(router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares)
         }
     }
     fun take(choice: InstalledRouter) {
@@ -452,8 +457,12 @@ private fun RouterEditor(
                         is RouterConfig.App -> {
                             if (picked == null && router.packageName.isNotEmpty()) Text(stringResource(R.string.notebook_routing_app_gone), color = MaterialTheme.colorScheme.error)
                             AppFields(apps, picked, onPick = { app, choice -> if (app.trusted) take(choice) else askTrust = app to choice })
+                            SharesFields(needed = picked?.needs ?: router.needs, shares, onShares = { shares = it })
                         }
-                        is RouterConfig.Network -> NetworkFields(url, token, onUrl = { url = it }, onToken = { token = it })
+                        is RouterConfig.Network -> {
+                            NetworkFields(url, token, onUrl = { url = it }, onToken = { token = it })
+                            SharesFields(needed = Need.entries.toSet(), shares, onShares = { shares = it })
+                        }
                     }
                     problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -551,6 +560,10 @@ private fun AppFields(apps: List<RouterApp>, picked: InstalledRouter?, onPick: (
                 Column(Modifier.padding(start = 8.dp)) {
                     Text(choice.label)
                     choice.description?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    if (choice.needs.isNotEmpty()) {
+                        val wanted = choice.needs.sortedBy { it.ordinal }.map { needName(it) }
+                        Text(stringResource(R.string.notebook_routing_wants, wanted.joinToString()), style = MaterialTheme.typography.bodySmall)
+                    }
                     Text("${app.appName} - ${app.namespace}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (!app.trusted) Text(stringResource(R.string.notebook_routing_not_trusted), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
@@ -580,6 +593,62 @@ private fun NetworkFields(url: String, token: String, onUrl: (String) -> Unit, o
         modifier = Modifier.fillMaxWidth(),
     )
 }
+
+/**
+ * One grant per need. A need the router never declared gets no picker: the grant would change
+ * nothing, and the user should not think the router is after it.
+ */
+@Composable
+private fun SharesFields(needed: Set<Need>, shares: Shares, onShares: (Shares) -> Unit) {
+    Text(stringResource(R.string.notebook_routing_shares), style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(R.string.notebook_routing_shares_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Need.entries.forEach { need ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(needName(need), Modifier.weight(1f))
+            if (need in needed) {
+                GrantPicker(shares.of(need), onPick = { onShares(shares.with(need, it)) })
+            } else {
+                Text(stringResource(R.string.notebook_routing_not_requested), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GrantPicker(current: Grant, onPick: (Grant) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { open = true }) {
+            Text(grantName(current))
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Grant.entries.forEach { grant ->
+                DropdownMenuItem(text = { Text(grantName(grant)) }, onClick = {
+                    onPick(grant)
+                    open = false
+                })
+            }
+        }
+    }
+}
+
+@Composable
+private fun needName(need: Need): String = stringResource(
+    when (need) {
+        Need.LOCATION -> R.string.notebook_routing_need_location
+        Need.RECORDED_AT -> R.string.notebook_routing_need_recorded_at
+    },
+)
+
+@Composable
+private fun grantName(grant: Grant): String = stringResource(
+    when (grant) {
+        Grant.ASK -> R.string.notebook_routing_grant_ask
+        Grant.ALWAYS -> R.string.notebook_routing_grant_always
+        Grant.NEVER -> R.string.notebook_routing_grant_never
+    },
+)
 
 /** The certificates in force, built-in ones marked; any can be removed, and one added by its digest. */
 @Composable

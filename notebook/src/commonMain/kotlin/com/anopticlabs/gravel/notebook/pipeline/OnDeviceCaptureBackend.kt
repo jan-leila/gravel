@@ -14,6 +14,7 @@ import com.anopticlabs.gravel.notebook.reminders.shouldParkTriggerCompletion
 import com.anopticlabs.gravel.notebook.routers.RouteWalk
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.shared
 import com.anopticlabs.gravel.notebook.routers.RoutingConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.datetime.toLocalDateTime
@@ -77,7 +78,7 @@ class OnDeviceCaptureBackend(
             is RouterConfig.Reminder -> buildReminder(request, routed, onStage)
             is RouterConfig.App, is RouterConfig.Network -> {
                 onStage(CaptureStage.FORWARDING)
-                BuiltCapture.Forward(terminal, routed)
+                BuiltCapture.Forward(terminal, routed, terminal.shared(granted = emptySet()))
             }
             is RouterConfig.Switch -> throw IllegalStateException("the routing walk ended at a switch")
         }
