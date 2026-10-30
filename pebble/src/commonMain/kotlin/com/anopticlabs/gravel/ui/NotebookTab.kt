@@ -22,11 +22,16 @@ interface NotebookTab {
     fun setShown(shown: Boolean)
 
     /**
-     * [openTextModels] opens Settings > AI > LLM, offered while processing waits on the text model, and
-     * [openSpeechSettings] Settings > AI > Speech Recognition, while it waits on the speech setting or the server.
+     * [openTextModels] opens Settings > AI > LLM, offered while processing waits on the text model,
+     * [openSpeechSettings] Settings > AI > Speech Recognition, while it waits on the speech setting or the server, and
+     * [openRoutingSettings] Settings > Notebook > Text Routing, while the routing cannot be read.
      */
     @Composable
-    fun Screen(topBarParams: TopBarParams, openTextModels: () -> Unit, openSpeechSettings: () -> Unit)
+    fun Screen(topBarParams: TopBarParams, openTextModels: () -> Unit, openSpeechSettings: () -> Unit, openRoutingSettings: () -> Unit)
+
+    /** Settings > Notebook > Text Routing: where a recording's text goes once transcribed. */
+    @Composable
+    fun RoutingScreen(topBarParams: TopBarParams)
 
     /** The Notebook's settings as Settings shows them. */
     val settings: StateFlow<NotebookSettingsValues>

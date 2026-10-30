@@ -33,6 +33,7 @@ object NotebookSettingsText {
     const val WAIT_FOR_POWER =
         "Recordings over 30 seconds that this phone transcribes start only while it is plugged in. The Notebook tab offers Process now"
     const val QUICK_REMIND = "A voice reminder with no clear time is set to this default time from when it was processed"
+    const val TEXT_ROUTING = "Where the text of a recording goes: your notes, a reminder, another app or a server, by rules you set"
     const val AUTO_BACKUPS = "Back up your notes and reminders to a folder you choose, sealed with a recovery key you keep from setup"
     const val SET_UP_AGAIN =
         "Gravel can't read its automatic backup settings or key. Setting up again picks a folder and makes a new recovery key; " +

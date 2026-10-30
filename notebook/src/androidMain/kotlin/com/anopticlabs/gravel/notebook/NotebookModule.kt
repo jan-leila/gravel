@@ -96,6 +96,7 @@ import com.anopticlabs.gravel.notebook.ui.NotebookStatusReader
 import com.anopticlabs.gravel.notebook.ui.NotebookViewModel
 import com.anopticlabs.gravel.notebook.ui.NotesViewModel
 import com.anopticlabs.gravel.notebook.ui.RemindersViewModel
+import com.anopticlabs.gravel.notebook.ui.RoutingViewModel
 import com.anopticlabs.gravel.notebook.ui.StorageRecoveryRunner
 import org.koin.android.ext.koin.androidContext
 import java.io.File
@@ -280,6 +281,7 @@ val notebookModule = module {
         )
     }
     viewModel { NotesViewModel(get()) }
+    viewModel { RoutingViewModel(get(), get(), get()) }
     viewModel {
         RemindersViewModel(
             reminders = get(), events = get(), alarms = get(), typedNotes = get(),

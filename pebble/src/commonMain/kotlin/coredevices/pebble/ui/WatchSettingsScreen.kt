@@ -937,6 +937,18 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                         action = { showTriggerWordDialog = true },
                     )
                 },
+                notebookSettings?.let {
+                    navBarNav?.let { nav ->
+                        basicSettingsActionItem(
+                            title = "Text Routing",
+                            description = NotebookSettingsText.TEXT_ROUTING,
+                            topLevelType = TopLevelType.Phone,
+                            section = Section.Notebook,
+                            keywords = "notebook routing router switch app network forward text transcript",
+                            action = { nav.navigateTo(PebbleNavBarRoutes.NotebookRoutingRoute) },
+                        )
+                    }
+                },
                 notebookSettings?.let { notebook ->
                     basicSettingsToggleItem(
                         title = "Interrupt Long Recordings",

@@ -115,7 +115,7 @@ class OnDeviceCaptureBackend(
     } catch (e: CaptureProcessingException) {
         throw e
     } catch (e: Exception) {
-        throw CaptureProcessingException(CaptureFailureKind.HOLD, "the text routing settings could not be read", e)
+        throw CaptureProcessingException(CaptureFailureKind.HOLD, "the text routing settings could not be read", e, remedy = CaptureRemedy.ROUTING_SETTINGS)
     }
 
     private suspend fun phoneFits(): Boolean {

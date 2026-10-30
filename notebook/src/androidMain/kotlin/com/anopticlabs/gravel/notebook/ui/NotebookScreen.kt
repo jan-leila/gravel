@@ -85,6 +85,7 @@ fun NotebookScreen(
     setupGuide: (@Composable () -> Unit)? = null,
     openSpeechSettings: () -> Unit = {},
     notice: (@Composable () -> Unit)? = null,
+    openRoutingSettings: () -> Unit = {},
 ) {
     val title = stringResource(R.string.notebook_title)
     LaunchedEffect(title) {
@@ -93,7 +94,11 @@ fun NotebookScreen(
         topBarParams.title(title)
     }
     NotebookSecureContent {
-        if (setupGuide != null) setupGuide() else NotebookContent(topBarParams, HoldActions(openTextModels, openSpeechSettings), recordingSupported, notice)
+        if (setupGuide != null) {
+            setupGuide()
+        } else {
+            NotebookContent(topBarParams, HoldActions(openTextModels, openSpeechSettings, openRoutingSettings = openRoutingSettings), recordingSupported, notice)
+        }
     }
 }
 
@@ -234,6 +239,7 @@ private fun RemedyButtons(remedy: CaptureRemedy?, holdActions: HoldActions) {
             TextButton(onClick = holdActions.openSpeechSettings) { Text(stringResource(R.string.notebook_speech_settings)) }
             TextButton(onClick = holdActions.tryServerAgain) { Text(stringResource(R.string.notebook_server_try_again)) }
         }
+        CaptureRemedy.ROUTING_SETTINGS -> TextButton(onClick = holdActions.openRoutingSettings) { Text(stringResource(R.string.notebook_routing_settings)) }
         null -> {}
     }
 }
@@ -243,6 +249,7 @@ private data class HoldActions(
     val openTextModels: () -> Unit,
     val openSpeechSettings: () -> Unit,
     val tryServerAgain: () -> Unit = {},
+    val openRoutingSettings: () -> Unit = {},
 )
 
 @Composable
