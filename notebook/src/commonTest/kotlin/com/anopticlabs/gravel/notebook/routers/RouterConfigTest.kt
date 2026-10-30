@@ -35,19 +35,20 @@ class RouterConfigTest {
     }
 
     @Test
-    fun everyKindRoundTripsThroughJsonUnderItsTypeTagWithItsNamespaceWritten() {
+    fun everyKindRoundTripsThroughJsonUnderItsTypeTagWithOnlyAnAppsNamespaceWritten() {
         full.requireWellFormed()
         val json = NotebookJson.encodeToString(full)
         assertEquals(full, NotebookJson.decodeFromString<RoutingConfig>(json))
         val top = NotebookJson.parseToJsonElement(json).jsonObject
         val routers = top.getValue("routers").jsonArray
         assertEquals(listOf("switch", "note", "reminder", "app", "network"), routers.map { it.jsonObject.getValue("type").jsonPrimitive.content })
-        assertEquals(listOf("gravel", "gravel", "gravel", signer, "gravel"), routers.map { it.jsonObject.getValue("namespace").jsonPrimitive.content })
+        assertEquals(listOf(null, null, null, signer, null), routers.map { it.jsonObject["namespace"]?.jsonPrimitive?.content })
         assertEquals(1, top.getValue("v").jsonPrimitive.content.toInt())
-        assertEquals(mapOf("namespace" to "gravel", "id" to "split"), top.getValue("entry").jsonObject.mapValues { it.value.jsonPrimitive.content })
+        assertEquals(mapOf("id" to "split"), top.getValue("entry").jsonObject.mapValues { it.value.jsonPrimitive.content })
         val rule = routers[0].jsonObject.getValue("rules").jsonArray[1].jsonObject
         assertEquals(mapOf("namespace" to signer, "id" to "tasks"), rule.getValue("router").jsonObject.mapValues { it.value.jsonPrimitive.content })
         assertFalse(rule.containsKey("target"))
+        assertEquals(mapOf("id" to "reminders"), routers[0].jsonObject.getValue("rules").jsonArray[0].jsonObject.getValue("router").jsonObject.mapValues { it.value.jsonPrimitive.content })
     }
 
     @Test
@@ -71,14 +72,15 @@ class RouterConfigTest {
         assertFalse(RoutingConfig.isRouterId("a".repeat(RoutingConfig.MAX_ID_CHARS + 1)))
     }
 
-    /** Nothing an app declares can land in Gravel's namespace, and nothing of Gravel's own in a signer's. */
+    /** Nothing an app declares can pass as one of Gravel's own routers, and nothing of Gravel's own sits in a signer's namespace. */
     @Test
-    fun gravelsKindsStayInItsNamespaceAndAnAppRouterInItsSigners() {
-        assertTrue(refused(one(RouterConfig.Note("a", "Notes", namespace = signer))).contains("Gravel's own namespace"))
-        assertTrue(refused(one(RouterConfig.Reminder("a", "R", namespace = "other"))).contains("Gravel's own namespace"))
-        assertTrue(refused(one(RouterConfig.Switch("a", "S", namespace = signer))).contains("Gravel's own namespace"))
-        assertTrue(refused(one(network.copy(namespace = signer))).contains("Gravel's own namespace"))
-        assertTrue(refused(one(app.copy(namespace = RouterRef.GRAVEL))).contains("signing certificate"))
+    fun gravelsKindsHaveNoNamespaceAndAnAppRouterHasItsSigners() {
+        assertTrue(refused(one(RouterConfig.Note("a", "Notes", namespace = signer))).contains("cannot be in a namespace"))
+        assertTrue(refused(one(RouterConfig.Reminder("a", "R", namespace = "other"))).contains("cannot be in a namespace"))
+        assertTrue(refused(one(RouterConfig.Switch("a", "S", namespace = signer))).contains("cannot be in a namespace"))
+        assertTrue(refused(one(network.copy(namespace = signer))).contains("cannot be in a namespace"))
+        assertTrue(refused(one(app.copy(namespace = ""))).contains("signing certificate"))
+        assertTrue(refused(one(app.copy(namespace = "gravel"))).contains("signing certificate"))
         assertTrue(refused(one(app.copy(namespace = "A".repeat(64)))).contains("signing certificate"))
         assertTrue(refused(one(app.copy(namespace = "a".repeat(63)))).contains("signing certificate"))
         one(app).requireWellFormed()

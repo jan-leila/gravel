@@ -1732,11 +1732,11 @@ in the app's device suite:
   entry's capture time, which the phone recorder and the watch handler
   take at the recording's start), into a `RoutedText`, and `RouteWalk`
   follows the stored `RoutingConfig` from its entry router to the router
-  that consumes it (every router is named by a `RouterRef`, a namespace
-  and an id: Gravel's own kinds are in the namespace `gravel`, and an
-  app's router in the namespace of the certificate that signed the app,
-  so nothing an app declares can occupy or collide with a router of
-  Gravel's or of another signer's): a `Note` router builds the note with the text model
+  that consumes it (every router is named by a `RouterRef`, an id and a
+  namespace: Gravel's own kinds have none, and an app's router has the
+  SHA-256 of the certificate that signed the app, so nothing an app
+  declares can pass as one of Gravel's own routers or collide with
+  another signer's): a `Note` router builds the note with the text model
   (the stamp goes into the front matter as `recorded:`), a `Reminder`
   router a reminder (the stamp is stored on the item and carried by the
   backup), and an `App` or `Network` router a `BuiltCapture.Forward` the

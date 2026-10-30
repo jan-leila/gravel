@@ -53,15 +53,17 @@ guarded by Gravel's permission:
 
 ## Namespaces
 
-Gravel's routing refers to every router by a pair, `namespace` and `id`.
-Routers the user makes in Gravel's settings are in the namespace `gravel`.
-A router your app declares is in the namespace of the certificate that
-signed your app: the lowercase hex SHA-256 of the certificate's DER bytes,
+Gravel's routing refers to every router by an `id` and a `namespace`.
+Routers the user makes in Gravel's settings have no namespace: the key is
+absent. A router your app declares is in the namespace of the certificate
+that signed your app: the lowercase hex SHA-256 of the certificate's DER bytes,
 as `apksigner verify --print-certs` prints it. So:
 
-- Nothing an app declares can name, replace or collide with a router in
-  Gravel's namespace, or in the namespace of an app signed by another key.
-  Gravel refuses a stored routing that breaks this rule.
+- A router is either one of Gravel's own, with no namespace, or an app's,
+  with a certificate digest as its namespace; Gravel refuses a stored
+  routing with any other shape. So nothing an app declares can name,
+  replace or collide with one of Gravel's own routers, or with a router of
+  an app signed by another key.
 - Two apps signed by the same key share a namespace, so their router ids
   must not collide; that is the signer's responsibility.
 - An app signed by several certificates has no single namespace, and its

@@ -6,17 +6,17 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Names one router: its [id] within a [namespace]. Routers the user makes in Gravel's settings are
- * in [GRAVEL]; a router another app declares is in the namespace of the certificate that signed
- * that app (its lowercase hex SHA-256), so two apps can only share a namespace by sharing a
- * signing key, and nothing an app declares can name a router in Gravel's own namespace.
+ * Names one router: its [id] within a [namespace]. Routers the user makes in Gravel's settings have
+ * no namespace (the key is absent in the stored JSON); a router another app declares is in the
+ * namespace of the certificate that signed that app (its lowercase hex SHA-256), so two apps can
+ * only share a namespace by sharing a signing key, and nothing an app declares can name one of
+ * Gravel's own routers.
  */
 @Serializable
-data class RouterRef(val namespace: String, val id: String) {
+data class RouterRef(val namespace: String?, val id: String) {
     companion object {
-        const val GRAVEL = "gravel"
-
-        fun gravel(id: String) = RouterRef(GRAVEL, id)
+        /** One of Gravel's own routers. */
+        fun gravel(id: String) = RouterRef(null, id)
     }
 }
 
@@ -28,7 +28,7 @@ data class RouterRef(val namespace: String, val id: String) {
  */
 @Serializable
 sealed interface RouterConfig {
-    val namespace: String
+    val namespace: String?
     val id: String
     val name: String
 
@@ -37,33 +37,30 @@ sealed interface RouterConfig {
     /** Writes the text as a note, titled and tagged by the text model. */
     @Serializable
     @SerialName("note")
-    @OptIn(ExperimentalSerializationApi::class)
     data class Note(
         override val id: String,
         override val name: String,
-        @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val namespace: String = RouterRef.GRAVEL,
+        override val namespace: String? = null,
     ) : RouterConfig
 
     /** Sets a reminder: the message from the text model, the time read from the words. */
     @Serializable
     @SerialName("reminder")
-    @OptIn(ExperimentalSerializationApi::class)
     data class Reminder(
         override val id: String,
         override val name: String,
-        @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val namespace: String = RouterRef.GRAVEL,
+        override val namespace: String? = null,
     ) : RouterConfig
 
     /** Forwards to the router of the first rule whose pattern matches, else to [otherwise]. */
     @Serializable
     @SerialName("switch")
-    @OptIn(ExperimentalSerializationApi::class)
     data class Switch(
         override val id: String,
         override val name: String,
         val rules: List<SwitchRule> = emptyList(),
         val otherwise: RouterRef? = null,
-        @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val namespace: String = RouterRef.GRAVEL,
+        override val namespace: String? = null,
     ) : RouterConfig
 
     /**
@@ -83,13 +80,12 @@ sealed interface RouterConfig {
     /** Posts the text as JSON to [url]; [bearerToken], when set, goes in the Authorization header. */
     @Serializable
     @SerialName("network")
-    @OptIn(ExperimentalSerializationApi::class)
     data class Network(
         override val id: String,
         override val name: String,
         val url: String,
         val bearerToken: String? = null,
-        @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val namespace: String = RouterRef.GRAVEL,
+        override val namespace: String? = null,
     ) : RouterConfig
 }
 
@@ -113,8 +109,8 @@ data class RoutingConfig(
     /**
      * Refuses, with a sentence the settings screen can show, a graph the walk could not follow (a
      * missing entry or target, a rule that is not a regular expression, a circle of switches, a
-     * value past its cap) or one that breaks the namespace rule: Gravel's own kinds are in
-     * [RouterRef.GRAVEL] and an app router is in a signer's namespace, never the other way round.
+     * value past its cap) or one that breaks the namespace rule: Gravel's own kinds have no
+     * namespace and an app router is in a signer's, never the other way round.
      * Nothing here reaches outside the config.
      */
     fun requireWellFormed() {
@@ -131,11 +127,11 @@ data class RoutingConfig(
                     "${router.name} needs the SHA-256 of its app's signing certificate as its namespace."
                 }
                 is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Network ->
-                    require(router.namespace == RouterRef.GRAVEL) { "${router.name} has to be in Gravel's own namespace." }
+                    require(router.namespace == null) { "${router.name} is one of Gravel's own routers and cannot be in a namespace." }
             }
         }
         routers.groupBy { it.ref }.values.firstOrNull { it.size > 1 }?.let { shared ->
-            throw IllegalArgumentException("Two routers share the id ${shared.first().id} in the namespace ${shared.first().namespace}.")
+            throw IllegalArgumentException("Two routers share the id ${shared.first().id}${shared.first().namespace?.let { " in the namespace $it" }.orEmpty()}.")
         }
         require(router(entry) != null) { "The entry router does not exist." }
         routers.forEach { router ->

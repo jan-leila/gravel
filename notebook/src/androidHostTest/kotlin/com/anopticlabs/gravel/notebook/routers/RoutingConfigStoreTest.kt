@@ -67,7 +67,7 @@ class RoutingConfigStoreTest {
 
     @Test
     fun aConfigThisBuildRefusesIsUnreadable() = runBlocking<Unit> {
-        val newer = """{"v":2,"entry":{"namespace":"gravel","id":"notebook"},"routers":[{"type":"note","namespace":"gravel","id":"notebook","name":"Notebook"}]}"""
+        val newer = """{"v":2,"entry":{"id":"notebook"},"routers":[{"type":"note","id":"notebook","name":"Notebook"}]}"""
         EncryptedFiles(root, crypto).write(file, newer.encodeToByteArray())
         assertFailsWith<PersistedFormatException> { store.read() }
         assertEquals(RoutingStoreState.Unreadable, store.load())

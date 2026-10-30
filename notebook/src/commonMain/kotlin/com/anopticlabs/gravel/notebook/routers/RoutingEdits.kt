@@ -4,7 +4,7 @@ package com.anopticlabs.gravel.notebook.routers
 object RoutingEdits {
     /** The kind's tag with the lowest number no router of Gravel's own has, `switch-2` say; `[prefix]` alone when free. */
     fun newId(config: RoutingConfig, prefix: String): String {
-        val taken = config.routers.filter { it.namespace == RouterRef.GRAVEL }.mapTo(mutableSetOf()) { it.id }
+        val taken = config.routers.filter { it.namespace == null }.mapTo(mutableSetOf()) { it.id }
         if (prefix !in taken) return prefix
         return generateSequence(2) { it + 1 }.map { "$prefix-$it" }.first { it !in taken }
     }
