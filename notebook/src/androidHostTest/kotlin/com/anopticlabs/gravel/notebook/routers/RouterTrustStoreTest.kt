@@ -14,9 +14,11 @@ class RouterTrustStoreTest {
 
     private val dir = Files.createTempDirectory("trust").toFile()
     private var now = 1_000L
-    private val store = RouterTrustStore(dir) { now }
     private val a = "a".repeat(64)
     private val b = "b".repeat(64)
+    private val builtIn = "c".repeat(64)
+    private val store = RouterTrustStore(dir, { now }, defaults = setOf(builtIn))
+    private val file = File(dir, RouterTrustStore.FILE_NAME)
 
     @AfterTest
     fun cleanUp() {
@@ -24,42 +26,58 @@ class RouterTrustStoreTest {
     }
 
     @Test
-    fun entriesAreKeptPerPackageAndForgottenAgain() = runBlocking<Unit> {
+    fun certificatesAreAddedRenamedAndRemovedAgain() = runBlocking<Unit> {
         assertNull(store.entries.value)
-        assertEquals(emptyList(), store.load())
-        assertTrue(store.trust("com.example.tasks", a.uppercase()))
+        assertEquals(TrustEntries.EMPTY, store.load())
+        assertEquals(listOf(TrustedCertificate(builtIn, null, builtIn = true, null)), store.certificates())
+        assertTrue(store.add(a.uppercase(), "Tasks"))
         now = 2_000L
-        assertTrue(store.trust("com.example.other", b))
-        assertEquals(listOf(TrustedRouterApp("com.example.tasks", a, 1_000L), TrustedRouterApp("com.example.other", b, 2_000L)), store.read())
+        assertTrue(store.add(b, null))
+        assertEquals(listOf(TrustedSigner(a, "Tasks", 1_000L), TrustedSigner(b, null, 2_000L)), store.read().added)
         assertEquals(store.read(), store.entries.value)
         assertEquals(store.read(), RouterTrustStore(dir).read(), "another instance reads the file")
+        assertEquals(setOf(builtIn, a, b), store.trustedDigests())
         now = 3_000L
-        assertTrue(store.trust("com.example.tasks", b), "replaces the package's entry")
-        assertEquals(listOf(TrustedRouterApp("com.example.other", b, 2_000L), TrustedRouterApp("com.example.tasks", b, 3_000L)), store.read())
-        assertTrue(store.forget("com.example.tasks"))
-        assertEquals(listOf(TrustedRouterApp("com.example.other", b, 2_000L)), store.read())
-        assertTrue(store.forget("com.example.other"))
-        assertEquals(emptyList(), store.read())
-        assertFalse(File(dir, RouterTrustStore.FILE_NAME).exists(), "an empty list leaves no file")
+        assertTrue(store.add(a, "Renamed"), "renames in place")
+        assertEquals(listOf(TrustedSigner(b, null, 2_000L), TrustedSigner(a, "Renamed", 3_000L)), store.read().added)
+        assertTrue(store.remove(a))
+        assertTrue(store.remove(b))
+        assertEquals(TrustEntries.EMPTY, store.read())
+        assertFalse(file.exists(), "no changes leave no file")
     }
 
     @Test
-    fun anAppWithSeveralSignersIsTrustedByEachOfThem() = runBlocking<Unit> {
-        assertTrue(store.trustAll("com.example.tasks", listOf(a, b)))
-        assertEquals(listOf(TrustedRouterApp("com.example.tasks", a, 1_000L), TrustedRouterApp("com.example.tasks", b, 1_000L)), store.read())
-        assertFalse(store.trustAll("com.example.tasks", listOf(a, "short")))
-        assertEquals(2, store.read().size)
+    fun aBuiltInCertificateIsRemovedAndRestoredWithoutLeavingTheBuiltInList() = runBlocking<Unit> {
+        assertTrue(store.remove(builtIn))
+        assertEquals(TrustEntries(removedDefaults = listOf(builtIn)), store.read())
+        assertTrue(store.certificates().isEmpty())
+        assertTrue(store.trustedDigests().isEmpty())
+        assertTrue(store.add(builtIn, "ignored"))
+        assertEquals(TrustEntries.EMPTY, store.read())
+        assertEquals(listOf(TrustedCertificate(builtIn, null, builtIn = true, null)), store.certificates())
     }
 
     @Test
-    fun aMalformedDigestIsRefusedAndAnUnreadableFileTrustsNothing() = runBlocking<Unit> {
-        assertFalse(store.trust("com.example.tasks", "not a digest"))
-        assertFalse(File(dir, RouterTrustStore.FILE_NAME).exists())
-        File(dir, RouterTrustStore.FILE_NAME).writeText("[{\"packageName\":")
-        assertEquals(emptyList(), store.read())
-        File(dir, RouterTrustStore.FILE_NAME).writeText("""[{"packageName":"com.example.tasks","sha256":"nope","addedAtMillis":1}]""")
-        assertEquals(emptyList(), store.read(), "an entry with a malformed digest is dropped")
-        File(dir, RouterTrustStore.FILE_NAME).writeText("x".repeat(RouterTrustStore.MAX_CHARS + 1))
-        assertEquals(emptyList(), store.read())
+    fun anImportReplacesEverythingAndTheListIsCapped() = runBlocking<Unit> {
+        assertTrue(store.add(a, "Old"))
+        assertTrue(store.replace(TrustEntries(added = listOf(TrustedSigner(b, "New", 9L)), removedDefaults = listOf(builtIn, "junk"))))
+        assertEquals(TrustEntries(added = listOf(TrustedSigner(b, "New", 9L)), removedDefaults = listOf(builtIn)), store.read())
+        val full = TrustEntries(added = (1..TrustEntries.MAX_ENTRIES).map { TrustedSigner(it.toString(16).padStart(64, '0'), null, it.toLong()) })
+        assertTrue(store.replace(full))
+        assertFalse(store.add(a, "One more"), "full")
+        assertTrue(store.add(full.added.first().sha256, "Renamed"), "renaming does not need room")
+    }
+
+    @Test
+    fun aMalformedDigestIsRefusedAndAnUnreadableFileChangesNothing() = runBlocking<Unit> {
+        assertFalse(store.add("not a digest", null))
+        assertFalse(store.remove("not a digest"))
+        assertFalse(file.exists())
+        file.writeText("{\"added\":")
+        assertEquals(TrustEntries.EMPTY, store.read())
+        file.writeText("""{"added":[{"sha256":"nope"}],"removedDefaults":["$builtIn"]}""")
+        assertEquals(TrustEntries(removedDefaults = listOf(builtIn)), store.read(), "a malformed entry is dropped, the rest kept")
+        file.writeText("x".repeat(RouterTrustStore.MAX_CHARS + 1))
+        assertEquals(TrustEntries.EMPTY, store.read())
     }
 }

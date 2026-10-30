@@ -38,7 +38,7 @@ class AppRouterDeliveryTest {
 
     private val installed = FakeInstalled()
     private val sender = FakeSender()
-    private var trusted = listOf(TrustedRouterApp("com.example.tasks", a, 1L))
+    private var trusted = setOf(a)
     private val delivery = AppRouterDelivery(installed, { trusted }, sender, waitMillis = 200)
 
     private fun installTasks(namespace: String = a, id: String = "tasks") {
@@ -65,7 +65,7 @@ class AppRouterDeliveryTest {
     fun aRouterThatIsGoneOrUntrustedIsFlaggedWithoutASend() {
         unavailable { delivery.deliver(tasks, text) }
         installTasks()
-        trusted = emptyList()
+        trusted = emptySet()
         assertTrue(unavailable { delivery.deliver(tasks, text) }.message!!.contains("not trusted"))
         assertTrue(sender.sent.isEmpty())
     }
@@ -77,7 +77,7 @@ class AppRouterDeliveryTest {
         assertTrue(unavailable { delivery.deliver(tasks, text) }.message!!.contains("different router"))
         installed.routers.clear()
         installTasks(namespace = "d".repeat(64))
-        trusted = listOf(TrustedRouterApp("com.example.tasks", "d".repeat(64), 1L))
+        trusted = setOf("d".repeat(64))
         assertTrue(unavailable { delivery.deliver(tasks, text) }.message!!.contains("different key"))
         assertTrue(sender.sent.isEmpty())
     }
@@ -85,7 +85,7 @@ class AppRouterDeliveryTest {
     @Test
     fun aRotatedSignerStillAnswersForItsNamespaceAndTrustThroughThePlatformsLineageCheck() = runBlocking<Unit> {
         installTasks(namespace = "d".repeat(64))
-        trusted = listOf(TrustedRouterApp("com.example.tasks", old, 1L))
+        trusted = setOf(old)
         installed.lineage["com.example.tasks"] = setOf(old)
         delivery.deliver(tasks.copy(namespace = old), text)
         assertEquals(1, sender.sent.size)

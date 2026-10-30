@@ -1,5 +1,8 @@
 package com.anopticlabs.gravel.notebook.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,14 +53,17 @@ import com.anopticlabs.gravel.notebook.R
 import com.anopticlabs.gravel.notebook.routers.InstalledRouter
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import com.anopticlabs.gravel.notebook.routers.RouterRef
+import com.anopticlabs.gravel.notebook.routers.RouterTrust
 import com.anopticlabs.gravel.notebook.routers.RoutingConfig
 import com.anopticlabs.gravel.notebook.routers.RoutingEdits
+import com.anopticlabs.gravel.notebook.routers.RoutingExport
 import com.anopticlabs.gravel.notebook.routers.RoutingStoreState
 import com.anopticlabs.gravel.notebook.routers.SwitchRule
+import com.anopticlabs.gravel.notebook.routers.TrustedCertificate
 import coredevices.pebble.ui.TopBarParams
 import org.koin.compose.viewmodel.koinViewModel
 
-/** Settings > Notebook > Text Routing: the routing graph, its routers' editors, and the apps that declare routers. */
+/** Settings > Notebook > Text Routing: the routing graph, its routers' editors, the trusted certificates, the apps that declare routers, and export and import. */
 @Composable
 fun RoutingSettingsScreen(topBarParams: TopBarParams) {
     val title = stringResource(R.string.notebook_routing_title)
@@ -66,7 +72,7 @@ fun RoutingSettingsScreen(topBarParams: TopBarParams) {
         topBarParams.actions {}
         topBarParams.title(title)
     }
-    val viewModel = koinViewModel<RoutingViewModel>()
+    val viewModel = koinViewModel<RoutingViewModel<Uri>>()
     LaunchedEffect(viewModel) { viewModel.load() }
     val ui by viewModel.ui.collectAsState()
     NotebookSecureContent { RoutingContent(ui, viewModel) }
@@ -86,12 +92,36 @@ private sealed interface RoutingDialog {
     data class Trust(val app: RouterApp) : RoutingDialog
 
     data class Forget(val app: RouterApp) : RoutingDialog
+
+    data object AddCertificate : RoutingDialog
+
+    data class RemoveCertificate(val certificate: TrustedCertificate) : RoutingDialog
+
+    data object ConfirmExport : RoutingDialog
+
+    data object ConfirmImport : RoutingDialog
 }
 
 @Composable
-private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel) {
+private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>) {
     var dialog by remember { mutableStateOf<RoutingDialog?>(null) }
     val config = (ui.store as? RoutingStoreState.Loaded)?.config
+    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(RoutingExport.MIME_TYPE)) { it?.let(viewModel::export) }
+    val import = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(viewModel::import) }
+    // A phone without a document picker throws on launch; the error says so instead of ending the screen.
+    fun launch(block: () -> Unit) = try {
+        block()
+    } catch (e: Exception) {
+        viewModel.pickerUnavailable()
+    }
+    ui.notice?.let { notice ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearNotice,
+            title = { Text(stringResource(R.string.notebook_routing_title)) },
+            text = { Text(notice) },
+            confirmButton = { TextButton(onClick = viewModel::clearNotice) { Text(stringResource(R.string.notebook_routing_ok)) } },
+        )
+    }
     ui.error?.let { error ->
         AlertDialog(
             onDismissRequest = viewModel::clearError,
@@ -118,7 +148,14 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel) {
             is RoutingStoreState.Loaded -> LoadedRouting(state.config, ui.busy) { dialog = it }
         }
         HorizontalDivider()
+        CertificatesSection(ui) { dialog = it }
+        HorizontalDivider()
         AppsSection(ui, viewModel) { dialog = it }
+        HorizontalDivider()
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { dialog = RoutingDialog.ConfirmExport }, enabled = !ui.busy && config != null) { Text(stringResource(R.string.notebook_routing_export)) }
+            OutlinedButton(onClick = { dialog = RoutingDialog.ConfirmImport }, enabled = !ui.busy) { Text(stringResource(R.string.notebook_routing_import)) }
+        }
     }
     val close = { dialog = null }
     when (val open = dialog) {
@@ -142,6 +179,20 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel) {
         is RoutingDialog.Forget -> Question(
             stringResource(R.string.notebook_routing_forget_title, open.app.appName), stringResource(R.string.notebook_routing_forget_body),
             stringResource(R.string.notebook_routing_stop_trusting), onConfirm = { viewModel.forgetApp(open.app) }, onDismiss = close,
+        )
+        RoutingDialog.AddCertificate -> AddCertificateDialog(onAdd = { digest, label -> viewModel.addCertificate(digest, label) }, onDismiss = close)
+        is RoutingDialog.RemoveCertificate -> Question(
+            stringResource(R.string.notebook_routing_remove_certificate_title, open.certificate.label ?: stringResource(R.string.notebook_routing_unnamed)),
+            stringResource(R.string.notebook_routing_remove_certificate_body), stringResource(R.string.notebook_routing_remove),
+            onConfirm = { viewModel.removeCertificate(open.certificate.sha256) }, onDismiss = close,
+        )
+        RoutingDialog.ConfirmExport -> Question(
+            stringResource(R.string.notebook_routing_export_title), stringResource(R.string.notebook_routing_export_body), stringResource(R.string.notebook_routing_export),
+            onConfirm = { launch { export.launch(RoutingExport.FILE_NAME) } }, onDismiss = close,
+        )
+        RoutingDialog.ConfirmImport -> Question(
+            stringResource(R.string.notebook_routing_import_title), stringResource(R.string.notebook_routing_import_body), stringResource(R.string.notebook_routing_import),
+            onConfirm = { launch { import.launch(arrayOf("*/*")) } }, onDismiss = close,
         )
     }
 }
@@ -176,7 +227,7 @@ private fun LoadedRouting(config: RoutingConfig, busy: Boolean, open: (RoutingDi
 }
 
 @Composable
-private fun AppsSection(ui: RoutingUi, viewModel: RoutingViewModel, open: (RoutingDialog) -> Unit) {
+private fun AppsSection(ui: RoutingUi, viewModel: RoutingViewModel<Uri>, open: (RoutingDialog) -> Unit) {
     Text(stringResource(R.string.notebook_routing_apps), style = MaterialTheme.typography.titleMedium)
     Text(stringResource(R.string.notebook_routing_apps_intro), style = MaterialTheme.typography.bodyMedium)
     if (ui.apps.isEmpty()) Text(stringResource(R.string.notebook_routing_no_apps), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -185,11 +236,7 @@ private fun AppsSection(ui: RoutingUi, viewModel: RoutingViewModel, open: (Routi
             overlineContent = { Text(app.routers.joinToString { it.label }) },
             headlineContent = { Text(app.appName) },
             supportingContent = {
-                val standing = when {
-                    app.byUser -> R.string.notebook_routing_trusted_by_you
-                    app.trusted -> R.string.notebook_routing_trusted
-                    else -> R.string.notebook_routing_not_trusted
-                }
+                val standing = if (app.trusted) R.string.notebook_routing_trusted else R.string.notebook_routing_not_trusted
                 Column {
                     Text(app.packageName)
                     Text(app.namespace, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
@@ -197,10 +244,10 @@ private fun AppsSection(ui: RoutingUi, viewModel: RoutingViewModel, open: (Routi
                 }
             },
             trailingContent = {
-                when {
-                    app.byUser -> TextButton(onClick = { open(RoutingDialog.Forget(app)) }, enabled = !ui.busy) { Text(stringResource(R.string.notebook_routing_stop_trusting)) }
-                    !app.trusted -> TextButton(onClick = { open(RoutingDialog.Trust(app)) }, enabled = !ui.busy) { Text(stringResource(R.string.notebook_routing_trust)) }
-                    else -> Unit
+                if (app.trusted) {
+                    TextButton(onClick = { open(RoutingDialog.Forget(app)) }, enabled = !ui.busy) { Text(stringResource(R.string.notebook_routing_stop_trusting)) }
+                } else {
+                    TextButton(onClick = { open(RoutingDialog.Trust(app)) }, enabled = !ui.busy) { Text(stringResource(R.string.notebook_routing_trust)) }
                 }
             },
         )
@@ -531,5 +578,68 @@ private fun NetworkFields(url: String, token: String, onUrl: (String) -> Unit, o
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/** The certificates in force, built-in ones marked; any can be removed, and one added by its digest. */
+@Composable
+private fun CertificatesSection(ui: RoutingUi, open: (RoutingDialog) -> Unit) {
+    Text(stringResource(R.string.notebook_routing_certificates), style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.notebook_routing_certificates_intro), style = MaterialTheme.typography.bodyMedium)
+    if (ui.certificates.isEmpty()) Text(stringResource(R.string.notebook_routing_no_certificates), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    ui.certificates.forEach { certificate ->
+        ListItem(
+            overlineContent = { if (certificate.builtIn) Text(stringResource(R.string.notebook_routing_built_in)) },
+            headlineContent = { Text(certificate.label ?: stringResource(R.string.notebook_routing_unnamed)) },
+            supportingContent = { Text(certificate.sha256, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) },
+            trailingContent = {
+                TextButton(onClick = { open(RoutingDialog.RemoveCertificate(certificate)) }, enabled = !ui.busy) { Text(stringResource(R.string.notebook_routing_remove)) }
+            },
+        )
+    }
+    OutlinedButton(onClick = { open(RoutingDialog.AddCertificate) }, enabled = !ui.busy) { Text(stringResource(R.string.notebook_routing_add_certificate)) }
+}
+
+/** A name and a digest; the digest's shape is checked here, so a typo is refused before anything is written. */
+@Composable
+private fun AddCertificateDialog(onAdd: (String, String?) -> Unit, onDismiss: () -> Unit) {
+    var label by remember { mutableStateOf("") }
+    var digest by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.notebook_routing_add_certificate)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    label = { Text(stringResource(R.string.notebook_routing_field_certificate_label)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = digest,
+                    onValueChange = { digest = it },
+                    label = { Text(stringResource(R.string.notebook_routing_field_certificate_digest)) },
+                    supportingText = { Text(stringResource(R.string.notebook_routing_certificate_digest_hint)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val normalized = RouterTrust.normalizeDigest(digest)
+                if (normalized == null) {
+                    problem = RoutingViewModel.BAD_DIGEST
+                } else {
+                    onAdd(normalized, label.trim().ifEmpty { null })
+                    onDismiss()
+                }
+            }) { Text(stringResource(R.string.notebook_routing_add_confirm)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.notebook_cancel)) } },
     )
 }

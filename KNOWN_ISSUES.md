@@ -1770,6 +1770,16 @@ A Network router posts over whatever network the phone has, mobile data
 included; the transcription server's Wi-Fi-only rule does not apply to it.
 The text is small, and the address is one the user entered.
 
+## An exported text routing holds its bearer tokens in clear
+
+Settings > Notebook > Text Routing exports the routers, their rules and
+the trusted certificates as one plain JSON file, and a Network router's
+bearer token goes in it as typed. The screen says so before the file is
+written, and the file is written where the user picks and never kept by
+Gravel; encrypting it would need a password flow of its own, which the
+manual backup already has for the notes and could be extended to this file
+later.
+
 ## An app router gets no answer back
 
 **Status: accepted; the API is one-way.**

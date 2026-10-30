@@ -12,56 +12,78 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.builtins.ListSerializer
 
 /**
- * The apps the user trusts to receive routed text, as a JSON list in the no-backup directory: the
- * trust names signers on this phone, so it stays with it. A file that cannot be read or parsed
- * reads as no entries, which trusts nothing.
+ * The user's changes to the trusted certificates ([TrustEntries]), as JSON in the no-backup
+ * directory: the trust names signers on this phone, so it stays with it. A file that cannot be
+ * read or parsed reads as no changes, which leaves the built-in list alone and adds nothing.
  */
-class RouterTrustStore(dir: File, private val clock: () -> Long = System::currentTimeMillis) {
+class RouterTrustStore(
+    dir: File,
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val defaults: Set<String> = DEFAULT_TRUSTED_ROUTER_SIGNERS,
+) {
     private val file = DeviceStateFile(dir, FILE_NAME, maxChars = MAX_CHARS)
     private val writes = Mutex()
-    private val _entries = MutableStateFlow<List<TrustedRouterApp>?>(null)
+    private val _entries = MutableStateFlow<TrustEntries?>(null)
 
     /** Null until [load] or a write. */
-    val entries: StateFlow<List<TrustedRouterApp>?> = _entries.asStateFlow()
+    val entries: StateFlow<TrustEntries?> = _entries.asStateFlow()
 
     /** Blocks on a file read. */
-    fun read(): List<TrustedRouterApp> {
-        val json = file.read() ?: return emptyList()
+    fun read(): TrustEntries {
+        val json = file.read() ?: return TrustEntries.EMPTY
         return try {
-            NotebookJson.decodeFromString(ListSerializer(TrustedRouterApp.serializer()), json)
-                .filter { RouterTrust.normalizeDigest(it.sha256) == it.sha256 && it.packageName.isNotEmpty() }
+            NotebookJson.decodeFromString(TrustEntries.serializer(), json).cleaned()
         } catch (e: SerializationException) {
             logger.w { "router trust file unreadable: ${e::class.simpleName}" }
-            emptyList()
+            TrustEntries.EMPTY
         } catch (e: IllegalArgumentException) {
             logger.w { "router trust file unreadable: ${e::class.simpleName}" }
-            emptyList()
+            TrustEntries.EMPTY
         }
     }
 
-    suspend fun load(): List<TrustedRouterApp> = withContext(Dispatchers.IO) { read().also { _entries.value = it } }
+    suspend fun load(): TrustEntries = withContext(Dispatchers.IO) { read().also { _entries.value = it } }
 
-    /** Trusts [packageName] by [sha256], replacing an earlier entry for the package; false when the file could not be written. */
-    suspend fun trust(packageName: String, sha256: String): Boolean {
+    /** The list in force now; blocks on a file read. */
+    fun certificates(): List<TrustedCertificate> = RouterTrust.certificates(read(), defaults)
+
+    fun trustedDigests(): Set<String> = RouterTrust.trustedDigests(read(), defaults)
+
+    /**
+     * Trusts [sha256]: a built-in certificate the user removed is restored, any other is added, or
+     * renamed when it is there. False when the digest is malformed, the list is full, or the file
+     * could not be written.
+     */
+    suspend fun add(sha256: String, label: String?): Boolean {
         val digest = RouterTrust.normalizeDigest(sha256) ?: return false
-        return write { entries -> entries.filterNot { it.packageName == packageName } + TrustedRouterApp(packageName, digest, clock()) }
+        return write { entries ->
+            if (digest in defaults) {
+                entries.copy(removedDefaults = entries.removedDefaults - digest)
+            } else {
+                val others = entries.added.filterNot { it.sha256 == digest }
+                if (others.size >= TrustEntries.MAX_ENTRIES) null else entries.copy(added = others + TrustedSigner(digest, RouterTrust.normalizeLabel(label), clock()))
+            }
+        }
     }
 
-    /** Trusts [packageName] by each of [sha256s], for an app with several signers. */
-    suspend fun trustAll(packageName: String, sha256s: List<String>): Boolean {
-        val digests = sha256s.map { RouterTrust.normalizeDigest(it) ?: return false }
-        return write { entries -> entries.filterNot { it.packageName == packageName } + digests.map { TrustedRouterApp(packageName, it, clock()) } }
+    /** Stops trusting [sha256]; a built-in certificate is remembered as removed. */
+    suspend fun remove(sha256: String): Boolean {
+        val digest = RouterTrust.normalizeDigest(sha256) ?: return false
+        return write { entries ->
+            val added = entries.added.filterNot { it.sha256 == digest }
+            if (digest in defaults) entries.copy(added = added, removedDefaults = entries.removedDefaults + digest) else entries.copy(added = added)
+        }
     }
 
-    suspend fun forget(packageName: String): Boolean = write { entries -> entries.filterNot { it.packageName == packageName } }
+    /** Everything at once, as an import does. */
+    suspend fun replace(entries: TrustEntries): Boolean = write { entries }
 
-    private suspend fun write(change: (List<TrustedRouterApp>) -> List<TrustedRouterApp>): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun write(change: (TrustEntries) -> TrustEntries?): Boolean = withContext(Dispatchers.IO) {
         writes.withLock {
-            val next = change(read())
-            val saved = if (next.isEmpty()) file.clear() else file.write(NotebookJson.encodeToString(ListSerializer(TrustedRouterApp.serializer()), next))
+            val next = change(read())?.cleaned() ?: return@withLock false
+            val saved = if (next == TrustEntries.EMPTY) file.clear() else file.write(NotebookJson.encodeToString(TrustEntries.serializer(), next))
             if (saved) _entries.value = next
             saved
         }
@@ -70,8 +92,8 @@ class RouterTrustStore(dir: File, private val clock: () -> Long = System::curren
     companion object {
         const val FILE_NAME = "notebook_router_trust"
 
-        /** Dozens of entries of a package name, a digest and a time. */
-        const val MAX_CHARS = 16 * 1024
+        /** The caps' worth of entries of a digest, a label and a time, and of removed digests. */
+        const val MAX_CHARS = 32 * 1024
 
         private val logger = Logger.withTag("RouterTrustStore")
     }

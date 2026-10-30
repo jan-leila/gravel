@@ -94,16 +94,23 @@ nothing else. Your app does not request it and must not define it:
 
 ## Trust
 
-Gravel forwards text only to apps the user trusts. An app is trusted when its
-signing certificate is on Gravel's built-in list or when the user marked the
-app as trusted under Settings > Notebook > Text Routing: picking one of
-its routers, or the Trust button under Apps with routers, shows the app's
-certificate SHA-256 (its namespace) and asks for the trust. The user's trust
-is for that app, not for every app from the same signer. An app stays
-trusted across key rotation (the platform's signing lineage). Trust is
-checked again at
+Gravel forwards text only to apps signed by a trusted certificate. The
+trusted list starts as Gravel's built-in list and is the user's to edit
+under Settings > Notebook > Text Routing: picking one of your routers, or
+the Trust button under Apps with routers, shows your certificate SHA-256
+(your namespace) and asks for the trust; a certificate can also be typed
+in by its digest, and any one, built-in ones included, removed. Trust is
+for the certificate, so every app you sign with that key is trusted at
+once. An app stays trusted across key rotation (the platform's signing
+lineage). Trust is checked again at
 every delivery, so a package replaced under the same name, or a trust the
 user withdrew, stops deliveries at once.
+
+## Export and import
+
+The same screen exports the whole routing and the trusted list as one JSON
+file, and imports such a file in place of both. The file holds the bearer
+tokens of Network routers in clear; the screen says so before writing it.
 
 ## The delivery
 

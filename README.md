@@ -130,8 +130,9 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   Where a recording's text goes is yours to set: by default it becomes a
   note, and Settings > Notebook > Text Routing can send it through rules
   to a reminder, to another app that declares a router
-  ([ROUTER_API.md](ROUTER_API.md); only apps you trust by their signing
-  certificate), or to an https:// address of yours. Every note and
+  ([ROUTER_API.md](ROUTER_API.md); only apps signed by a certificate you
+  trust, a list that is yours to edit, export and import with the
+  routing), or to an https:// address of yours. Every note and
   reminder made from a recording carries the time the recording started.
   Notes, reminders and waiting recordings are stored as encrypted files
   whose keys are sealed by a key in the phone's keystore;

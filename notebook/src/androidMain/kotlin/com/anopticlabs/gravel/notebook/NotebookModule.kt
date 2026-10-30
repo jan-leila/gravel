@@ -137,7 +137,7 @@ val notebookModule = module {
     // TextPoster comes from the app, which binds it to its HTTP client.
     single<TextDeliverer> {
         RouterDeliveries(
-            app = AppRouterDelivery(get(), { get<RouterTrustStore>().read() }, AndroidRouterBroadcastSender(androidContext())),
+            app = AppRouterDelivery(get(), { get<RouterTrustStore>().trustedDigests() }, AndroidRouterBroadcastSender(androidContext())),
             network = NetworkRouterDelivery(get()) { hasUplinkNetwork(androidContext()) },
         )
     }
@@ -281,7 +281,7 @@ val notebookModule = module {
         )
     }
     viewModel { NotesViewModel(get()) }
-    viewModel { RoutingViewModel(get(), get(), get()) }
+    viewModel { RoutingViewModel(get(), get(), get(), BackupDocuments(androidContext().contentResolver)) }
     viewModel {
         RemindersViewModel(
             reminders = get(), events = get(), alarms = get(), typedNotes = get(),

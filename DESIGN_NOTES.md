@@ -1774,15 +1774,22 @@ in the app's device suite:
     namespace, and the app's trust are checked again at every delivery.
     A receiver declares its id in meta-data, and an app signed by several
     certificates has no namespace, so its receivers are not routers.
-    Trust (`RouterTrust`) needs the signer on the built-in list
-    (`DEFAULT_TRUSTED_ROUTER_SIGNERS`, empty as shipped) or among the
-    user's entries for that package, kept in a no-backup file
-    (`RouterTrustStore`) that reads as empty when it cannot be read; a
-    rotated signer still answers for its namespace and its trust through
-    the platform's signing lineage. The settings screen lists every router
+    Trust (`RouterTrust`) is per certificate: the list in force is the
+    built-in list (`DEFAULT_TRUSTED_ROUTER_SIGNERS`, empty as shipped)
+    less the built-in ones the user removed, plus the ones the user added
+    by digest or by trusting an app; the user's changes (`TrustEntries`)
+    are kept apart from the built-in list in a no-backup file
+    (`RouterTrustStore`) that reads as no changes when it cannot be read,
+    so a certificate a later build adds reaches a phone that has a file,
+    and a removal survives that. A rotated signer still answers for its
+    namespace and its trust through the platform's signing lineage. The
+    settings screen lists the certificates in force, lists every router
     the installed apps declare, trusted or not, with the app's name and
-    namespace, and asks for the trust (showing the signer) when an
-    untrusted one is picked. Gravel exports nothing for this; `NotebookManifestTest` pins
+    namespace, asks for the trust (showing the signer) when an untrusted
+    one is picked, and exports and imports the routing and the trust
+    changes as one JSON document (`RoutingExport`, through the Storage
+    Access Framework like a manual backup); an import replaces both only
+    after the whole file validated. Gravel exports nothing for this; `NotebookManifestTest` pins
     the permission, the query and the absence of exported components.
   - A network router posts the payload (`NetworkPayload`: the same four
     fields) through a `TextPoster` the app binds to a Ktor client of its

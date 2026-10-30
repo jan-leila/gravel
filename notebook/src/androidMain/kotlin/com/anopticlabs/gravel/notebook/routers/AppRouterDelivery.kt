@@ -28,10 +28,9 @@ fun interface RouterBroadcastSender {
  */
 class AppRouterDelivery(
     private val installed: InstalledRouters,
-    private val trusted: () -> List<TrustedRouterApp>,
+    private val trusted: () -> Set<String>,
     private val sender: RouterBroadcastSender,
     private val waitMillis: Long = RouterApi.DELIVERY_WAIT_MILLIS,
-    private val defaults: Set<String> = DEFAULT_TRUSTED_ROUTER_SIGNERS,
 ) : TextDeliverer {
     override suspend fun deliver(router: RouterConfig, text: RoutedText) {
         require(router is RouterConfig.App) { "${router.name} is not an app router" }
@@ -42,7 +41,7 @@ class AppRouterDelivery(
         if (receiver.namespace != router.namespace && !installed.signedBy(receiver.packageName, router.namespace)) {
             unavailable("the app behind ${router.name} is signed by a different key than when it was picked")
         }
-        val trusted = RouterTrust.isTrusted(receiver.packageName, listOf(receiver.namespace), trusted(), { installed.signedBy(receiver.packageName, it) }, defaults)
+        val trusted = RouterTrust.isTrusted(receiver.namespace, trusted()) { installed.signedBy(receiver.packageName, it) }
         if (!trusted) unavailable("the app behind ${router.name} is not trusted")
         val code = try {
             withTimeout(waitMillis) { sender.send(receiver.packageName, receiver.receiverClass, text) }
