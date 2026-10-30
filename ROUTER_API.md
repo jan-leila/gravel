@@ -187,6 +187,14 @@ ask first, or a question about a part your router needs, parks the
 recording in the Notebook until the user answers, which may be days later.
 `recorded_at`, when you get it, is still the moment the recording started.
 
+## First-party routers
+
+Gravel's own router apps, one per integration (Slack, and more to come),
+live in this repository under `routers/` and are the worked examples of
+this API: `routers/README.md` says how they are built, signed with a key
+of their own that Gravel trusts as a built-in signer, and published outside
+F-Droid's main repository.
+
 ## What Gravel does not do
 
 - It does not take text back. A router that wants to hand text on to

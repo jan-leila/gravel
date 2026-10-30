@@ -2492,6 +2492,46 @@ hold its rules.
   `pebble://show-watches` link the notification also carries, so that
   link opens only the Devices tab.
 
+## First-party router apps
+
+The apps under `routers/` are Gravel's own routers for the Notebook's text
+routing (`ROUTER_API.md`), one small Android app per integration on the
+shared `:routers:common` library, and the worked examples of the API
+(`routers/README.md` has the user-facing side). What the tree decides:
+
+- **A separate key, and no F-Droid main listing.** Gravel trusts routers by
+  signing certificate, and F-Droid's main repository signs each app with a
+  key of its own, so a router app built there could never match a
+  built-in trusted signer. The apps are signed with one key kept outside
+  the tree (the build signs release only when the environment names it,
+  and packages release unsigned otherwise, like `:androidApp`), its
+  certificate's SHA-256 is Gravel's built-in trusted signer
+  (`DEFAULT_TRUSTED_ROUTER_SIGNERS`), and the APKs go out as GitHub
+  releases and through Gravel's own F-Droid repository. The modules are
+  still tracked in this tree, so `FdroidGuardrailsTest` scans them with
+  everything else: their build files keep to the catalog and to allowed
+  repositories, although F-Droid's recipe builds `:androidApp` alone.
+- **Acknowledge, then send.** A receiver has the system's foreground
+  broadcast budget, so `RouterReceiver` writes the delivery to an outbox
+  (`Outbox`: one file per capture id, written whole or not at all, so a
+  repeated delivery replaces rather than doubles) and acknowledges; an
+  `OutboxWorker` (WorkManager, network required, exponential backoff)
+  sends what waits. An app can refuse at once (`RouterApp.refusal`) for a
+  delivery that can never be sent as it is set up, with a reason Gravel
+  shows; a refusal from the server side (a 4xx that no retry changes)
+  drops the delivery and tells the user in a notification.
+- **No dependencies beyond the platform and androidx.** HTTP is
+  `HttpsURLConnection` (`Http`), JSON is built by hand (`jsonString`), the
+  outbox format is `java.util.Properties`, so the apps stay tiny and the
+  request builders are pure functions tested on the JVM. Cleartext is
+  allowed only to a private address and only by an app that says so: the
+  self-hosted relays (Home Assistant, Signal, Actual) often have no TLS on
+  a LAN.
+- **Secrets sealed at rest.** A token or password is encrypted with an
+  AES-GCM key the Android Keystore holds for the app (`Secrets`); a value
+  that cannot be opened reads as missing. The same approach as `:util`'s
+  `SecretCipher`, in a copy, since an app cannot share Gravel's runtime.
+
 ## F-Droid
 
 Gravel is in F-Droid's main repository, as `com.anopticlabs.gravel`.
