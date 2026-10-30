@@ -1676,10 +1676,10 @@ in the app's device suite:
   resampled to 16 kHz by the shared `:resampler`, and transcribed by the
   long-form path or the server (below); a capture that opens with the
   trigger word is parked as a completion claim before the text model is
-  loaded. Otherwise the
-  cue detector picks the reminder or the note prompt for the text model.
+  loaded. Otherwise the text routing (next bullet) picks the router that
+  consumes the transcript.
   A voice note's body is its full transcript: the note prompt asks the
-  model for the title and tags only, and routing reads the transcript.
+  model for the title and tags only, and folder routing reads the transcript.
   The time of the recording, not of the processing, dates the
   note and is the "now" the rules read a reminder's time from. A capture
   is published by storing what it asked for (a
@@ -1725,6 +1725,67 @@ in the app's device suite:
   (`NotebookEngines` in `:composeApp`). A capture is dated in the time zone
   its entry carries; one without a zone, or with one the runtime does not
   know, uses the current zone.
+- Text routing (the `routers` package) decides what a capture's transcript
+  becomes. Past the trigger-word check the pipeline builds the transcript
+  and the recording's start, one ISO-8601 instant with the offset of the
+  zone it was recorded in (`RecordedAt`, rendered once from the queue
+  entry's capture time, which the phone recorder and the watch handler
+  take at the recording's start), into a `RoutedText`, and `RouteWalk`
+  follows the stored `RoutingConfig` from its entry router to the router
+  that consumes it: a `Note` router builds the note with the text model
+  (the stamp goes into the front matter as `recorded:`), a `Reminder`
+  router a reminder (the stamp is stored on the item and carried by the
+  backup), and an `App` or `Network` router a `BuiltCapture.Forward` the
+  drain delivers before the capture settles, cancellable, so a stop or a
+  pause still lands during a delivery; the capture leaves the queue only
+  once the delivery returned. A `Switch` forwards to the target of the
+  first rule whose regular expression matches, else to its fallback; the
+  matcher reads the text through a sequence that checks a one-second
+  deadline on every character, so a pattern whose backtracking blows up
+  flags the capture instead of holding the drain. The default routing is
+  one Note router, so the reminder cue detector (`ReminderIntent`) is no
+  longer on the pipeline path: a voice reminder takes a switch that
+  forwards to a Reminder router. Constraints the code relies on:
+  - The routing is `routing`, an encrypted JSON value under the Notebook
+    root (`RoutingConfigStore`), validated on read and on write
+    (`RoutingConfig.requireWellFormed`: ids, names, targets that exist,
+    https-only addresses, bounded patterns that compile, no circle of
+    switches). Absent reads as the default; a file that is present but
+    cannot be read, or was written by a newer build, holds the drain with
+    a remedy that opens Settings > Notebook > Text Routing, where Reset
+    sets it aside, and is never taken for the default. It is settings, so
+    the backup leaves it out, and Start over sets it aside with the rest.
+  - An app router is a receiver another app declares under the API in
+    `ROUTER_API.md`: filtering on the action, exported, and guarded by the
+    signature-level permission Gravel's manifest defines and holds, so
+    only Gravel can send to it. A receiver without exactly that guard is
+    not listed: the system skips one guarded otherwise without a word, and
+    any app could reach an unguarded one in Gravel's name. A delivery is
+    one explicit ordered broadcast on the foreground queue
+    (`AppRouterDelivery`, `AndroidRouterBroadcastSender`) carrying the API
+    version, the capture id, the recording's start and the text, nothing
+    else, acknowledged by the receiver's result code within
+    `RouterApi.DELIVERY_WAIT_MILLIS`; no acknowledgement is a retry. The
+    receiver and the app's trust are checked again at every delivery.
+    Trust (`RouterTrust`) needs every current signer on the built-in list
+    (`DEFAULT_TRUSTED_ROUTER_SIGNERS`, empty as shipped) or among the
+    user's entries for that package, kept in a no-backup file
+    (`RouterTrustStore`) that reads as empty when it cannot be read; an
+    app with one signer is also trusted through the platform's signing
+    lineage. Gravel exports nothing for this; `NotebookManifestTest` pins
+    the permission, the query and the absence of exported components.
+  - A network router posts the payload (`NetworkPayload`: the same four
+    fields) through a `TextPoster` the app binds to a Ktor client of its
+    own (`KtorTextPoster`), answered by the status alone: a 2xx is taken,
+    a 4xx other than 408 and 429 flags the capture, no network or a server
+    out of reach makes it wait for the network, and the rest is tried
+    again. Cleartext stays blocked app-wide.
+  - Host tests cover the payload, the config's validation and round trip,
+    the walk, the matcher's deadline, the two stores, the trust rule, the
+    deliveries and the pipeline on fakes, the Ktor poster on a mock
+    engine, and the screen's view model; the package manager reads, the
+    broadcast sender, the Koin wiring and the screen are checked on a
+    device only.
 - The speech setting routes captures (`NotebookSpeech` in `:composeApp`,
   `SpeechRoute`): Local Only and the Rebble modes with a phone fallback
   use the phone; Server Only, Server (with Local Fallback), and Local

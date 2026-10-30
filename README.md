@@ -30,6 +30,8 @@ De-google work is completed, all telemetry is removed. What remains is polish an
       Pebble watch with the
       [Notebook watch app](https://github.com/david-cant-code/gravel-watchapp)
       (early beta)
+- [x] Notebook text routing: a recording's text to a note, a reminder, a
+      trusted app or a server of yours, by rules you set
 - [ ] Local on-device battery analytics (secondary goal, feasibility open)
 - [ ] Recording into the Notebook from a Pebble Index 01 ring (planned)
 - [x] F-Droid inclusion (listing live)
@@ -125,6 +127,12 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   titles, tags, and a reminder's wording run on the phone, in
   isolated processes, on whisper.cpp and llama.cpp built from source; a
   recording goes to a transcription server only if you set one up.
+  Where a recording's text goes is yours to set: by default it becomes a
+  note, and Settings > Notebook > Text Routing can send it through rules
+  to a reminder, to another app that declares a router
+  ([ROUTER_API.md](ROUTER_API.md); only apps you trust by their signing
+  certificate), or to an https:// address of yours. Every note and
+  reminder made from a recording carries the time the recording started.
   Notes, reminders and waiting recordings are stored as encrypted files
   whose keys are sealed by a key in the phone's keystore;
   `KNOWN_ISSUES.md` records gaps of that storage. A reminder that goes

@@ -1557,8 +1557,11 @@ Notebook restores a backup made while the capture was queued, a restore run
 again after a stopped one included. A note with the same content then
 reuses its file, but a reminder or a claim is stored a
 second time, and a note whose second model reply differs is written beside
-the first. Storing the capture's id with each result, and skipping a
-capture already published, would close this.
+the first. A capture routed to an app or a server is delivered again the
+same way (the payload's capture id is the same each time, which
+`ROUTER_API.md` tells receivers to use to recognize a repeat). Storing
+the capture's id with each result, and skipping a capture already
+published, would close this.
 
 ## A Notebook completion backlog past fifty drops the oldest
 
@@ -1733,3 +1736,45 @@ which matters only while two Wi-Fi networks are connected at once. Server
 reach the server only while the network Android gives Gravel runs over
 something besides the VPN; on Android 9 and older, where a VPN may show
 nothing under it, every failure behind a VPN counts, with no signal too.
+
+## A failed text router delivery costs a new transcription
+
+**Status: accepted for now; closing it needs the transcript kept with the
+queued capture.**
+
+The transcript is not stored between attempts. A delivery to an app or a
+server that is tried again (no acknowledgement, a server error, a
+connection lost) transcribes the recording again first, with the engine
+time that costs and, on a server route, a server try that counts toward
+the limit after which a long recording goes to the phone. A delivery that
+waits for the network counts no attempt and transcribes nothing until it
+runs.
+
+## A switch rule is a regular expression the user wrote
+
+**Status: accepted; bounded.**
+
+A rule's pattern is matched by the platform's regular expression engine,
+which backtracks. A pattern whose backtracking blows up on a transcript is
+stopped by a one-second deadline per rule, and the recording is flagged
+with the rule named, so the drain goes on. Up to 32 rules in a switch and
+16 switches in a row bound a walk. The deadline is checked at each
+character the engine reads; an engine step that reads none would not be
+stopped by it, which does not occur with the patterns the matcher accepts.
+
+## The Network router sends over any network
+
+**Status: accepted.**
+
+A Network router posts over whatever network the phone has, mobile data
+included; the transcription server's Wi-Fi-only rule does not apply to it.
+The text is small, and the address is one the user entered.
+
+## An app router gets no answer back
+
+**Status: accepted; the API is one-way.**
+
+An app that acknowledges a delivery and then loses the text has no way to
+ask for it again, and no way to hand text on to another router in Gravel's
+graph. A return path would need an exported receiver in Gravel, gated like
+the delivery is; `ROUTER_API.md` says what the API does not do.
