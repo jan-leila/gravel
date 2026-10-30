@@ -11,6 +11,7 @@ manifest, a settings screen and one sender.
 | App | Router id | Sends the text to | Needs from the recording |
 | --- | --- | --- | --- |
 | `slack` | `message` | a Slack channel, through an incoming webhook | nothing |
+| `homeassistant` | `assist` | Home Assistant's Assist, as a typed sentence | nothing |
 
 ## How an app works
 

@@ -54,6 +54,7 @@ include(":libindex")
 // outside F-Droid's main repository; the F-Droid recipe builds :androidApp only.
 include(":routers:common")
 include(":routers:slack")
+include(":routers:homeassistant")
 // :experimental (the Ring/Index feature module) is unplugged from the fork's
 // build: it carries firebase-auth/firestore/storage, the googleServices
 // plugin, and Supabase. :libindex/:index-ai/:mcp stay included because the
