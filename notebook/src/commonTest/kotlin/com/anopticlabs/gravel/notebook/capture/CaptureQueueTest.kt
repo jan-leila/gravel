@@ -82,12 +82,15 @@ class CaptureQueueTest {
         val answered = answerUser(parked, "a", Need.LOCATION, allow = true)
         assertEquals(waiting.copy(asks = setOf(Need.RECORDED_AT), granted = setOf(Need.LOCATION)), answered.first().awaiting)
         val refused = answerUser(answered, "a", Need.RECORDED_AT, allow = false)
-        assertEquals(waiting.copy(asks = emptySet(), granted = setOf(Need.LOCATION)), refused.first().awaiting)
+        assertEquals(waiting.copy(asks = emptySet(), granted = setOf(Need.LOCATION), denied = setOf(Need.RECORDED_AT)), refused.first().awaiting)
         assertEquals(parked, answerUser(parked, "b", Need.LOCATION, allow = true), "an entry that is not parked has no answer to take")
         val confirmed = confirmUser(refused, "a")
-        assertEquals(waiting.copy(confirm = false, asks = emptySet(), granted = setOf(Need.LOCATION)), confirmed.first().awaiting)
+        assertEquals(waiting.copy(confirm = false, asks = emptySet(), granted = setOf(Need.LOCATION), denied = setOf(Need.RECORDED_AT)), confirmed.first().awaiting)
         assertTrue(confirmed.first().awaiting!!.settled)
         assertEquals(parked, confirmUser(parked, "b"))
+        val asked = requireConfirmation(confirmed, "a")
+        assertEquals(waiting.copy(confirm = true, asks = emptySet(), granted = setOf(Need.LOCATION), denied = setOf(Need.RECORDED_AT)), asked.first().awaiting)
+        assertEquals(parked, requireConfirmation(parked, "b"))
     }
 
     @Test

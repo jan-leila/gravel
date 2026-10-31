@@ -463,6 +463,7 @@ class CaptureDrain(
                 routerName = awaiting.routerName,
                 text = RoutedText(entry.id, awaiting.recordedAt, awaiting.text, awaiting.location),
                 granted = awaiting.granted,
+                denied = awaiting.denied,
                 capturedAt = Instant.fromEpochMilliseconds(entry.queuedAtMillis),
                 zone = captureZone(entry.zoneId) ?: zone(),
                 folders = folders,

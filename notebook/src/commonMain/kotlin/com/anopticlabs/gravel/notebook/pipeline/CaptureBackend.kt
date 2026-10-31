@@ -64,7 +64,7 @@ class CaptureRequest(
 /**
  * A parked capture to take up again: the [text] as it was routed, the [router] the walk ended at
  * (its current definition is used; [routerName] is for a failure that finds it gone), the needs the
- * user [granted] for this recording, and what the Note and Reminder builders read off a request.
+ * user [granted] and [denied] for this recording, and what the Note and Reminder builders read off a request.
  */
 class CaptureResume(
     val router: RouterRef,
@@ -75,6 +75,7 @@ class CaptureResume(
     val zone: TimeZone,
     val folders: List<String>,
     val folderTags: Map<String, List<String>>,
+    val denied: Set<Need> = emptySet(),
 )
 
 /** Turns a recording into what it asked for; failures as [CaptureProcessingException]. */

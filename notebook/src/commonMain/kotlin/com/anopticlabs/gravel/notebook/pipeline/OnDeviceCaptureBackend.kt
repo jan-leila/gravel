@@ -82,7 +82,7 @@ class OnDeviceCaptureBackend(
         // A router that waits on the user gets nothing built now: the answer may change what is sent, or drop it.
         val asks = terminal.asked()
         if (terminal.confirm || asks.isNotEmpty()) return BuiltCapture.ToConfirm(terminal, routed, asks)
-        return consume(terminal, routed, emptySet(), request.capturedAt, request.zone, request.folders, request.folderTags, onStage)
+        return consume(terminal, routed, emptySet(), emptySet(), request.capturedAt, request.zone, request.folders, request.folderTags, onStage)
     }
 
     // The router is read again, not re-walked: the user answered for a destination, not for the rules that led there.
@@ -90,13 +90,15 @@ class OnDeviceCaptureBackend(
         val router = readRouting().router(resume.router)
             ?: unavailable("${resume.routerName} no longer exists in the text routing")
         if (router.forwardsText) unavailable("${resume.routerName} now forwards elsewhere")
-        return consume(router, resume.text, resume.granted, resume.capturedAt, resume.zone, resume.folders, resume.folderTags, onStage)
+        return consume(router, resume.text, resume.granted, resume.denied, resume.capturedAt, resume.zone, resume.folders, resume.folderTags, onStage)
     }
 
+    // What the user refused for this recording stays refused, whatever grant the router gained since it was asked.
     private suspend fun consume(
         terminal: RouterConfig,
         routed: RoutedText,
         granted: Set<Need>,
+        denied: Set<Need>,
         capturedAt: Instant,
         zone: TimeZone,
         folders: List<String>,
@@ -107,7 +109,7 @@ class OnDeviceCaptureBackend(
         is RouterConfig.Reminder -> buildReminder(routed, capturedAt, zone, onStage)
         is RouterConfig.App, is RouterConfig.Network -> {
             onStage(CaptureStage.FORWARDING)
-            BuiltCapture.Forward(terminal, routed, terminal.shared(granted))
+            BuiltCapture.Forward(terminal, routed, terminal.shared(granted) - denied)
         }
         is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place -> throw IllegalStateException("the routing walk ended at a router that forwards")
     }

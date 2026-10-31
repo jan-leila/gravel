@@ -1828,17 +1828,19 @@ in the app's device suite:
     one with an Ask grant for a part it needs. The walk then ends in a
     `BuiltCapture.ToConfirm` and the drain parks the capture on its queue
     entry (`AwaitingUser`: the transcript as routed, the router's ref and
-    name, the open questions, the one-time grants), giving the attempt
-    back in the same write, and leaves it out of every pass until
-    `CaptureDrain.requestResume` names it; the resume is served inside a
-    pass, before the next capture, through `CaptureBackend.resume`, which
-    reads the router as it is now and builds from the kept transcript
-    without a speech step. The rows show the parked capture with its
-    questions (`UserAnswers` records an answer, makes it the router's
-    grant when asked to, and resumes on the last one), Send, Dismiss and
-    Re-record; the rows are rebuilt from the queue on every status read,
-    and a count-only notification (`notebook_awaiting`) says recordings
-    wait while the app is off screen.
+    name, the open questions, the one-time grants and refusals), giving
+    the attempt back in the same write, and leaves it out of every pass
+    until `CaptureDrain.requestResume` names it; the resume is served
+    inside a pass, before the next capture, through
+    `CaptureBackend.resume`, which reads the router as it is now (a
+    confirmation it came to ask for meanwhile is asked, and a grant it
+    gained meanwhile does not override a No given for this recording)
+    and builds from the kept transcript without a speech step. The rows show
+    the parked capture with its questions (`UserAnswers` records an
+    answer, makes it the router's grant when asked to, and resumes on the
+    last one), Send, Dismiss and Re-record; the rows are rebuilt from the
+    queue on every status read, and a count-only notification
+    (`notebook_awaiting`) says recordings wait while the app is off screen.
   - The settings can ask the text model to rewrite the routing from a
     description (`RoutingViewModel.describeChange`): the routing goes to
     the model with its secrets swapped out (`RoutingSecrets`: a token

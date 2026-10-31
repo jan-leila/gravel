@@ -3,6 +3,7 @@ package com.anopticlabs.gravel.notebook.pipeline
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.notebook.capture.answerUser
 import com.anopticlabs.gravel.notebook.capture.confirmUser
+import com.anopticlabs.gravel.notebook.capture.requireConfirmation
 import com.anopticlabs.gravel.notebook.routers.Grant
 import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.routers.RoutingEdits
@@ -35,13 +36,19 @@ class UserAnswers(
      */
     suspend fun answer(id: String, need: Need, allow: Boolean, remember: Boolean): Answered = withContext(NonCancellable) {
         val parked = queue.readQueue(strict = true).firstOrNull { it.id == id }?.awaiting ?: return@withContext Answered.NOT_WAITING
-        val updated = queue.update { answerUser(it, id, need, allow) }.firstOrNull { it.id == id }?.awaiting ?: return@withContext Answered.NOT_WAITING
+        var updated = queue.update { answerUser(it, id, need, allow) }.firstOrNull { it.id == id }?.awaiting ?: return@withContext Answered.NOT_WAITING
+        val config = try {
+            routing.read()
+        } catch (e: Exception) {
+            logger.w { "routing not read for an answer to ${parked.routerName}: ${e::class.simpleName}" }
+            null
+        }
+        val router = config?.router(parked.router)
         var kept = true
         if (remember) {
             kept = try {
-                val config = routing.read()
                 // A router that is gone, or now of a kind without grants, has nothing to keep the answer on.
-                if (config.router(parked.router)?.shares == null) {
+                if (config == null || router?.shares == null) {
                     false
                 } else {
                     routing.write(RoutingEdits.withGrant(config, parked.router, need, if (allow) Grant.ALWAYS else Grant.NEVER))
@@ -51,6 +58,10 @@ class UserAnswers(
                 logger.w { "grant for ${parked.routerName} not kept: ${e::class.simpleName}" }
                 false
             }
+        }
+        // A router set to ask first while the capture waited gets its confirmation: the snapshot was taken before.
+        if (updated.asks.isEmpty() && !updated.confirm && router?.confirm == true) {
+            updated = queue.update { requireConfirmation(it, id) }.firstOrNull { it.id == id }?.awaiting ?: updated
         }
         if (updated.settled) resume(id)
         if (kept) Answered.TAKEN else Answered.GRANT_NOT_KEPT

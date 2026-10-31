@@ -424,9 +424,9 @@ class OnDeviceCaptureBackendTest {
         assertEquals(BuiltCapture.Completion("weeded the garden"), claim)
     }
 
-    private fun resumeOf(router: RouterConfig, text: String, granted: Set<Need> = emptySet(), location: RoutedLocation? = null) = CaptureResume(
+    private fun resumeOf(router: RouterConfig, text: String, granted: Set<Need> = emptySet(), location: RoutedLocation? = null, denied: Set<Need> = emptySet()) = CaptureResume(
         router.ref, router.name, RoutedText("c1", "2026-09-22T17:00:00+02:00", text, location), granted,
-        capturedAt, berlin, listOf("unclassified", "shopping"), mapOf("shopping" to listOf("shopping")),
+        capturedAt, berlin, listOf("unclassified", "shopping"), mapOf("shopping" to listOf("shopping")), denied,
     )
 
     private suspend fun resume(resume: CaptureResume, text: FakeText = FakeText(), stages: MutableList<CaptureStage> = mutableListOf()): BuiltCapture {
@@ -483,6 +483,10 @@ class OnDeviceCaptureBackendTest {
         assertEquals(hook, forward.router)
         assertEquals(RoutedText("c1", "2026-09-22T17:00:00+02:00", "hello", here), forward.text)
         assertEquals(setOf(Need.LOCATION), forward.share, "a one-time grant answers the ask; the unanswered one stays withheld")
+        val always = hook.copy(shares = Shares(Grant.ALWAYS, Grant.ALWAYS))
+        graph = RoutingConfig(entry = always.ref, routers = listOf(always))
+        val refused = assertIs<BuiltCapture.Forward>(resume(resumeOf(hook, "hello", location = here, denied = setOf(Need.LOCATION))))
+        assertEquals(setOf(Need.RECORDED_AT), refused.share, "a No for this recording holds against an Always the router gained meanwhile")
         val renamed = hook.copy(name = "Hook 2", url = "https://example.test/v2")
         graph = RoutingConfig(entry = renamed.ref, routers = listOf(renamed))
         assertEquals(renamed, assertIs<BuiltCapture.Forward>(resume(resumeOf(hook, "hello"))).router, "the router as it is now, not as it was")

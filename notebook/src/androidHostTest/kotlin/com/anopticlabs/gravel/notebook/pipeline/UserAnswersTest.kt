@@ -118,6 +118,20 @@ class UserAnswersTest {
     }
 
     @Test
+    fun aRefusalIsRecordedAndARouterSetToAskFirstMeanwhileGetsItsConfirmation() = runBlocking<Unit> {
+        routing.write(RoutingConfig(entry = hook.ref, routers = listOf(hook)))
+        park("p1", confirm = false, asks = setOf(Need.LOCATION))
+        routing.write(RoutingConfig(entry = hook.ref, routers = listOf(hook.copy(confirm = true))))
+        assertEquals(UserAnswers.Answered.TAKEN, answers.answer("p1", Need.LOCATION, allow = false, remember = false))
+        assertEquals(setOf(Need.LOCATION), awaiting("p1").denied)
+        assertTrue(awaiting("p1").confirm, "the router asks first now, so the capture waits for the Send")
+        assertFalse(awaiting("p1").settled)
+        assertEquals(0, runs)
+        answers.confirm("p1")
+        assertEquals(1, runs)
+    }
+
+    @Test
     fun aDismissDropsTheWaitingCaptureAndItsRecordingButNotOneTheDrainHas() = runBlocking<Unit> {
         park("p1", confirm = true, asks = emptySet())
         assertEquals(QueueStore.AwaitingRemoval.REMOVED, answers.dismiss("p1"))

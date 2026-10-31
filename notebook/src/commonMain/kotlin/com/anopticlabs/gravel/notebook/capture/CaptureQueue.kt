@@ -39,8 +39,9 @@ data class QueuedCapture(
  * A capture parked by the routing until the user answers: its transcript and recording time as
  * routed, kept so the answer never costs a second transcription, the [router] the walk ended at
  * (by ref, so the current definition is used on resume, and [routerName] for the row meanwhile),
- * whether that router asks for a [confirm]ation, the needs still [asks]ed about, and those
- * [granted] for this one recording.
+ * whether that router asks for a [confirm]ation, the needs still [asks]ed about, those
+ * [granted] for this one recording, and those [denied] for it, which a grant the router gains
+ * meanwhile does not override.
  */
 @Serializable
 data class AwaitingUser(
@@ -52,6 +53,7 @@ data class AwaitingUser(
     val location: RoutedLocation? = null,
     val asks: Set<Need> = emptySet(),
     val granted: Set<Need> = emptySet(),
+    val denied: Set<Need> = emptySet(),
 ) {
     /** Nothing left to ask: the user confirmed, or there was nothing to confirm once the questions were answered. */
     val settled: Boolean get() = asks.isEmpty() && !confirm
@@ -99,15 +101,25 @@ val QueuedCapture.awaitsUser: Boolean get() = awaiting != null && !needsReview
 fun awaitUser(queue: List<QueuedCapture>, id: String, awaiting: AwaitingUser, attempts: Int): List<QueuedCapture> =
     queue.map { if (it.id == id) it.copy(awaiting = awaiting, attempts = attempts) else it }
 
-/** Records the answer to one question of the parked entry [id]: the need leaves [AwaitingUser.asks], and joins [AwaitingUser.granted] when [allow]ed. */
+/** Records the answer to one question of the parked entry [id]: the need leaves [AwaitingUser.asks], and joins [AwaitingUser.granted] when [allow]ed, [AwaitingUser.denied] otherwise. */
 fun answerUser(queue: List<QueuedCapture>, id: String, need: Need, allow: Boolean): List<QueuedCapture> = queue.map {
     val awaiting = it.awaiting
     if (it.id != id || awaiting == null) {
         it
     } else {
-        it.copy(awaiting = awaiting.copy(asks = awaiting.asks - need, granted = if (allow) awaiting.granted + need else awaiting.granted - need))
+        it.copy(
+            awaiting = awaiting.copy(
+                asks = awaiting.asks - need,
+                granted = if (allow) awaiting.granted + need else awaiting.granted - need,
+                denied = if (allow) awaiting.denied - need else awaiting.denied + need,
+            ),
+        )
     }
 }
+
+/** Puts the parked entry [id] back behind a confirmation, for a router that came to ask for one while the entry waited. */
+fun requireConfirmation(queue: List<QueuedCapture>, id: String): List<QueuedCapture> =
+    queue.map { if (it.id == id && it.awaiting != null) it.copy(awaiting = it.awaiting.copy(confirm = true)) else it }
 
 /** Takes the parked entry [id] off its confirmation, so the next resume request delivers it. */
 fun confirmUser(queue: List<QueuedCapture>, id: String): List<QueuedCapture> =
