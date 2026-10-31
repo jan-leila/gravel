@@ -31,6 +31,14 @@ class HttpTest {
     }
 
     @Test
+    fun aRedirectOrAMissingApiIsAnAddressProblemAndTheRestIsNot() {
+        assertEquals("Slack redirected the request (HTTP 301); check the address", HttpAnswer(301, "").addressReason("Slack"))
+        assertEquals("Slack has no such API at that address (HTTP 404)", HttpAnswer(404, "").addressReason("Slack"))
+        assertEquals("Slack has no such API at that address (HTTP 405)", HttpAnswer(405, "").addressReason("Slack"))
+        for (status in listOf(200, 400, 401, 429, 500, 503)) assertEquals(null, HttpAnswer(status, "").addressReason("Slack"), "$status")
+    }
+
+    @Test
     fun aJsonStringIsQuotedAndEscaped() {
         assertEquals("\"plain\"", jsonString("plain"))
         assertEquals("\"a \\\"quote\\\" and a \\\\ slash\"", jsonString("a \"quote\" and a \\ slash"))

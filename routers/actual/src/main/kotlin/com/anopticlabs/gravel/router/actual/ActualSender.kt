@@ -55,7 +55,7 @@ class ActualSender(
             in 200..299 -> SendResult.Sent
             400, 404, 422 -> SendResult.Refused("The Actual relay refused the transaction (HTTP ${answer.status})")
             401, 403 -> SendResult.Refused("The Actual relay refused the API key (HTTP ${answer.status})")
-            else -> SendResult.Retry("The Actual relay answered HTTP ${answer.status}")
+            else -> answer.addressReason("The Actual relay")?.let(SendResult::Refused) ?: SendResult.Retry("The Actual relay answered HTTP ${answer.status}")
         }
     }
 }

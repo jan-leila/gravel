@@ -28,7 +28,7 @@ class SmtpRefusedException(message: String) : IOException(message)
  * its digest instead of the system's trust, for a Proton Bridge or another server with a
  * self-signed certificate; without it the system's trust and the host name apply.
  */
-class SmtpClient(
+open class SmtpClient(
     private val host: String,
     private val port: Int,
     private val security: SmtpSecurity,
@@ -36,7 +36,7 @@ class SmtpClient(
     private val timeoutMillis: Int = 30_000,
 ) {
     @Throws(IOException::class)
-    fun send(username: String, password: String, from: String, to: String, message: ByteArray) {
+    open fun send(username: String, password: String, from: String, to: String, message: ByteArray) {
         // Not Socket.apply: inside it, `port` would be the socket's own, still zero.
         var socket: Socket = Socket()
         socket.connect(InetSocketAddress(host, port), timeoutMillis)

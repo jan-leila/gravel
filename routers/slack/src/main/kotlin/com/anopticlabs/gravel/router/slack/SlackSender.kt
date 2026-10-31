@@ -38,7 +38,7 @@ class SlackSender(private val settings: Settings, private val send: (HttpRequest
             answer.ok -> SendResult.Sent
             answer.status == 408 || answer.status == 429 -> SendResult.Retry("Slack answered HTTP ${answer.status}")
             answer.status in 400..499 -> SendResult.Refused("Slack refused the webhook (HTTP ${answer.status})")
-            else -> SendResult.Retry("Slack answered HTTP ${answer.status}")
+            else -> answer.addressReason("Slack")?.let(SendResult::Refused) ?: SendResult.Retry("Slack answered HTTP ${answer.status}")
         }
     }
 }

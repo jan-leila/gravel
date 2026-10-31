@@ -46,7 +46,7 @@ class HomeAssistantSender(
             in 200..299 -> SendResult.Sent
             401, 403 -> SendResult.Refused("Home Assistant refused the token (HTTP ${answer.status})")
             404 -> SendResult.Refused("Home Assistant has no Assist at that address (HTTP 404)")
-            else -> SendResult.Retry("Home Assistant answered HTTP ${answer.status}")
+            else -> answer.addressReason("Home Assistant")?.let(SendResult::Refused) ?: SendResult.Retry("Home Assistant answered HTTP ${answer.status}")
         }
     }
 }

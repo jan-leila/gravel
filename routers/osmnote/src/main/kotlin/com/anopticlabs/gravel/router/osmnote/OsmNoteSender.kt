@@ -40,7 +40,7 @@ class OsmNoteSender(private val settings: Settings, private val send: (HttpReque
             in 200..299 -> SendResult.Sent
             400 -> SendResult.Refused("OpenStreetMap refused the note (HTTP 400)")
             401, 403 -> SendResult.Refused("OpenStreetMap refused the token (HTTP ${answer.status})")
-            else -> SendResult.Retry("OpenStreetMap answered HTTP ${answer.status}")
+            else -> answer.addressReason("OpenStreetMap")?.let(SendResult::Refused) ?: SendResult.Retry("OpenStreetMap answered HTTP ${answer.status}")
         }
     }
 }

@@ -25,5 +25,7 @@ class HomeAssistantSenderTest {
         assertEquals(SendResult.Refused("Home Assistant has no Assist at that address (HTTP 404)"), HomeAssistantSender.answer(HttpAnswer(404, "")))
         assertEquals(SendResult.Retry("Home Assistant answered HTTP 502"), HomeAssistantSender.answer(HttpAnswer(502, "")))
         assertEquals(SendResult.Retry("Home Assistant answered HTTP 429"), HomeAssistantSender.answer(HttpAnswer(429, "")))
+        assertEquals(SendResult.Refused("Home Assistant redirected the request (HTTP 301); check the address"), HomeAssistantSender.answer(HttpAnswer(301, "")), "a redirect is an address no retry changes")
+        assertEquals(SendResult.Refused("Home Assistant has no such API at that address (HTTP 405)"), HomeAssistantSender.answer(HttpAnswer(405, "")))
     }
 }

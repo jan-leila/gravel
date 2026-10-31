@@ -45,5 +45,6 @@ class ActualSenderTest {
         assertEquals(SendResult.Refused("The Actual relay refused the transaction (HTTP 400)"), ActualSender.answer(HttpAnswer(400, "")))
         assertEquals(SendResult.Refused("The Actual relay refused the API key (HTTP 401)"), ActualSender.answer(HttpAnswer(401, "")))
         assertEquals(SendResult.Retry("The Actual relay answered HTTP 502"), ActualSender.answer(HttpAnswer(502, "")))
+        assertEquals(SendResult.Refused("The Actual relay redirected the request (HTTP 308); check the address"), ActualSender.answer(HttpAnswer(308, "")), "a redirect is an address no retry changes")
     }
 }

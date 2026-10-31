@@ -42,7 +42,7 @@ class MastodonSender(private val settings: Settings, private val send: (HttpRequ
             in 200..299 -> SendResult.Sent
             401, 403 -> SendResult.Refused("Mastodon refused the token (HTTP ${answer.status})")
             422 -> SendResult.Refused("Mastodon refused the status, too long perhaps (HTTP 422)")
-            else -> SendResult.Retry("Mastodon answered HTTP ${answer.status}")
+            else -> answer.addressReason("Mastodon")?.let(SendResult::Refused) ?: SendResult.Retry("Mastodon answered HTTP ${answer.status}")
         }
     }
 }

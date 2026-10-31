@@ -26,5 +26,7 @@ class VikunjaSenderTest {
         assertEquals(SendResult.Refused("Vikunja has no such project (HTTP 404)"), VikunjaSender.answer(HttpAnswer(404, "")))
         assertEquals(SendResult.Refused("Vikunja refused the task (HTTP 400)"), VikunjaSender.answer(HttpAnswer(400, "")))
         assertEquals(SendResult.Retry("Vikunja answered HTTP 500"), VikunjaSender.answer(HttpAnswer(500, "")))
+        assertEquals(SendResult.Refused("Vikunja redirected the request (HTTP 301); check the address"), VikunjaSender.answer(HttpAnswer(301, "")), "a redirect is an address no retry changes")
+        assertEquals(SendResult.Refused("Vikunja has no such API at that address (HTTP 405)"), VikunjaSender.answer(HttpAnswer(405, "")))
     }
 }

@@ -25,5 +25,7 @@ class SignalSenderTest {
         assertEquals(SendResult.Refused("The Signal relay refused the message, a number perhaps (HTTP 400)"), SignalSender.answer(HttpAnswer(400, "")))
         assertEquals(SendResult.Refused("The Signal relay refused the token (HTTP 401)"), SignalSender.answer(HttpAnswer(401, "")))
         assertEquals(SendResult.Retry("The Signal relay answered HTTP 500"), SignalSender.answer(HttpAnswer(500, "")))
+        assertEquals(SendResult.Refused("The Signal relay redirected the request (HTTP 301); check the address"), SignalSender.answer(HttpAnswer(301, "")), "a redirect is an address no retry changes")
+        assertEquals(SendResult.Refused("The Signal relay has no such API at that address (HTTP 404)"), SignalSender.answer(HttpAnswer(404, "")))
     }
 }

@@ -26,5 +26,7 @@ class OsmNoteSenderTest {
         assertEquals(SendResult.Refused("OpenStreetMap refused the note (HTTP 400)"), OsmNoteSender.answer(HttpAnswer(400, "")))
         assertEquals(SendResult.Refused("OpenStreetMap refused the token (HTTP 401)"), OsmNoteSender.answer(HttpAnswer(401, "")))
         assertEquals(SendResult.Retry("OpenStreetMap answered HTTP 429"), OsmNoteSender.answer(HttpAnswer(429, "")))
+        assertEquals(SendResult.Refused("OpenStreetMap redirected the request (HTTP 301); check the address"), OsmNoteSender.answer(HttpAnswer(301, "")), "a redirect is an address no retry changes")
+        assertEquals(SendResult.Refused("OpenStreetMap has no such API at that address (HTTP 404)"), OsmNoteSender.answer(HttpAnswer(404, "")))
     }
 }

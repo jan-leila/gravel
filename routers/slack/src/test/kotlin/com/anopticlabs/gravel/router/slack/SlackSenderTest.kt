@@ -23,5 +23,6 @@ class SlackSenderTest {
         assertEquals(SendResult.Refused("Slack refused the webhook (HTTP 404)"), SlackSender.answer(HttpAnswer(404, "no_service")))
         assertEquals(SendResult.Retry("Slack answered HTTP 429"), SlackSender.answer(HttpAnswer(429, "")))
         assertEquals(SendResult.Retry("Slack answered HTTP 503"), SlackSender.answer(HttpAnswer(503, "")))
+        assertEquals(SendResult.Refused("Slack redirected the request (HTTP 302); check the address"), SlackSender.answer(HttpAnswer(302, "")), "a redirect is an address no retry changes")
     }
 }

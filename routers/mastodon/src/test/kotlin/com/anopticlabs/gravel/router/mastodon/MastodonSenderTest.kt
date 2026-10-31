@@ -24,6 +24,8 @@ class MastodonSenderTest {
         assertEquals(SendResult.Refused("Mastodon refused the token (HTTP 401)"), MastodonSender.answer(HttpAnswer(401, "")))
         assertEquals(SendResult.Refused("Mastodon refused the status, too long perhaps (HTTP 422)"), MastodonSender.answer(HttpAnswer(422, "")))
         assertEquals(SendResult.Retry("Mastodon answered HTTP 503"), MastodonSender.answer(HttpAnswer(503, "")))
+        assertEquals(SendResult.Refused("Mastodon redirected the request (HTTP 301); check the address"), MastodonSender.answer(HttpAnswer(301, "")), "a redirect is an address no retry changes")
+        assertEquals(SendResult.Refused("Mastodon has no such API at that address (HTTP 404)"), MastodonSender.answer(HttpAnswer(404, "")))
         assertEquals("private", MastodonApp.VISIBILITIES.first(), "followers-only by default")
     }
 }

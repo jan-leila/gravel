@@ -3,11 +3,12 @@ package com.anopticlabs.gravel.router.email
 import com.anopticlabs.gravel.router.common.Delivery
 import com.anopticlabs.gravel.router.common.SendResult
 import com.anopticlabs.gravel.router.common.Sender
-import com.anopticlabs.gravel.router.common.Settings
+import com.anopticlabs.gravel.router.common.SettingValues
 import java.io.IOException
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeParseException
+import javax.net.ssl.SSLHandshakeException
 
 /** What the settings say about the server, read once per send. */
 data class SmtpAccount(
@@ -44,7 +45,7 @@ fun normalizePin(typed: String?): String? {
 }
 
 class EmailSender(
-    private val settings: Settings,
+    private val settings: SettingValues,
     private val now: () -> ZonedDateTime = { ZonedDateTime.now(ZoneId.systemDefault()) },
     private val client: (SmtpAccount) -> SmtpClient = { SmtpClient(it.host, it.port, it.security, it.pinnedSha256) },
 ) : Sender {
@@ -65,6 +66,9 @@ class EmailSender(
             SendResult.Sent
         } catch (e: SmtpRefusedException) {
             SendResult.Refused("The mail server refused it: ${e.message}")
+        } catch (e: SSLHandshakeException) {
+            // The pin no longer matches, or the certificate is one the phone does not trust: no retry changes that.
+            SendResult.Refused("The mail server's certificate was not accepted: ${e.message ?: e::class.simpleName}")
         } catch (e: IOException) {
             SendResult.Retry("The mail server could not be reached: ${e.message ?: e::class.simpleName}")
         }

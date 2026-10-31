@@ -13,11 +13,16 @@ data class Field(
     val choices: List<String>? = null,
 )
 
+/** What a sender reads: the value of a setting, or null when it is empty. */
+fun interface SettingValues {
+    operator fun get(key: String): String?
+}
+
 /** The app's settings, in its own preferences; secrets go through [Secrets]. */
-class Settings(context: Context, private val fields: List<Field>, private val secrets: Secrets = Secrets()) {
+class Settings(context: Context, private val fields: List<Field>, private val secrets: Secrets = Secrets()) : SettingValues {
     private val prefs: SharedPreferences = context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
 
-    operator fun get(key: String): String? {
+    override operator fun get(key: String): String? {
         val raw = prefs.getString(key, null)?.takeIf { it.isNotEmpty() } ?: return null
         return if (fields.first { it.key == key }.secret) secrets.open(raw) else raw
     }

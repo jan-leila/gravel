@@ -41,7 +41,7 @@ class SignalSender(private val settings: Settings, private val send: (HttpReques
             in 200..299 -> SendResult.Sent
             400 -> SendResult.Refused("The Signal relay refused the message, a number perhaps (HTTP 400)")
             401, 403 -> SendResult.Refused("The Signal relay refused the token (HTTP ${answer.status})")
-            else -> SendResult.Retry("The Signal relay answered HTTP ${answer.status}")
+            else -> answer.addressReason("The Signal relay")?.let(SendResult::Refused) ?: SendResult.Retry("The Signal relay answered HTTP ${answer.status}")
         }
     }
 }

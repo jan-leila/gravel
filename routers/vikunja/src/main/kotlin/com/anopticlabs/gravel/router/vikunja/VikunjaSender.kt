@@ -41,7 +41,7 @@ class VikunjaSender(private val settings: Settings, private val send: (HttpReque
             401, 403 -> SendResult.Refused("Vikunja refused the token (HTTP ${answer.status})")
             404 -> SendResult.Refused("Vikunja has no such project (HTTP 404)")
             400, 412, 422 -> SendResult.Refused("Vikunja refused the task (HTTP ${answer.status})")
-            else -> SendResult.Retry("Vikunja answered HTTP ${answer.status}")
+            else -> answer.addressReason("Vikunja")?.let(SendResult::Refused) ?: SendResult.Retry("Vikunja answered HTTP ${answer.status}")
         }
     }
 }

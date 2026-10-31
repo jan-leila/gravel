@@ -19,6 +19,17 @@ data class HttpRequest(
 /** What the server answered: the status and up to a few kilobytes of its body, for a reason to show. */
 data class HttpAnswer(val status: Int, val body: String) {
     val ok: Boolean get() = status in 200..299
+
+    /**
+     * The reason a retry would not change, for an answer every integration reads the same way: a
+     * redirect (the request is not followed, so the address is one the API is not at, http:// for
+     * an https:// server for example) or no such API at the address. Null for any other status.
+     */
+    fun addressReason(service: String): String? = when (status) {
+        in 300..399 -> "$service redirected the request (HTTP $status); check the address"
+        404, 405, 410 -> "$service has no such API at that address (HTTP $status)"
+        else -> null
+    }
 }
 
 /**
