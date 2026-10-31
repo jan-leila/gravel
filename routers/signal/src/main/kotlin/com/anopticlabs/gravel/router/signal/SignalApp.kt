@@ -17,10 +17,15 @@ class SignalApp : Application(), RouterApp {
 
     override val sender: Sender by lazy { SignalSender(settings, Http(allowPrivateCleartext = true)::send) }
 
-    override fun refusal(delivery: Delivery): String? = settings.missing()?.let { "The Signal router is not set up: ${it.label} is missing" }
+    // A wrong address is refused here, where Gravel flags the recording, not found at the send, where it would already be acknowledged.
+    override fun refusal(delivery: Delivery): String? {
+        settings.missing()?.let { return "The Signal router is not set up: ${it.label} is missing" }
+        return if (Http.allowed(settings[KEY_URL].orEmpty(), allowPrivateCleartext = true)) null else BAD_ADDRESS
+    }
 
     companion object {
         const val KEY_URL = "url"
+        const val BAD_ADDRESS = "The relay address has to be https://, or http:// on your own network"
         const val KEY_NUMBER = "number"
         const val KEY_RECIPIENTS = "recipients"
         const val KEY_TOKEN = "token"

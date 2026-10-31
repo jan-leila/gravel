@@ -14,10 +14,15 @@ class HomeAssistantApp : Application(), RouterApp {
     // A Home Assistant on a LAN often has no TLS; cleartext is allowed to a private address only.
     override val sender: Sender by lazy { HomeAssistantSender(settings, Http(allowPrivateCleartext = true)::send) }
 
-    override fun refusal(delivery: Delivery): String? = settings.missing()?.let { "The Home Assistant router is not set up: ${it.label} is missing" }
+    // A wrong address is refused here, where Gravel flags the recording, not found at the send, where it would already be acknowledged.
+    override fun refusal(delivery: Delivery): String? {
+        settings.missing()?.let { return "The Home Assistant router is not set up: ${it.label} is missing" }
+        return if (Http.allowed(settings[KEY_URL].orEmpty(), allowPrivateCleartext = true)) null else BAD_ADDRESS
+    }
 
     companion object {
         const val KEY_URL = "url"
+        const val BAD_ADDRESS = "The Home Assistant address has to be https://, or http:// on your own network"
         const val KEY_TOKEN = "token"
         const val KEY_LANGUAGE = "language"
 

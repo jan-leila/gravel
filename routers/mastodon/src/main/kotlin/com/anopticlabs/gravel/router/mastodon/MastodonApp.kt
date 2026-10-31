@@ -13,10 +13,15 @@ class MastodonApp : Application(), RouterApp {
 
     override val sender: Sender by lazy { MastodonSender(settings, Http()::send) }
 
-    override fun refusal(delivery: Delivery): String? = settings.missing()?.let { "The Mastodon router is not set up: ${it.label} is missing" }
+    // A wrong address is refused here, where Gravel flags the recording, not found at the send, where it would already be acknowledged.
+    override fun refusal(delivery: Delivery): String? {
+        settings.missing()?.let { return "The Mastodon router is not set up: ${it.label} is missing" }
+        return if (Http.allowed(settings[KEY_URL].orEmpty(), allowPrivateCleartext = false)) null else BAD_ADDRESS
+    }
 
     companion object {
         const val KEY_URL = "url"
+        const val BAD_ADDRESS = "The instance address has to be an https:// address"
         const val KEY_TOKEN = "token"
         const val KEY_VISIBILITY = "visibility"
 

@@ -1809,8 +1809,9 @@ completed-tasks notice has the same gap.
 **Status: accepted; the relays they talk to usually have no TLS on a LAN.**
 
 The Home Assistant, Vikunja, Signal and Actual router apps (`routers/`)
-send over plain `http://` when the address is a private one (a LAN name,
-a private, link-local or loopback range), since a Home Assistant or a
+send over plain `http://` when the address is a private one (a LAN name
+or a name with no dot, a private, shared (100.64/10), link-local or
+loopback range), since a Home Assistant or a
 signal-cli or actual-http-api relay on a home network commonly has no
 certificate. The text of a recording then crosses the LAN in clear. The
 other router apps, and Gravel's own Network router, are https only.

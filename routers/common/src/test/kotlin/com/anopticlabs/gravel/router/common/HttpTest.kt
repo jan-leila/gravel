@@ -21,12 +21,13 @@ class HttpTest {
 
     @Test
     fun privateHostsAreLanNamesAndTheReservedRanges() {
-        for (host in listOf("localhost", "nas.local", "ha.lan", "box.home.arpa", "svc.internal", "10.0.0.1", "127.0.0.1", "172.16.0.9", "172.31.255.1", "192.168.0.1", "169.254.1.1", "[::1]", "[fd12::1]", "[fe80::1]")) {
+        for (host in listOf("localhost", "nas.local", "ha.lan", "box.home.arpa", "svc.internal", "homeassistant", "nas", "10.0.0.1", "127.0.0.1", "172.16.0.9", "172.31.255.1", "192.168.0.1", "169.254.1.1", "100.64.0.1", "100.127.255.254", "[::1]", "[fd12::1]", "[fe80::1]")) {
             assertTrue(Http.isPrivateHost(host), host)
         }
-        for (host in listOf("example.com", "8.8.8.8", "172.32.0.1", "172.15.0.1", "193.168.0.1", "[2001:db8::1]", "local", "mylocal.com")) {
+        for (host in listOf("example.com", "8.8.8.8", "172.32.0.1", "172.15.0.1", "193.168.0.1", "100.63.255.255", "100.128.0.1", "[2001:db8::1]", "mylocal.com", "")) {
             assertFalse(Http.isPrivateHost(host), host)
         }
+        assertTrue(Http.allowed("http://homeassistant:8123", allowPrivateCleartext = true), "a dot-less name, as Home Assistant's own fallback address")
     }
 
     @Test

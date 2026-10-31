@@ -87,14 +87,20 @@ class Http(private val allowPrivateCleartext: Boolean = false) {
             }
         }
 
-        /** A LAN name or a private, link-local or loopback address, where a relay without TLS may live. */
+        /**
+         * A LAN name (under a LAN suffix, or with no dot at all, which no public DNS answers for) or a
+         * private, shared (100.64/10: carrier NAT and Tailscale), link-local or loopback address,
+         * where a relay without TLS may live.
+         */
         fun isPrivateHost(host: String): Boolean {
             val name = host.lowercase().trimEnd('.')
+            if (name.isEmpty()) return false
             if (name == "localhost" || name.endsWith(".local") || name.endsWith(".lan") || name.endsWith(".home.arpa") || name.endsWith(".internal")) return true
+            if (!name.contains('.') && !name.contains(':')) return true
             val v4 = name.split('.').takeIf { it.size == 4 }?.map { it.toIntOrNull() }
             if (v4 != null && v4.all { it != null && it in 0..255 }) {
                 val (a, b) = v4.map { it!! }
-                return a == 10 || a == 127 || (a == 172 && b in 16..31) || (a == 192 && b == 168) || (a == 169 && b == 254)
+                return a == 10 || a == 127 || (a == 172 && b in 16..31) || (a == 192 && b == 168) || (a == 169 && b == 254) || (a == 100 && b in 64..127)
             }
             val v6 = name.removePrefix("[").removeSuffix("]")
             if (v6.contains(':')) {

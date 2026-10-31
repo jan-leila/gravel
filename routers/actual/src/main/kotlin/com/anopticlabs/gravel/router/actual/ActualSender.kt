@@ -40,7 +40,7 @@ class ActualSender(
         val apiKey = settings[ActualApp.KEY_API_KEY] ?: return SendResult.Refused("The Actual router has no API key")
         val budget = settings[ActualApp.KEY_BUDGET] ?: return SendResult.Refused("The Actual router has no budget")
         val account = settings[ActualApp.KEY_ACCOUNT] ?: return SendResult.Refused("The Actual router has no account")
-        if (!Http.allowed(relay, allowPrivateCleartext = true)) return SendResult.Refused("The relay address has to be https://, or http:// on your own network")
+        if (!Http.allowed(relay, allowPrivateCleartext = true)) return SendResult.Refused(ActualApp.BAD_ADDRESS)
         val decimals = settings[ActualApp.KEY_DECIMALS]?.toIntOrNull()?.coerceIn(0, 4) ?: 2
         val transaction = TextTransactions.parse(delivery.text, decimals) ?: return SendResult.Refused(ActualApp.NO_AMOUNT)
         return answer(try {

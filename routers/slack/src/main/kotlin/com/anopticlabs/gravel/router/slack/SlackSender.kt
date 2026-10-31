@@ -25,7 +25,7 @@ fun slackRequest(webhook: String, delivery: Delivery): HttpRequest = HttpRequest
 class SlackSender(private val settings: Settings, private val send: (HttpRequest) -> HttpAnswer) : Sender {
     override fun send(delivery: Delivery): SendResult {
         val webhook = settings[SlackApp.KEY_WEBHOOK] ?: return SendResult.Refused("The Slack router is not set up")
-        if (!Http.allowed(webhook, allowPrivateCleartext = false)) return SendResult.Refused("The webhook address is not an https:// address")
+        if (!Http.allowed(webhook, allowPrivateCleartext = false)) return SendResult.Refused(SlackApp.BAD_ADDRESS)
         return answer(try {
             send(slackRequest(webhook, delivery))
         } catch (e: IOException) {

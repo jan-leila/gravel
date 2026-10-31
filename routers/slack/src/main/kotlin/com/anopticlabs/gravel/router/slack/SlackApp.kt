@@ -13,10 +13,15 @@ class SlackApp : Application(), RouterApp {
 
     override val sender: Sender by lazy { SlackSender(settings, Http()::send) }
 
-    override fun refusal(delivery: Delivery): String? = settings.missing()?.let { "The Slack router is not set up: ${it.label} is missing" }
+    // A wrong address is refused here, where Gravel flags the recording, not found at the send, where it would already be acknowledged.
+    override fun refusal(delivery: Delivery): String? {
+        settings.missing()?.let { return "The Slack router is not set up: ${it.label} is missing" }
+        return if (Http.allowed(settings[KEY_WEBHOOK].orEmpty(), allowPrivateCleartext = false)) null else BAD_ADDRESS
+    }
 
     companion object {
         const val KEY_WEBHOOK = "webhook"
+        const val BAD_ADDRESS = "The webhook address is not an https:// address"
 
         val FIELDS = listOf(
             Field(KEY_WEBHOOK, "Incoming webhook URL", "From Slack's app settings, Incoming Webhooks; it is a secret, and is kept sealed", secret = true),

@@ -27,7 +27,7 @@ class OsmNoteSender(private val settings: Settings, private val send: (HttpReque
     override fun send(delivery: Delivery): SendResult {
         val location = delivery.location ?: return SendResult.Refused(OsmNoteApp.NO_LOCATION)
         val server = settings[OsmNoteApp.KEY_SERVER] ?: OsmNoteApp.DEFAULT_SERVER
-        if (!Http.allowed(server, allowPrivateCleartext = false)) return SendResult.Refused("The API server has to be an https:// address")
+        if (!Http.allowed(server, allowPrivateCleartext = false)) return SendResult.Refused(OsmNoteApp.BAD_ADDRESS)
         return answer(try {
             send(osmNoteRequest(server, settings[OsmNoteApp.KEY_TOKEN], location, delivery.text))
         } catch (e: IOException) {

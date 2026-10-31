@@ -27,7 +27,7 @@ class VikunjaSender(private val settings: Settings, private val send: (HttpReque
         val url = settings[VikunjaApp.KEY_URL] ?: return SendResult.Refused("The Vikunja router is not set up")
         val token = settings[VikunjaApp.KEY_TOKEN] ?: return SendResult.Refused("The Vikunja router has no token")
         val project = settings[VikunjaApp.KEY_PROJECT]?.takeIf { it.trim().all(Char::isDigit) } ?: return SendResult.Refused("The Vikunja project id has to be a number")
-        if (!Http.allowed(url, allowPrivateCleartext = true)) return SendResult.Refused("The Vikunja address has to be https://, or http:// on your own network")
+        if (!Http.allowed(url, allowPrivateCleartext = true)) return SendResult.Refused(VikunjaApp.BAD_ADDRESS)
         return answer(try {
             send(vikunjaRequest(url, token, project, delivery))
         } catch (e: IOException) {

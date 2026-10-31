@@ -32,7 +32,7 @@ class HomeAssistantSender(
     override fun send(delivery: Delivery): SendResult {
         val url = settings[HomeAssistantApp.KEY_URL] ?: return SendResult.Refused("The Home Assistant router is not set up")
         val token = settings[HomeAssistantApp.KEY_TOKEN] ?: return SendResult.Refused("The Home Assistant router has no token")
-        if (!Http.allowed(url, allowPrivateCleartext = true)) return SendResult.Refused("The Home Assistant address has to be https://, or http:// on your own network")
+        if (!Http.allowed(url, allowPrivateCleartext = true)) return SendResult.Refused(HomeAssistantApp.BAD_ADDRESS)
         val language = settings[HomeAssistantApp.KEY_LANGUAGE] ?: defaultLanguage()
         return answer(try {
             send(homeAssistantRequest(url, token, language, delivery))

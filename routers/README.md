@@ -23,19 +23,31 @@ manifest, a settings screen and one sender.
 
 `:routers:common` holds what every app shares:
 
-- `RouterReceiver` takes Gravel's broadcast, writes the delivery to the
-  app's **outbox** (one file per capture id, so a repeated delivery of one
+- `RouterReceiver` takes Gravel's broadcast, checks that the permission
+  guarding it is Gravel's own (`GravelSigners`: defined by
+  `com.anopticlabs.gravel` at signature level, in an app signed by a key
+  Gravel ships under, or by the router app's own key for local builds;
+  the system checks the permission by name alone, which an app could
+  define itself while Gravel is absent), writes the delivery to the app's
+  **outbox** (one file per capture id, so a repeated delivery of one
   recording replaces the first), asks WorkManager to send, and acknowledges
   within the receiver's budget. An app can refuse a delivery at once
   (`RouterApp.refusal`, for one that can never be sent as the app is set
-  up), with a reason Gravel shows the user.
+  up: a missing setting, a bad address, no amount to book), with a reason
+  Gravel shows the user.
 - `OutboxWorker` sends what waits once there is a network: a sent delivery
-  leaves the outbox; a refused one leaves it and is reported in a
-  notification; one to retry stays, with WorkManager's backoff.
+  leaves the outbox; a refused one (an answer no retry changes: a bad
+  token, a redirect, no such API at the address, a certificate the pin
+  does not match) is set aside with its reason and reported in a
+  notification, which the settings screen asks permission for; one to
+  retry stays, with WorkManager's backoff, and is set aside the same way
+  after twelve runs. The settings screen lists what was set aside, with
+  the text and the reason, to try again or discard: Gravel keeps no copy
+  of the text once a router took it.
 - `Http` sends with the platform's client. Cleartext goes only to a private
-  address (a LAN name, a private or link-local range), and only when the app
-  allows it: the self-hosted relays often have no TLS on a LAN. Everything
-  else is https.
+  address (a LAN name or a name with no dot, a private, shared (100.64/10)
+  or link-local range), and only when the app allows it: the self-hosted
+  relays often have no TLS on a LAN. Everything else is https.
 - `Settings` keeps the app's few values in its preferences, secrets sealed
   with a key the Android Keystore holds for the app (`Secrets`);
   `SettingsScreen` is the one screen each app has, with a test send.

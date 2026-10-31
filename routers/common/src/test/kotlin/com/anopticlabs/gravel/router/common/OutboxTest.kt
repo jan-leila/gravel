@@ -42,6 +42,40 @@ class OutboxTest {
     }
 
     @Test
+    fun aDeliverySetAsideLeavesTheLineWithItsReasonUntilItIsTriedAgainOrDiscarded() {
+        outbox.add(Delivery("c1", "one", null, null))
+        outbox.add(Delivery("c2", "two", null, null))
+        val first = outbox.list().first { it.second.captureId == "c1" }.first
+        outbox.keepNotSent(first, "Slack refused the webhook (HTTP 404)")
+        assertEquals(listOf("c2"), outbox.list().map { it.second.captureId })
+        val aside = outbox.listNotSent().single()
+        assertEquals("one", aside.delivery.text)
+        assertEquals("Slack refused the webhook (HTTP 404)", aside.reason)
+        outbox.tryAgain(aside)
+        assertEquals(listOf("c1", "c2"), outbox.list().map { it.second.captureId }.sorted())
+        assertTrue(outbox.listNotSent().isEmpty())
+        outbox.keepNotSent(outbox.list().first { it.second.captureId == "c2" }.first, "gone")
+        outbox.discard(outbox.listNotSent().single())
+        assertTrue(outbox.listNotSent().isEmpty())
+        assertEquals(listOf("c1"), outbox.list().map { it.second.captureId })
+        assertTrue(File(dir, Outbox.NOT_SENT_DIR).listFiles()!!.isEmpty(), "no reason file is left behind")
+    }
+
+    @Test
+    fun onlyTheNewestSetAsideDeliveriesAreKept() {
+        repeat(Outbox.MAX_NOT_SENT + 2) { n ->
+            outbox.add(Delivery("c$n", "text $n", null, null))
+            val file = outbox.list().single().first
+            file.setLastModified(1_000_000L + n * 1_000)
+            outbox.keepNotSent(file, "reason $n")
+        }
+        val kept = outbox.listNotSent()
+        assertEquals(Outbox.MAX_NOT_SENT, kept.size)
+        assertEquals("c${Outbox.MAX_NOT_SENT + 1}", kept.first().delivery.captureId, "newest first")
+        assertFalse(kept.any { it.delivery.captureId == "c0" || it.delivery.captureId == "c1" }, "the oldest went")
+    }
+
+    @Test
     fun aFileThatIsNotADeliveryIsRemovedAndNothingElseIsListed() {
         File(dir, "junk.delivery").apply { parentFile!!.mkdirs(); writeText("text=only") }
         File(dir, "note.txt").writeText("capture_id=x\ntext=y")

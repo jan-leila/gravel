@@ -28,7 +28,7 @@ class SignalSender(private val settings: Settings, private val send: (HttpReques
         val number = settings[SignalApp.KEY_NUMBER] ?: return SendResult.Refused("The Signal router has no sender number")
         val recipients = signalRecipients(settings[SignalApp.KEY_RECIPIENTS].orEmpty())
         if (recipients.isEmpty()) return SendResult.Refused("The Signal router has no recipients")
-        if (!Http.allowed(relay, allowPrivateCleartext = true)) return SendResult.Refused("The relay address has to be https://, or http:// on your own network")
+        if (!Http.allowed(relay, allowPrivateCleartext = true)) return SendResult.Refused(SignalApp.BAD_ADDRESS)
         return answer(try {
             send(signalRequest(relay, settings[SignalApp.KEY_TOKEN], number, recipients, delivery))
         } catch (e: IOException) {

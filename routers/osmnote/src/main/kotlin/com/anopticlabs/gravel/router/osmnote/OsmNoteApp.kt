@@ -14,13 +14,17 @@ class OsmNoteApp : Application(), RouterApp {
     override val sender: Sender by lazy { OsmNoteSender(settings, Http()::send) }
 
     // A note has a place or is nothing: a recording without one is refused at once, with the two reasons it can lack one.
-    override fun refusal(delivery: Delivery): String? =
-        if (delivery.location == null) NO_LOCATION else null
+    override fun refusal(delivery: Delivery): String? = when {
+        delivery.location == null -> NO_LOCATION
+        !Http.allowed(settings[KEY_SERVER] ?: DEFAULT_SERVER, allowPrivateCleartext = false) -> BAD_ADDRESS
+        else -> null
+    }
 
     companion object {
         const val KEY_SERVER = "server"
         const val KEY_TOKEN = "token"
         const val DEFAULT_SERVER = "https://api.openstreetmap.org"
+        const val BAD_ADDRESS = "The API server has to be an https:// address"
         const val NO_LOCATION = "The recording has no location, or this router was not allowed to see it"
 
         val FIELDS = listOf(

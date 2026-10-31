@@ -17,9 +17,10 @@ class ActualApp : Application(), RouterApp {
 
     override val sender: Sender by lazy { ActualSender(settings, Http(allowPrivateCleartext = true)::send) }
 
-    // A transaction without an amount is nothing to enter, and no retry hears one.
+    // A transaction without an amount is nothing to enter, and no retry hears one; a wrong address is refused here too, where Gravel flags the recording.
     override fun refusal(delivery: Delivery): String? {
         settings.missing()?.let { return "The Actual router is not set up: ${it.label} is missing" }
+        if (!Http.allowed(settings[KEY_URL].orEmpty(), allowPrivateCleartext = true)) return BAD_ADDRESS
         return if (TextTransactions.parse(delivery.text, decimals()) == null) NO_AMOUNT else null
     }
 
@@ -32,6 +33,7 @@ class ActualApp : Application(), RouterApp {
         const val KEY_ACCOUNT = "account"
         const val KEY_DECIMALS = "decimals"
         const val NO_AMOUNT = "No amount heard"
+        const val BAD_ADDRESS = "The relay address has to be https://, or http:// on your own network"
 
         val FIELDS = listOf(
             Field(KEY_URL, "Relay address", "Your actual-http-api, such as http://budget.lan:5007"),

@@ -2526,8 +2526,31 @@ shared `:routers:common` library, and the worked examples of the API
   `OutboxWorker` (WorkManager, network required, exponential backoff)
   sends what waits. An app can refuse at once (`RouterApp.refusal`) for a
   delivery that can never be sent as it is set up, with a reason Gravel
-  shows; a refusal from the server side (a 4xx that no retry changes)
-  drops the delivery and tells the user in a notification.
+  shows: a missing setting, an address `Http` would refuse, no amount to
+  book, so Gravel flags the recording instead of acknowledging it and
+  finding out at the send. A refusal from the server side (an answer no
+  retry changes: a bad token, a redirect, no such API at the address, a
+  certificate the pin does not match; `HttpAnswer.addressReason` holds
+  the statuses every integration reads alike), or a delivery still
+  waiting after `OutboxWorker.MAX_RUNS`, sets the delivery aside under
+  `not_sent` with its reason and tells the user in a notification (the
+  settings screen asks for the permission on its first showing); the
+  settings screen lists what was set aside, to try again or discard. The
+  text is kept because it is the only copy: Gravel drops the recording
+  once a router acknowledged.
+- **The guard is checked, not assumed.** The system checks a sender's
+  permission by name, so while Gravel is absent any app could define
+  `ROUTE_NOTEBOOK_TEXT` itself and deliver in Gravel's name.
+  `RouterReceiver` therefore asks who defined the permission
+  (`GravelSigners`): the package `com.anopticlabs.gravel`, at signature
+  level, signed by a key in `GravelSigners.TRUSTED` (F-Droid's key for
+  Gravel) or by the router app's own key, so a locally built pair works
+  on one debug key. Nothing else on API 26 identifies a broadcast's
+  sender to its receiver.
+- **One version for all eight.** `routers/version.properties` is what
+  every router build file reads, and the release workflow checks it
+  against the tag, the built APKs and the F-Droid repository's index, so
+  a tag cannot re-ship a `versionCode` the clients already have.
 - **No dependencies beyond the platform and androidx.** HTTP is
   `HttpsURLConnection` (`Http`), JSON is built by hand (`jsonString`), the
   outbox format is `java.util.Properties`, so the apps stay tiny and the

@@ -28,7 +28,7 @@ class MastodonSender(private val settings: Settings, private val send: (HttpRequ
     override fun send(delivery: Delivery): SendResult {
         val url = settings[MastodonApp.KEY_URL] ?: return SendResult.Refused("The Mastodon router is not set up")
         val token = settings[MastodonApp.KEY_TOKEN] ?: return SendResult.Refused("The Mastodon router has no token")
-        if (!Http.allowed(url, allowPrivateCleartext = false)) return SendResult.Refused("The instance address has to be an https:// address")
+        if (!Http.allowed(url, allowPrivateCleartext = false)) return SendResult.Refused(MastodonApp.BAD_ADDRESS)
         val visibility = settings[MastodonApp.KEY_VISIBILITY]?.takeIf { it in MastodonApp.VISIBILITIES } ?: MastodonApp.VISIBILITIES.first()
         return answer(try {
             send(mastodonRequest(url, token, visibility, delivery))
