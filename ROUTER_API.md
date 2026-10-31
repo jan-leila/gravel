@@ -87,15 +87,29 @@ label from different apps can be told apart.
 `com.anopticlabs.gravel.permission.ROUTE_NOTEBOOK_TEXT` is defined by Gravel
 with `protectionLevel="signature"`. Only an app signed with Gravel's key can
 hold it, so a receiver guarded by it takes broadcasts from Gravel and from
-nothing else. Your app does not request it and must not define it:
+nothing else while Gravel is installed. Your app does not request it and
+must not define it:
 
 - Before Gravel is installed the permission is undefined, and Android denies
-  every sender to a receiver guarded by an undefined permission. Your receiver
-  is safe either way.
+  every sender to a receiver guarded by an undefined permission.
 - An app that defines a permission of that name itself blocks Gravel from
   installing on that phone (Android refuses a second definition of a
   permission from a different signer), and once Gravel is installed first,
   your app would not install. Reference it, never define it.
+
+The guard is by name. While Gravel is absent (never installed, or
+uninstalled with your app left behind and set up), another app could
+define a permission of that name, hold it, and reach your receiver in
+Gravel's place. If your receiver acts on a delivery in a way that matters
+(sends it somewhere, say), check in `onReceive` who defined the permission
+before taking it: `PackageManager.getPermissionInfo` names the defining
+package, which must be `com.anopticlabs.gravel` at signature level, and
+`hasSigningCertificate` tells whether that package is signed by a
+certificate you trust for Gravel. Gravel's F-Droid builds are signed by
+F-Droid's key for it, SHA-256
+`ffb5bd16b212b0223051df349b36502f481756d45922a8e0ef00cd3ce108d5d2`.
+Gravel's own router apps do this in their shared receiver
+(`GravelSigners` in `routers/common`).
 
 ## Trust
 

@@ -69,6 +69,13 @@ routers without a prompt; until then the user trusts the certificate once
 in Gravel's Text Routing settings. A lost key would mean a new digest in
 Gravel and a reinstall of every router app.
 
+The trust runs the other way too: the apps' shared receiver takes a
+delivery only when the permission guarding it is defined by Gravel's
+package, at signature level, in an app signed by one of the keys in
+`GravelSigners.TRUSTED` (F-Droid's key for Gravel) or by the router app's
+own key. A Gravel signed with a new key needs its digest added there
+before the router apps take its deliveries.
+
 The apps are **not** in F-Droid's main repository: F-Droid signs with its
 own per-app keys, which the built-in trust would not match. They are
 published as GitHub releases (Obtainium reads those) and through Gravel's
