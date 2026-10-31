@@ -47,6 +47,13 @@ jobs:
           test -s "$RUNNER_TEMP/routers.jks"
         env:
           ROUTER_KEYSTORE_BASE64: ${{ secrets.ROUTER_KEYSTORE_BASE64 }}
+      # The shared library is lint-checked in full here: assembleRelease runs only the fatal
+      # checks, which miss a call to an API newer than the apps' minSdk.
+      - name: Lint the router apps
+        run: >-
+          ./gradlew :routers:common:lintDebug
+          :routers:slack:lintDebug :routers:homeassistant:lintDebug :routers:vikunja:lintDebug :routers:mastodon:lintDebug
+          :routers:osmnote:lintDebug :routers:signal:lintDebug :routers:actual:lintDebug :routers:email:lintDebug
       - name: Build and test the router apps
         run: >-
           ./gradlew

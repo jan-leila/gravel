@@ -1,6 +1,7 @@
 package com.anopticlabs.gravel.router.common
 
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URISyntaxException
@@ -47,7 +48,7 @@ class Http(private val allowPrivateCleartext: Boolean = false) {
             }
             val status = connection.responseCode
             val stream = if (status >= 400) connection.errorStream else connection.inputStream
-            val body = stream?.use { it.readNBytes(MAX_BODY_BYTES) }?.decodeToString().orEmpty()
+            val body = stream?.use { readUpTo(it, MAX_BODY_BYTES) }?.decodeToString().orEmpty()
             return HttpAnswer(status, body)
         } finally {
             connection.disconnect()
@@ -55,6 +56,18 @@ class Http(private val allowPrivateCleartext: Boolean = false) {
     }
 
     companion object {
+        // A loop, as the one-call readNBytes is an API 33 method the older platforms the apps run on do not have.
+        private fun readUpTo(stream: InputStream, limit: Int): ByteArray {
+            val out = ByteArray(limit)
+            var filled = 0
+            while (filled < limit) {
+                val read = stream.read(out, filled, limit - filled)
+                if (read < 0) break
+                filled += read
+            }
+            return out.copyOf(filled)
+        }
+
         const val CONNECT_TIMEOUT_MILLIS = 15_000
         const val READ_TIMEOUT_MILLIS = 60_000
         const val MAX_BODY_BYTES = 4 * 1024
