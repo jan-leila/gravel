@@ -15,7 +15,7 @@ manifest, a settings screen and one sender.
 | `vikunja` | `task` | a task in a Vikunja project, titled with the text | the recording time, for the description |
 | `mastodon` | `post` | a status on a Mastodon account, followers-only by default | nothing |
 | `osmnote` | `note` | an OpenStreetMap note where the recording was made | the location; a recording without one is refused |
-| `signal` | `message` | a Signal message, through a signal-cli-rest-api relay the user runs | nothing |
+| `signal` | `signal` | a Signal message, through a signal-cli-rest-api relay the user runs | nothing |
 | `actual` | `transaction` | a transaction in Actual Budget, through an actual-http-api relay the user runs | the recording time, for the date |
 | `email` | `mail` | an email through an SMTP server the user sets up (a Proton Bridge, for Proton) | the recording time, for the subject and date |
 
