@@ -1,14 +1,16 @@
 package com.anopticlabs.gravel.router.actual
 
 /**
- * What a spoken transaction says: "twelve fifty at the bakery for bread" is read as an amount, a
- * payee and the words as the note. [amountMinor] is in the currency's minor unit, positive; the
- * sender makes it a spend.
+ * What a spoken transaction says: "12 50 at the bakery for bread" is read as an amount, a payee
+ * and the words as the note. [amountMinor] is in the currency's minor unit, positive; the sender
+ * makes it a spend. Amounts are read from digits, as the speech engine writes them; a number
+ * spoken as words is not read.
  */
 data class TextTransaction(val amountMinor: Long, val payee: String?, val notes: String)
 
 object TextTransactions {
-    private val AMOUNT = Regex("(?<![\\d.,])(\\d{1,9})(?:[.,](\\d{1,2}))?(?![\\d])")
+    // The fraction follows a point or a comma, or is two digits on their own after a space or a colon ("twelve fifty" transcribed as "12 50").
+    private val AMOUNT = Regex("(?<![\\d.,])(\\d{1,9})(?:[.,](\\d{1,2})|[ :](\\d{2})(?!\\d))?(?![\\d])")
     private val PAYEE = Regex("\\b(?:at|to)\\s+(.+?)(?=\\s+(?:for|on|,)\\b|[,.;]|$)", RegexOption.IGNORE_CASE)
 
     /**
@@ -19,7 +21,7 @@ object TextTransactions {
     fun parse(text: String, decimals: Int = 2): TextTransaction? {
         val amount = AMOUNT.find(text) ?: return null
         val whole = amount.groupValues[1].toLong()
-        val fraction = amount.groupValues[2].padEnd(decimals, '0').take(decimals).ifEmpty { "0" }.toLong()
+        val fraction = amount.groupValues[2].ifEmpty { amount.groupValues[3] }.padEnd(decimals, '0').take(decimals).ifEmpty { "0" }.toLong()
         var scale = 1L
         repeat(decimals) { scale *= 10 }
         val minor = whole * scale + fraction

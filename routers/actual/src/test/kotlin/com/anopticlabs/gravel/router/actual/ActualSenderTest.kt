@@ -22,6 +22,11 @@ class ActualSenderTest {
         assertNull(TextTransactions.parse("groceries at the shop"))
         assertNull(TextTransactions.parse(""))
         assertEquals(TextTransaction(4000, null, "forty 40 whatever 2.5"), TextTransactions.parse("forty 40 whatever 2.5"), "the first number wins")
+        assertEquals(TextTransaction(1250, "the bakery", "12 50 at the bakery for bread"), TextTransactions.parse("12 50 at the bakery for bread"), "two digits after a space are the fraction, as the intro promises")
+        assertEquals(TextTransaction(1250, null, "12:50 coffee"), TextTransactions.parse("12:50 coffee"))
+        assertEquals(TextTransaction(1200, null, "12 500 yen"), TextTransactions.parse("12 500 yen"), "three digits are a number of their own")
+        assertEquals(TextTransaction(125000, "the bakery", "1250 at the bakery"), TextTransactions.parse("1250 at the bakery"), "a run-together number is whole units")
+        assertNull(TextTransactions.parse("twelve fifty at the bakery"), "words are not read")
     }
 
     @Test
