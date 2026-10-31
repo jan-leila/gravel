@@ -87,6 +87,22 @@ jobs:
           done
           echo "router signer SHA-256: $expected"
           ls "$RUNNER_TEMP/apks"
+      # The tag names the version in routers/version.properties, and every APK carries it: a
+      # release built from a stale file would re-ship the last versionCode, which F-Droid clients
+      # would never offer as an update.
+      - name: Check the version against the tag
+        run: |
+          name="$(sed -n 's/^versionName=\(.*\)$/\1/p' routers/version.properties)"
+          code="$(sed -n 's/^versionCode=\([0-9][0-9]*\)$/\1/p' routers/version.properties)"
+          echo "tag: $GITHUB_REF_NAME, version file: $name ($code)"
+          test "$GITHUB_REF_NAME" = "routers-v$name"
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)"
+          for apk in "$RUNNER_TEMP"/apks/*.apk; do
+            badging="$("$aapt2" dump badging "$apk" | head -n 1)"
+            echo "$badging"
+            test "$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")" = "$code"
+            test "$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")" = "$name"
+          done
       - name: Publish the GitHub release
         run: gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP"/apks/*.apk --title "Router apps $GITHUB_REF_NAME" --generate-notes
         env:
@@ -106,6 +122,18 @@ jobs:
           printf '%s' "$FDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/fdroid.jks"
           test -s "$RUNNER_TEMP/fdroid.jks"
           mkdir -p repo
+          # An index that already lists a package at this versionCode or above would not be an update.
+          if [ -f repo/index-v1.json ]; then
+            aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)"
+            for apk in "$RUNNER_TEMP"/apks/*.apk; do
+              badging="$("$aapt2" dump badging "$apk" | head -n 1)"
+              pkg="$(printf '%s' "$badging" | sed -n "s/.*package: name='\([^']*\)'.*/\1/p")"
+              built="$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
+              indexed="$(jq -r --arg p "$pkg" '[.packages[$p][]?.versionCode] | max // 0' repo/index-v1.json)"
+              echo "$pkg: built $built, indexed $indexed"
+              test "$built" -gt "$indexed"
+            done
+          fi
           cp "$RUNNER_TEMP"/apks/*.apk repo/
           cat > config.yml <<CONFIG
           repo_url: https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/repo

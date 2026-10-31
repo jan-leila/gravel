@@ -11,6 +11,9 @@ plugins {
 }
 
 val routerKeystore: String? = System.getenv("ROUTER_KEYSTORE")?.takeIf { it.isNotBlank() }
+// One version for all the router apps, bumped in routers/version.properties for each routers-v* tag.
+val routerVersion = Properties().apply { rootProject.file("routers/version.properties").inputStream().use { load(it) } }
+
 val localReleaseBuild = Properties().apply {
     val file = rootProject.file("local.properties")
     if (file.exists()) file.inputStream().use { load(it) }
@@ -24,8 +27,8 @@ android {
         applicationId = "com.anopticlabs.gravel.router.email"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = routerVersion.getProperty("versionCode").toInt()
+        versionName = routerVersion.getProperty("versionName")
     }
 
     if (routerKeystore != null && !localReleaseBuild) {

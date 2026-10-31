@@ -81,6 +81,17 @@ with GitHub Pages serving it; `fdroid update --create-metadata` fills it).
 Users add `https://<owner>.github.io/<repository>/repo` to their F-Droid
 client, or the GitHub releases page to Obtainium.
 
+## Releasing
+
+The eight apps share one version, in `routers/version.properties`, which
+every router build file reads. A release commit raises `versionCode` by
+one and sets `versionName` to the version the tag will name, and the tag
+is `routers-v<versionName>` on that commit. The workflow refuses a tag that
+does not match the file, an APK whose version differs from it, and a
+`versionCode` not above the one the F-Droid repository already indexes
+for that package: F-Droid clients offer an update by `versionCode` alone,
+so a release that re-shipped the last one would never reach them.
+
 ## Building
 
 ```sh
