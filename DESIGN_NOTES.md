@@ -1835,11 +1835,14 @@ in the app's device suite:
     `CaptureBackend.resume`, which reads the router as it is now (a
     confirmation it came to ask for meanwhile is asked, and a grant it
     gained meanwhile does not override a No given for this recording)
-    and builds from the kept transcript without a speech step. The rows show
+    and builds from the kept transcript without a speech step. A resume
+    that has to wait (no network) is asked for again once the pass ends,
+    so the network's return sends it without a second Send. The rows show
     the parked capture with its questions (`UserAnswers` records an
     answer, makes it the router's grant when asked to, and resumes on the
     last one), Send, Dismiss and Re-record; the rows are rebuilt from the
-    queue on every status read, and a count-only notification
+    queue on every status read, keeping the label the drain left on one
+    (why the last send did not go through), and a count-only notification
     (`notebook_awaiting`) says recordings wait while the app is off screen.
   - The settings can ask the text model to rewrite the routing from a
     description (`RoutingViewModel.describeChange`): the routing goes to

@@ -97,7 +97,8 @@ fun awaitingCaptureItem(entry: QueuedCapture): CaptureQueueItem? {
 /**
  * Brings the AWAITING_USER rows in line with the parked entries: one for every entry without a
  * row, none for an entry no longer parked, the rest refreshed from the entry (an answered
- * question leaves the row). Rows in flight or settled otherwise are left alone, since only the
+ * question leaves the row) but for the label the drain left on the row, which says why the last
+ * send did not go through. Rows in flight or settled otherwise are left alone, since only the
  * drain moves those.
  */
 fun syncAwaitingCaptureItems(items: List<CaptureQueueItem>, awaiting: List<QueuedCapture>): List<CaptureQueueItem> {
@@ -105,7 +106,7 @@ fun syncAwaitingCaptureItems(items: List<CaptureQueueItem>, awaiting: List<Queue
     val kept = items.mapNotNull { item ->
         when {
             item.status != CaptureQueueItem.Status.AWAITING_USER -> item
-            else -> rows[item.id]
+            else -> rows[item.id]?.copy(resultLabel = item.resultLabel)
         }
     }
     val present = kept.mapTo(mutableSetOf()) { it.id }

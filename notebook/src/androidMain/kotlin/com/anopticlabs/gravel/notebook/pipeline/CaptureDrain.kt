@@ -190,6 +190,9 @@ class CaptureDrain(
 
     private val resumes = ConcurrentLinkedQueue<String>()
 
+    // Resumes a pass had to leave waiting, asked for again once the pass ends so it cannot take them up twice in one go.
+    private val deferredResumes = mutableListOf<String>()
+
     /** Asks the next pass to take up the parked capture [id]; the caller then requests a drain. */
     fun requestResume(id: String) {
         if (id !in resumes) resumes.add(id)
@@ -309,6 +312,8 @@ class CaptureDrain(
             dropRowsInFlight()
             throw e
         } finally {
+            deferredResumes.forEach(::requestResume)
+            deferredResumes.clear()
             // A pass whose last read failed leaves the last count.
             if (read) {
                 val now = rules()
@@ -546,8 +551,15 @@ class CaptureDrain(
             }
             CaptureFailureKind.WAIT -> {
                 giveBack(entry)
-                if (entry.awaiting == null) rows.remove(entry.id) else rowBack(entry)
-                Outcome.Waited(holdFor(e, "this recording has to wait").copy(waitOnly = true))
+                val hold = holdFor(e, "this recording has to wait")
+                if (entry.awaiting == null) {
+                    rows.remove(entry.id)
+                } else {
+                    // The user already sent it: a later pass takes it up on its own, with no second Send.
+                    deferredResumes += entry.id
+                    rowBack(entry, "${hold.reason.replaceFirstChar { it.uppercase() }}; it will be sent when it can be")
+                }
+                Outcome.Waited(hold.copy(waitOnly = true))
             }
             CaptureFailureKind.RETRY -> if (counted >= MAX_QUEUE_ATTEMPTS) {
                 rows.settle(entry.id, CaptureQueueItem.Status.FAILED, null, "Couldn't process this recording")

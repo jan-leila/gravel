@@ -91,6 +91,8 @@ class CaptureQueueItemsTest {
         assertEquals(added, syncAwaitingCaptureItems(added, listOf(parked)), "nothing changes when nothing changed")
         val answered = parked.copy(awaiting = parked.awaiting!!.copy(asks = emptySet(), granted = setOf(Need.LOCATION)))
         assertEquals(rows + awaitingCaptureItem(answered)!!, syncAwaitingCaptureItems(added, listOf(answered)))
+        val labelled = added.map { if (it.id == parked.id) it.copy(resultLabel = "Hook answered HTTP 503; confirm to try again") else it }
+        assertEquals(labelled.last().resultLabel, syncAwaitingCaptureItems(labelled, listOf(parked)).last().resultLabel, "the drain's label on the row survives a refresh")
         assertEquals(rows, syncAwaitingCaptureItems(added, emptyList()))
         val requeued = added.map { if (it.id == "w") it.copy(status = q) else it }
         assertEquals(requeued, syncAwaitingCaptureItems(requeued, emptyList()), "a row the drain took up again is its to move")

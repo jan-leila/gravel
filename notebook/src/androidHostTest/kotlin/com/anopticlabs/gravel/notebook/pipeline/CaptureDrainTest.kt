@@ -1305,6 +1305,9 @@ class CaptureDrainTest {
         assertEquals(DrainReport(waited = 1, held = CaptureHold("Hook waits for a network", waitsForNetwork = true, waitOnly = true)), drain.drain())
         assertEquals(1, entry("p1")!!.attempts, "a wait gives the attempt back")
         assertEquals(CaptureQueueItem.Status.AWAITING_USER, row("p1")!!.status)
+        assertEquals("Hook waits for a network; it will be sent when it can be", row("p1")!!.resultLabel)
+        assertEquals(DrainReport(waited = 1, held = CaptureHold("Hook waits for a network", waitsForNetwork = true, waitOnly = true)), drain.drain(), "the next pass takes the sent capture up again on its own")
+        assertEquals(3, backend.resumes.size)
         backend.onResume = { _, _ -> throw CaptureProcessingException(CaptureFailureKind.FLAG, "Hook no longer exists in the text routing", reason = CaptureFailureReason.ROUTER_UNAVAILABLE) }
         drain.requestResume("p1")
         assertEquals(DrainReport(flagged = 1), drain.drain())
