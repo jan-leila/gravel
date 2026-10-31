@@ -301,7 +301,7 @@ class RoutingViewModelEditTest {
         {"v":1,"entry":{"id":"split"},"routers":[
           {"type":"switch","id":"split","name":"Split","rules":[{"pattern":"^remind me","router":{"id":"reminder"}}],"otherwise":{"id":"places"}},
           {"type":"reminder","id":"reminder","name":"Reminders"},
-          {"type":"place","id":"places","name":"Places","rules":[{"spot":{"label":"Home","latitude":0.0,"longitude":0.0,"radiusMeters":800},"within":true,"router":{"id":"hook"}}],"otherwise":{"id":"notebook"}},
+          {"type":"place","id":"places","name":"Places","rules":[{"spot":{"label":"Home","latitude":0.0,"longitude":1.0,"radiusMeters":800},"within":true,"router":{"id":"hook"}}],"otherwise":{"id":"notebook"}},
           {"type":"note","id":"notebook","name":"Notebook"},
           {"type":"network","id":"hook","name":"Hook","url":"https://example.test/notes","bearerToken":"$token"}$extra
         ]}
