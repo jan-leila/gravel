@@ -717,22 +717,31 @@ private fun PlaceRulesFields(
     TargetPicker(stringResource(R.string.notebook_routing_no_location), unknown, targets, allowNone = true, onPick = onUnknown)
 }
 
-/** A decimal the user types, kept as typed and handed on once it reads as a number; the save's validation catches the rest. */
+/**
+ * A decimal the user types, kept as typed and handed on once it reads as a number; a comma counts
+ * as the decimal point (the decimal keyboard of many locales types one), and text that does not
+ * read as a number is marked, since the value behind the field would otherwise stay as it was.
+ */
 @Composable
 private fun DecimalInput(label: String, value: Double, onValue: (Double) -> Unit) {
     var text by remember(value) { mutableStateOf(if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()) }
+    val parsed = parseDecimal(text)
     OutlinedTextField(
         value = text,
         onValueChange = { typed ->
             text = typed
-            typed.trim().toDoubleOrNull()?.takeIf { it.isFinite() && it != value }?.let(onValue)
+            parseDecimal(typed)?.takeIf { it != value }?.let(onValue)
         },
         label = { Text(label) },
+        isError = parsed == null,
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         modifier = Modifier.fillMaxWidth(),
     )
 }
+
+/** The finite number [typed] reads as, with a comma taken as the decimal point, or null. */
+internal fun parseDecimal(typed: String): Double? = typed.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() }
 
 @Composable
 private fun FieldPicker(current: TimeField, onPick: (TimeField) -> Unit) {
