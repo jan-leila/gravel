@@ -1733,7 +1733,10 @@ in the app's device suite:
   take at the recording's start) and, when the phone knew it, where the
   recording was made (a `RecordingLocation` lookup runs beside every
   recording, phone or watch, with the location permission the record
-  button asks for once; the fix is stored on the queue entry), into a
+  button asks for once; a watch recording is looked up with Gravel in the
+  background, which from Android 10 needs the "all the time" grant that
+  the Recording Location setting asks for next, else the lookup answers
+  nothing; the fix is stored on the queue entry), into a
   `RoutedText`, and `RouteWalk`
   follows the stored `RoutingConfig` from its entry router to the router
   that consumes it (every router is named by a `RouterRef`, an id and a

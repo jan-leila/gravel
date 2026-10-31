@@ -620,6 +620,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
     }
     val calendarAccess by permissionRequester.granted(Permission.Calendar).collectAsState(false)
     val locationAccess by permissionRequester.granted(Permission.Location).collectAsState(false)
+    val backgroundLocationAccess by permissionRequester.granted(Permission.BackgroundLocation).collectAsState(false)
     fun showPhoneCalendarInNotebook(pickedNone: Boolean) {
         notebookTab?.setPhoneCalendarShown(true)
         if (pickedNone) showPhoneCalendarsDialog = true
@@ -955,14 +956,20 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                 notebookSettings?.let {
                     basicSettingsActionItem(
                         title = "Recording Location",
-                        description = NotebookSettingsText.RECORDING_LOCATION + if (locationAccess) ": allowed" else ": not allowed, tap to allow",
+                        description = NotebookSettingsText.RECORDING_LOCATION + when {
+                            !locationAccess -> ": not allowed, tap to allow"
+                            // A watch recording is located with Gravel in the background, which needs the "all the time" grant.
+                            !backgroundLocationAccess -> ": allowed while Gravel is open; tap to allow all the time, so watch recordings are placed too"
+                            else -> ": allowed"
+                        },
                         topLevelType = TopLevelType.Phone,
                         section = Section.Notebook,
-                        keywords = "notebook recording location place gps where",
+                        keywords = "notebook recording location place gps where background watch",
                         action = {
                             uiContext?.let { ctx ->
                                 scope.launch {
-                                    if (permissionRequester.requestPermission(Permission.Location, ctx) == PermissionResult.RejectedForever) {
+                                    val permission = if (locationAccess) Permission.BackgroundLocation else Permission.Location
+                                    if (permissionRequester.requestPermission(permission, ctx) == PermissionResult.RejectedForever) {
                                         permissionRequester.openPermissionsScreen(ctx)
                                     }
                                 }

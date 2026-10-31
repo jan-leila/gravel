@@ -21,7 +21,10 @@ import kotlin.coroutines.resume
  * The phone's location from the system's location manager: a fresh fix from the best enabled
  * provider within [timeoutMillis], else the newest last-known fix from any provider that is under
  * [MAX_LAST_KNOWN_AGE_MILLIS] old, so a stale fix never places a recording somewhere the phone
- * left long ago. Null without either location permission, or when nothing is known.
+ * left long ago. Null without either location permission, or when nothing is known. A watch
+ * recording is looked up while Gravel has no screen showing, which from Android 10 counts as
+ * background use: with the foreground-only grant the system answers null to both lookups, so the
+ * Recording Location setting asks for the background grant as well.
  */
 class LocationManagerRecordingLocation(
     private val context: Context,
