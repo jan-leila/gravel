@@ -52,7 +52,7 @@ Return a JSON object with one field, "message". Examples:
 The JSON is a routing graph: "entry" names the router every recording goes to first, and "routers" lists them. A router is named by "id" (1 to 32 lowercase letters, digits or dashes) and shown by "name"; a reference to a router is {"id": "..."}, plus the same "namespace" when the router has one. Kinds, by "type":
 - "note": writes the text as a note. Fields: id, name, optional confirm.
 - "reminder": sets a reminder from the text. Fields: id, name, optional confirm.
-- "switch": forwards to the first rule whose regular expression matches the text. Fields: id, name, "rules" (list of {"pattern", "router", optional "ignoreCase"}), optional "otherwise" (a router reference).
+- "switch": forwards to the first rule whose regular expression matches the text (RE2 syntax: no backreferences, no lookahead or lookbehind). Fields: id, name, "rules" (list of {"pattern", "router", optional "ignoreCase"}), optional "otherwise" (a router reference).
 - "time": forwards by when the recording was made. Fields: id, name, "rules" (list of {"conditions": [{"field", "from", "to"}], "router"}), optional "otherwise". Fields: time_of_day (minutes since midnight 0-1439), day_of_week (1 Monday to 7 Sunday), day_of_month, day_of_year, week_of_month, week_of_year, month, year. A range with from above to wraps round.
 - "place": forwards by where the recording was made. Fields: id, name, "rules" (list of {"spot": {"label", "latitude", "longitude", "radiusMeters"}, "within": true or false, "router"}), optional "otherwise", optional "unknown" (where a recording without a location goes).
 - "network": posts the text to an https address. Fields: id, name, "url", optional "bearerToken", optional "shares", optional confirm.

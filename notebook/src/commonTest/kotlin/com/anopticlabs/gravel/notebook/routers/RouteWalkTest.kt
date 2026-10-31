@@ -7,7 +7,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.milliseconds
 
 class RouteWalkTest {
 
@@ -140,8 +139,8 @@ class RouteWalkTest {
     }
 
     @Test
-    fun aRuleThatRunsPastItsDeadlineIsFlagged() {
-        val slow = RoutingConfig(entry = g("s"), routers = listOf(RouterConfig.Switch("s", "S", listOf(SwitchRule("(.*a){32}", g("notes"))), otherwise = g("notes")), note))
-        assertTrue(flagged { RouteWalk.terminal(slow, text("a".repeat(31)), ruleDeadline = 30.milliseconds) }.message!!.contains("rule 1 of S took too long"))
+    fun aRuleThatWouldBlowUpABacktrackingEngineIsDecidedAtOnce() {
+        val slow = RoutingConfig(entry = g("s"), routers = listOf(RouterConfig.Switch("s", "S", listOf(SwitchRule("(.*a){32}", g("s"))), otherwise = g("notes")), note))
+        assertEquals(note, RouteWalk.terminal(slow, text("a".repeat(31))))
     }
 }

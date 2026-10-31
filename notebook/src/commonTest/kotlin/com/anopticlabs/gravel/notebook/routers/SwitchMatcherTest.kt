@@ -1,50 +1,39 @@
 package com.anopticlabs.gravel.notebook.routers
 
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 class SwitchMatcherTest {
 
-    private val never: Expired = { false }
+    private fun matches(pattern: String, text: String, ignoreCase: Boolean = true): Boolean =
+        SwitchMatcher.matches(SwitchMatcher.compile(SwitchRule(pattern, RouterRef.gravel("r"), ignoreCase)), text)
 
     @Test
     fun aRuleMatchesAnywhereInTheTextCaseInsensitivelyUnlessToldOtherwise() {
-        assertTrue(SwitchMatcher.matches(SwitchMatcher.compile(SwitchRule("remind me", RouterRef.gravel("r"))), "Please REMIND me to call", never))
-        assertFalse(SwitchMatcher.matches(SwitchMatcher.compile(SwitchRule("remind me", RouterRef.gravel("r"), ignoreCase = false)), "Please REMIND me to call", never))
-        assertTrue(SwitchMatcher.matches(SwitchMatcher.compile(SwitchRule("^remind me\\b", RouterRef.gravel("r"))), "remind me to call", never))
-        assertFalse(SwitchMatcher.matches(SwitchMatcher.compile(SwitchRule("^remind me\\b", RouterRef.gravel("r"))), "please remind me", never))
+        assertTrue(matches("remind me", "Please REMIND me to call"))
+        assertFalse(matches("remind me", "Please REMIND me to call", ignoreCase = false))
+        assertTrue(matches("^remind me\\b", "remind me to call"))
+        assertFalse(matches("^remind me\\b", "please remind me"))
+        assertTrue(matches("café", "Un CAFÉ, please"), "case folding is not ASCII-only")
     }
 
     @Test
     fun aPatternThatIsNotARegularExpressionIsRefusedAtCompileTime() {
         assertFailsWith<IllegalArgumentException> { SwitchMatcher.compile(SwitchRule("(unclosed", RouterRef.gravel("r"))) }
+        assertFailsWith<IllegalArgumentException> { SwitchMatcher.compile(SwitchRule("(a)\\1", RouterRef.gravel("r"))) }
+        assertFailsWith<IllegalArgumentException> { SwitchMatcher.compile(SwitchRule("(?=remind)", RouterRef.gravel("r"))) }
     }
 
     @Test
-    fun aMatchThatRunsPastItsDeadlineIsStopped() {
-        // Polynomial blow-up: 32 copies of .*a over 31 a's backtrack for minutes on the JDK and on ICU alike.
-        val regex = SwitchMatcher.compile(SwitchRule("(.*a){32}", RouterRef.gravel("r")))
-        val text = "a".repeat(31)
-        assertFailsWith<RuleTimeoutException> { SwitchMatcher.matches(regex, text, deadlineAfter(30.milliseconds)) }
-        assertFailsWith<RuleTimeoutException> { SwitchMatcher.matches(regex, "aab", { true }) }
-    }
-
-    @Test
-    fun aMatchWithinItsDeadlineIsUnaffected() {
-        assertTrue(SwitchMatcher.matches(SwitchMatcher.compile(SwitchRule("call (sam|pat)", RouterRef.gravel("r"))), "remind me to call Pat", deadlineAfter(1.seconds)))
-    }
-
-    @Test
-    fun theSequenceReadsAsTheText() {
-        val sequence = DeadlineCharSequence("hello", never)
-        assertEquals(5, sequence.length)
-        assertEquals('e', sequence[1])
-        assertEquals("ell", sequence.subSequence(1, 4).toString())
-        assertEquals("hello", sequence.toString())
+    fun aPatternThatBlowsUpABacktrackingEngineIsMatchedInLinearTime() {
+        // 32 copies of .*a over 31 a's, and nested quantifiers over 40 a's and a b, backtrack for minutes to hours on the JDK and on ICU alike.
+        val start = TimeSource.Monotonic.markNow()
+        assertFalse(matches("(.*a){32}", "a".repeat(31)))
+        assertFalse(matches("(a+)+$", "a".repeat(40) + "b"))
+        assertTrue(matches("(a+)+$", "a".repeat(40)))
+        assertTrue(start.elapsedNow().inWholeSeconds < 5, "took ${start.elapsedNow()}")
     }
 }

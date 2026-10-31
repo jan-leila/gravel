@@ -1,46 +1,31 @@
 package com.anopticlabs.gravel.notebook.routers
 
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
+import com.google.re2j.Pattern
+import com.google.re2j.PatternSyntaxException
 
-/** A rule's match ran past its deadline. */
-class RuleTimeoutException : RuntimeException("a rule took too long to match")
-
-/** A deadline: true once it has passed. */
-typealias Expired = () -> Boolean
-
-fun deadlineAfter(duration: Duration): Expired {
-    val start = TimeSource.Monotonic.markNow()
-    return { start.elapsedNow() > duration }
-}
-
-/** Matches a [SwitchRule]'s pattern, a regular expression the user wrote, against a transcript under a deadline. */
-object SwitchMatcher {
-    /** What one rule may spend on one transcript; a pattern that backtracks past it flags the capture. */
-    val RULE_DEADLINE: Duration = 1.seconds
-
-    /** Throws [IllegalArgumentException] for a pattern that is not a regular expression. */
-    fun compile(rule: SwitchRule): Regex =
-        if (rule.ignoreCase) Regex(rule.pattern, RegexOption.IGNORE_CASE) else Regex(rule.pattern)
-
-    /** True when [regex] matches anywhere in [text]; [RuleTimeoutException] once [expired] says so. */
-    fun matches(regex: Regex, text: String, expired: Expired): Boolean = regex.containsMatchIn(DeadlineCharSequence(text, expired))
+/** A [SwitchRule]'s pattern, compiled. */
+class SwitchPattern internal constructor(private val pattern: Pattern) {
+    /** True when the pattern matches anywhere in [text]. */
+    fun matchesIn(text: String): Boolean = pattern.matcher(text).find()
 }
 
 /**
- * The text as the regex engine reads it: every character read checks the deadline, so a pattern
- * whose backtracking blows up on this text is stopped at the next read instead of running on.
+ * Matches a [SwitchRule]'s pattern, a regular expression the user wrote, against a transcript.
+ * The engine is RE2/J, which takes time linear in the text whatever the pattern, so a rule can
+ * never hold the drain, where the platform's backtracking engine could run for hours on a pattern
+ * like `(a+)+$`, and on Android would not be stopped by anything short of killing the process.
+ * The price is RE2 syntax: no backreferences and no lookaround, which the compile refuses.
  */
-internal class DeadlineCharSequence(private val text: String, private val expired: Expired) : CharSequence {
-    override val length: Int get() = text.length
-
-    override fun get(index: Int): Char {
-        if (expired()) throw RuleTimeoutException()
-        return text[index]
+object SwitchMatcher {
+    /** Throws [IllegalArgumentException] for a pattern that is not a regular expression RE2 reads. */
+    fun compile(rule: SwitchRule): SwitchPattern {
+        val flags = if (rule.ignoreCase) Pattern.CASE_INSENSITIVE else 0
+        return try {
+            SwitchPattern(Pattern.compile(rule.pattern, flags))
+        } catch (e: PatternSyntaxException) {
+            throw IllegalArgumentException(e.message, e)
+        }
     }
 
-    override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = DeadlineCharSequence(text.substring(startIndex, endIndex), expired)
-
-    override fun toString(): String = text
+    fun matches(pattern: SwitchPattern, text: String): Boolean = pattern.matchesIn(text)
 }

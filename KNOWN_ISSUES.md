@@ -1750,17 +1750,19 @@ the limit after which a long recording goes to the phone. A delivery that
 waits for the network counts no attempt and transcribes nothing until it
 runs.
 
-## A switch rule is a regular expression the user wrote
+## A switch rule is a regular expression in RE2 syntax
 
-**Status: accepted; bounded.**
+**Status: accepted; the engine's design.**
 
-A rule's pattern is matched by the platform's regular expression engine,
-which backtracks. A pattern whose backtracking blows up on a transcript is
-stopped by a one-second deadline per rule, and the recording is flagged
-with the rule named, so the drain goes on. Up to 32 rules in a switch and
-16 switches in a row bound a walk. The deadline is checked at each
-character the engine reads; an engine step that reads none would not be
-stopped by it, which does not occur with the patterns the matcher accepts.
+A rule's pattern is matched by RE2/J, whose time is linear in the text
+whatever the pattern, so a rule the user (or the text model) wrote can
+never hold the drain. The platform's own engine backtracks, and on Android
+copies the text before matching, so nothing short of killing the process
+stops a pattern that blows up on a transcript. The price is RE2 syntax:
+backreferences (`(a)\1`) and lookahead or lookbehind (`(?=…)`, `(?<=…)`)
+are refused as not a valid regular expression when the rule is saved,
+imported or proposed. Up to 32 rules in a switch and 16 switches in a row
+bound a walk.
 
 ## The Network router sends over any network
 

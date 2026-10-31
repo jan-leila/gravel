@@ -1748,9 +1748,11 @@ in the app's device suite:
   pause still lands during a delivery; the capture leaves the queue only
   once the delivery returned. A `Switch` forwards to the target of the
   first rule whose regular expression matches, else to its fallback; the
-  matcher reads the text through a sequence that checks a one-second
-  deadline on every character, so a pattern whose backtracking blows up
-  flags the capture instead of holding the drain. The default routing is
+  matcher is RE2/J (`SwitchMatcher`), linear in the text whatever the
+  pattern, so no rule can hold the drain, at the price of RE2 syntax (no
+  backreferences, no lookaround; the platform's engine backtracks, and on
+  Android copies the text to a String before matching, so a deadline read
+  through a `CharSequence` never fired there). The default routing is
   one Note router, so the reminder cue detector (`ReminderIntent`) is no
   longer on the pipeline path: a voice reminder takes a switch that
   forwards to a Reminder router. Constraints the code relies on:
@@ -1850,7 +1852,7 @@ in the app's device suite:
     out of reach makes it wait for the network, and the rest is tried
     again. Cleartext stays blocked app-wide.
   - Host tests cover the payload, the config's validation and round trip,
-    the walk, the matcher's deadline, the two stores, the trust rule, the
+    the walk, the matcher, the two stores, the trust rule, the
     deliveries and the pipeline on fakes, the Ktor poster on a mock
     engine, and the screen's view model; the package manager reads, the
     broadcast sender, the Koin wiring and the screen are checked on a
