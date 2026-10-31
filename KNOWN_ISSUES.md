@@ -1764,6 +1764,20 @@ are refused as not a valid regular expression when the rule is saved,
 imported or proposed. Up to 32 rules in a switch and 16 switches in a row
 bound a walk.
 
+## The default routing's reminder cues have no guards
+
+**Status: accepted; the routing is the user's to edit.**
+
+The default routing sets a reminder for a recording that opens with a
+request for one ("remind me to", "set a reminder for", "don't let me
+forget") within its first eight words, as the cue detector before the
+routing did. That detector also had guards for a reminder merely
+mentioned ("that reminds me", "she said she'd remind me", "remind me what
+the capital is"), which a rule that matches cannot express, so such a
+recording becomes a reminder under the default routing where it used to
+become a note. The rules are plain switch rules under Settings > Notebook
+> Text Routing, to tighten, loosen or remove.
+
 ## The Network router sends over any network
 
 **Status: accepted.**

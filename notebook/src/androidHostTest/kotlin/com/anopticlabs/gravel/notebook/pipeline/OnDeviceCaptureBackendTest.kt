@@ -346,13 +346,19 @@ class OnDeviceCaptureBackendTest {
     private val hook = RouterConfig.Network("hook", "Webhook", "https://example.test/notes")
 
     @Test
-    fun theDefaultRoutingWritesEveryTranscriptAsANote() = runBlocking<Unit> {
+    fun theDefaultRoutingWritesATranscriptAsANoteUnlessItOpensWithAReminderCue() = runBlocking<Unit> {
         val text = FakeText()
         val stages = mutableListOf<CaptureStage>()
-        val built = assertIs<BuiltCapture.Note>(run("remind me in ten minutes to check the oven", text, stages = stages))
+        val built = assertIs<BuiltCapture.Note>(run("in ten minutes I should check the oven", text, stages = stages))
         assertEquals(listOf(CaptureStage.TRANSCRIBING, CaptureStage.THINKING, CaptureStage.CREATING_NOTE), stages)
         assertEquals(Prompts.NOTE_SYSTEM, text.generations.single().system)
-        assertTrue(built.note.markdown.contains("remind me in ten minutes to check the oven"))
+        assertTrue(built.note.markdown.contains("in ten minutes I should check the oven"))
+        val reminderText = FakeText("""{"message": "Check the oven"}""")
+        val reminderStages = mutableListOf<CaptureStage>()
+        val reminder = assertIs<BuiltCapture.Reminder>(run("remind me in ten minutes to check the oven", reminderText, stages = reminderStages))
+        assertEquals(listOf(CaptureStage.TRANSCRIBING, CaptureStage.THINKING, CaptureStage.SETTING_REMINDER), reminderStages)
+        assertEquals(Prompts.REMINDER_MESSAGE_SYSTEM, reminderText.generations.single().system)
+        assertEquals("Check the oven", reminder.proposal.message)
     }
 
     @Test

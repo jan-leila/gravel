@@ -29,8 +29,22 @@ class RouteWalkTest {
     }
 
     @Test
-    fun theDefaultGraphEndsAtItsNoteRouter() {
-        assertEquals(RoutingConfig.DEFAULT.routers.single(), RouteWalk.terminal(RoutingConfig.DEFAULT, text("anything at all")))
+    fun theDefaultGraphSetsAReminderOnACueAndWritesANoteOtherwise() {
+        val reminder = RoutingConfig.DEFAULT.router(g(RoutingConfig.REMINDER_ROUTER_ID))!!
+        val notes = RoutingConfig.DEFAULT.router(g(RoutingConfig.NOTEBOOK_ROUTER_ID))!!
+        for (cue in listOf(
+            "remind me to call mom at five", "Remind me in ten minutes to check the oven", "please remind myself to stretch",
+            "remember to buy milk", "don't let me forget the keys", "don’t let me forget the keys", "set a reminder for the dentist at 3",
+            "I need an alarm at six tomorrow", "ping me at noon", "reminder: water the plants", "um, so, like, could you remind me to call",
+        )) {
+            assertEquals(reminder, RouteWalk.terminal(RoutingConfig.DEFAULT, text(cue)), cue)
+        }
+        for (plain in listOf(
+            "anything at all", "the meeting went well, that reminds me of last year", "a reminder is something I rarely use",
+            "one two three four five six seven eight remind me later",
+        )) {
+            assertEquals(notes, RouteWalk.terminal(RoutingConfig.DEFAULT, text(plain)), plain)
+        }
     }
 
     @Test

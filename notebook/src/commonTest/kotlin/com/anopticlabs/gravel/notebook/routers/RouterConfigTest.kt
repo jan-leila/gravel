@@ -28,10 +28,15 @@ class RouterConfigTest {
     private fun one(router: RouterConfig) = RoutingConfig(entry = router.ref, routers = listOf(router))
 
     @Test
-    fun theDefaultIsOneNoteRouterAndIsWellFormed() {
+    fun theDefaultIsTheReminderCuesBeforeAReminderAndANoteRouterAndIsWellFormed() {
         RoutingConfig.DEFAULT.requireWellFormed()
-        assertEquals(g(RoutingConfig.NOTEBOOK_ROUTER_ID), RoutingConfig.DEFAULT.entry)
-        assertEquals(listOf(RouterConfig.Note("notebook", "Notebook")), RoutingConfig.DEFAULT.routers)
+        assertEquals(g(RoutingConfig.CUES_ROUTER_ID), RoutingConfig.DEFAULT.entry)
+        val cues = RoutingConfig.DEFAULT.router(g(RoutingConfig.CUES_ROUTER_ID)) as RouterConfig.Switch
+        assertEquals(RoutingConfig.REMINDER_CUES, cues.rules.map { it.pattern })
+        assertTrue(cues.rules.all { it.router == g(RoutingConfig.REMINDER_ROUTER_ID) && it.ignoreCase })
+        assertEquals(g(RoutingConfig.NOTEBOOK_ROUTER_ID), cues.otherwise)
+        assertEquals(RouterConfig.Reminder("reminder", "Reminder"), RoutingConfig.DEFAULT.router(g(RoutingConfig.REMINDER_ROUTER_ID)))
+        assertEquals(RouterConfig.Note("notebook", "Notebook"), RoutingConfig.DEFAULT.router(g(RoutingConfig.NOTEBOOK_ROUTER_ID)))
     }
 
     @Test

@@ -384,11 +384,35 @@ data class RoutingConfig(
     companion object {
         const val VERSION = 1
 
-        /** The id of the router the default graph consists of. */
+        /** The ids of the default graph's routers. */
         const val NOTEBOOK_ROUTER_ID = "notebook"
+        const val REMINDER_ROUTER_ID = "reminder"
+        const val CUES_ROUTER_ID = "cues"
 
-        /** Every transcript becomes a note. */
-        val DEFAULT = RoutingConfig(entry = RouterRef.gravel(NOTEBOOK_ROUTER_ID), routers = listOf(RouterConfig.Note(NOTEBOOK_ROUTER_ID, "Notebook")))
+        /**
+         * The cues of a spoken reminder, as switch rules: a request for one within the first eight
+         * words, as the cue detector before the routing read it (`ReminderIntent`), without its
+         * guards against a reminder merely mentioned, which no rule that matches can express.
+         */
+        val REMINDER_CUES: List<String> = listOf(
+            "^(\\S+\\s+){0,7}(remind (me|myself)|remember to|(don['’]?t|do not) let me forget|(ping|alert|notify|nudge|wake) me)\\b",
+            "^(\\S+\\s+){0,7}(set|give|gimme|make|create|add|put|schedule|want|need)( me| us| myself)? an? (reminder|alarm) (to|for|about|at|on|in|that|when)\\b",
+            "^reminder\\b",
+        )
+
+        /** A transcript that opens with a reminder cue sets a reminder; every other one becomes a note. */
+        val DEFAULT = RoutingConfig(
+            entry = RouterRef.gravel(CUES_ROUTER_ID),
+            routers = listOf(
+                RouterConfig.Switch(
+                    CUES_ROUTER_ID, "Reminder cues",
+                    REMINDER_CUES.map { SwitchRule(it, RouterRef.gravel(REMINDER_ROUTER_ID)) },
+                    otherwise = RouterRef.gravel(NOTEBOOK_ROUTER_ID),
+                ),
+                RouterConfig.Reminder(REMINDER_ROUTER_ID, "Reminder"),
+                RouterConfig.Note(NOTEBOOK_ROUTER_ID, "Notebook"),
+            ),
+        )
 
         const val MAX_ROUTERS = 64
         const val MAX_ID_CHARS = 32

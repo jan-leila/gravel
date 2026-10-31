@@ -1752,10 +1752,12 @@ in the app's device suite:
   pattern, so no rule can hold the drain, at the price of RE2 syntax (no
   backreferences, no lookaround; the platform's engine backtracks, and on
   Android copies the text to a String before matching, so a deadline read
-  through a `CharSequence` never fired there). The default routing is
-  one Note router, so the reminder cue detector (`ReminderIntent`) is no
-  longer on the pipeline path: a voice reminder takes a switch that
-  forwards to a Reminder router. Constraints the code relies on:
+  through a `CharSequence` never fired there). The default routing is a
+  Switch of the reminder cues (`RoutingConfig.REMINDER_CUES`, the cue
+  detector's requests as rules, without its guards) before a Reminder
+  router, falling back to a Note router, so an install upgraded from the
+  cue detector (`ReminderIntent`, no longer on the pipeline path) keeps
+  its spoken reminders. Constraints the code relies on:
   - The routing is `routing`, an encrypted JSON value under the Notebook
     root (`RoutingConfigStore`), validated on read and on write
     (`RoutingConfig.requireWellFormed`: ids, names, refs that exist, the
