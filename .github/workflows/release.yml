@@ -138,8 +138,10 @@ jobs:
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)"
           certs="$("$apksigner" verify --print-certs "$RUNNER_TEMP/out/gravel-$NAME.apk")"
           printf '%s\n' "$certs"
-          test "$(printf '%s\n' "$certs" | grep -c '^Signer #')" = 1
-          digest="$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          # One line per signature scheme, labelled "Signer #1" or "V3.0 Signer" by apksigner
+          # version; every scheme must carry the same single certificate.
+          digest="$(printf '%s\n' "$certs" | sed -n 's/^.*Signer.* certificate SHA-256 digest: //p' | sort -u)"
+          test "$(printf '%s\n' "$digest" | grep -c .)" = 1
           test -n "$GRAVEL_SIGNER_SHA256" && test "$digest" = "$GRAVEL_SIGNER_SHA256"
         env:
           NAME: ${{ steps.version.outputs.name }}
