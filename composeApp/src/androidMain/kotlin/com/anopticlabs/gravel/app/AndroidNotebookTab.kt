@@ -14,7 +14,13 @@ import com.anopticlabs.gravel.notebook.backup.AutoBackupStatus
 import com.anopticlabs.gravel.notebook.backup.BackupFlow
 import com.anopticlabs.gravel.notebook.backup.autoBackupStatusText
 import com.anopticlabs.gravel.notebook.backup.recoveryKeyStatusText
+import com.anopticlabs.gravel.notebook.storage.NoteStore
+import com.anopticlabs.gravel.notebook.storage.NotebookFiles
 import com.anopticlabs.gravel.notebook.storage.NotebookKeystore
+import com.anopticlabs.gravel.notebook.notes.DEFAULT_FOLDERS
+import com.anopticlabs.gravel.notebook.storage.QueueStore
+import com.anopticlabs.gravel.notebook.storage.ReminderEventStore
+import com.anopticlabs.gravel.notebook.storage.ReminderStore
 import com.anopticlabs.gravel.notebook.ui.AutoBackupControls
 import com.anopticlabs.gravel.notebook.ui.keyLocationText
 import com.anopticlabs.gravel.notebook.ui.BackupDialogs as NotebookBackupDialogs
@@ -385,6 +391,23 @@ class NotebookIntents(
 }
 
 val notebookTabModule = module {
+    single<NotebookDataCheck> {
+        val root = NotebookFiles.root(androidContext())
+        StoreNotebookDataCheck(
+            holdsFiles = { NotebookFiles.holdsSealedFiles(root) },
+            // The records a backup carries. Strict reads, so a store that cannot be read throws
+            // (which the check counts as data) instead of reading as empty.
+            hasContent = {
+                val notes = get<NoteStore>()
+                notes.readMetadata(strict = true).isNotEmpty() ||
+                    notes.readFolders(strict = true) != DEFAULT_FOLDERS ||
+                    notes.readFolderTags(strict = true).isNotEmpty() ||
+                    get<QueueStore>().readQueue(strict = true).isNotEmpty() ||
+                    get<ReminderStore>().readAll(strict = true).isNotEmpty() ||
+                    get<ReminderEventStore>().readAll(strict = true).isNotEmpty()
+            },
+        )
+    }
     single<NotebookTab> {
         val prefs = get<NotebookPreferences>()
         val resources = androidContext().resources
