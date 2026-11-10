@@ -2,6 +2,9 @@ package com.anopticlabs.gravel.notebook.alarms
 
 import android.content.Context
 import com.anopticlabs.gravel.notebook.NotebookSettingsStore
+import com.anopticlabs.gravel.notebook.capture.DEFAULT_RING_LOCATION_SECONDS
+import com.anopticlabs.gravel.notebook.capture.MAX_RING_LOCATION_SECONDS
+import com.anopticlabs.gravel.notebook.capture.MIN_RING_LOCATION_SECONDS
 import com.anopticlabs.gravel.notebook.pipeline.CaptureSettings
 import com.anopticlabs.gravel.notebook.reminders.PhoneCalendarChoice
 import com.anopticlabs.gravel.notebook.reminders.DEFAULT_HISTORY_RETENTION_DAYS
@@ -65,6 +68,16 @@ class NotebookPreferences(context: Context) : NotebookSettingsStore {
 
     override fun setLongCapturesWaitForPower(on: Boolean) = prefs.edit().putBoolean(KEY_LONG_CAPTURES_WAIT_FOR_POWER, on).apply()
 
+    // Preferences hold no null (putting one removes the key, which reads as the default), so off is stored as RING_LOCATION_OFF.
+    override val ringLocationSeconds: Int?
+        get() = prefs.getInt(KEY_RING_LOCATION_SECONDS, DEFAULT_RING_LOCATION_SECONDS)
+            .takeIf { it != RING_LOCATION_OFF }
+            ?.coerceIn(MIN_RING_LOCATION_SECONDS, MAX_RING_LOCATION_SECONDS)
+
+    override fun setRingLocationSeconds(seconds: Int?) = prefs.edit()
+        .putInt(KEY_RING_LOCATION_SECONDS, seconds?.coerceIn(MIN_RING_LOCATION_SECONDS, MAX_RING_LOCATION_SECONDS) ?: RING_LOCATION_OFF)
+        .apply()
+
     /** The text model chosen for the Notebook; null leaves the pick to the recommendation. */
     val textModelId: String?
         get() = prefs.getString(KEY_TEXT_MODEL_ID, null)
@@ -97,5 +110,7 @@ class NotebookPreferences(context: Context) : NotebookSettingsStore {
         const val KEY_INTERRUPT_LONG_CAPTURES = "interrupt_long_captures"
         const val KEY_LONG_CAPTURES_WAIT_FOR_POWER = "long_captures_wait_for_power"
         const val KEY_LOCATION_ASKED = "location_asked"
+        const val KEY_RING_LOCATION_SECONDS = "ring_location_seconds"
+        private const val RING_LOCATION_OFF = -1
     }
 }

@@ -140,6 +140,7 @@ class AndroidNotebookTab(
             phoneCalendars = store.phoneCalendar.calendars,
             interruptLongRecordings = store.interruptLongCaptures,
             longRecordingsWaitForPower = store.longCapturesWaitForPower,
+            ringLocationSeconds = store.ringLocationSeconds,
         )
     }
 
@@ -159,6 +160,8 @@ class AndroidNotebookTab(
     override fun setHistoryRetentionDays(days: Int) = write { setHistoryRetentionDays(days) }
 
     override fun setInterruptLongRecordings(on: Boolean) = write { setInterruptLongCaptures(on) }
+
+    override fun setRingLocationSeconds(seconds: Int?) = write { setRingLocationSeconds(seconds) }
 
     // Off lets held captures start; on changes what waits for power.
     override fun setLongRecordingsWaitForPower(on: Boolean) {

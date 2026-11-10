@@ -2,6 +2,7 @@ package com.anopticlabs.gravel.app
 
 import com.anopticlabs.gravel.notebook.capture.wavDurationMillis
 import com.anopticlabs.gravel.notebook.pipeline.IngestResult
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -26,11 +27,17 @@ class NotebookRingSinkTest {
     private val now = 1_790_000_000_500L
     private val hours = TestTimeSource()
     private val ingested = mutableListOf<Pair<ByteArray, Long>>()
+    private val locations = mutableListOf<RoutedLocation?>()
+    private val here = RoutedLocation(52.52, 13.405, 12f)
+    private var lookups = 0
+    private var windowSeconds: Int? = 600
 
     private val sink = NotebookRingSink(
         notebookOn = { on },
         ringRecordingsQueued = { queued },
-        ingest = { wav, at -> ingested += wav to at; result },
+        ingest = { wav, at, location -> ingested += wav to at; locations += location; result },
+        locate = { lookups++; here },
+        locationWindowSeconds = { windowSeconds },
         clock = { now },
         marks = hours,
     )
@@ -86,6 +93,74 @@ class NotebookRingSinkTest {
         store(seconds(16_000, 1.0), at = now / 1000)
 
         assertEquals(listOf(1_735_689_600_000L, now / 1000 * 1000), ingested.map { it.second })
+    }
+
+    @Test
+    fun aRecordingThatEndedWithinTheWindowIsPlacedWhereThePhoneIs() = runTest {
+        // One second long, so it ended 599.5 s before the phone's now: inside ten minutes.
+        store(seconds(16_000, 1.0), at = now / 1000 - 600)
+
+        assertEquals(listOf<RoutedLocation?>(here), locations)
+    }
+
+    @Test
+    fun aRecordingThatEndedPastTheWindowHasNoLocationAndIsNotLookedUp() = runTest {
+        store(seconds(16_000, 1.0), at = now / 1000 - 602)
+
+        assertEquals(listOf<RoutedLocation?>(null), locations)
+        assertEquals(0, lookups)
+    }
+
+    @Test
+    fun theWindowIsReadForEachRecording() = runTest {
+        store(seconds(16_000, 1.0), at = now / 1000 - 900)
+        windowSeconds = 1_800
+        store(seconds(16_000, 1.0), at = now / 1000 - 900)
+
+        assertEquals(listOf(null, here), locations)
+    }
+
+    @Test
+    fun aWindowOfSecondsIsHeldToTheSecond() = runTest {
+        windowSeconds = 30
+        // Ended 29.5 s and 30.5 s before the phone's now.
+        store(seconds(16_000, 1.0), at = now / 1000 - 30)
+        store(seconds(16_000, 1.0), at = now / 1000 - 31)
+
+        assertEquals(listOf(here, null), locations)
+    }
+
+    @Test
+    fun withPlacingOffNoRingRecordingIsLookedUp() = runTest {
+        windowSeconds = null
+        store(seconds(16_000, 1.0), at = now / 1000)
+
+        assertEquals(listOf<RoutedLocation?>(null), locations)
+        assertEquals(0, lookups)
+    }
+
+    @Test
+    fun aRecordingDatedByThePhoneHasNoLocation() = runTest {
+        store(seconds(16_000, 1.0), at = null)
+        store(seconds(16_000, 1.0), at = now / 1000 + 60)
+        store(seconds(16_000, 1.0), at = 1_735_689_599)
+
+        assertEquals(List<RoutedLocation?>(3) { null }, locations)
+        assertEquals(0, lookups)
+    }
+
+    @Test
+    fun aRecordingIsStoredWhenThePhoneHasNoPosition() = runTest {
+        val unplaced = NotebookRingSink(
+            notebookOn = { true },
+            ringRecordingsQueued = { 0 },
+            ingest = { _, _, location -> locations += location; IngestResult.QUEUED },
+            locate = { null },
+            clock = { now },
+        )
+
+        assertTrue(unplaced.store(now / 1000, 16_000, seconds(16_000, 1.0), 7))
+        assertEquals(listOf<RoutedLocation?>(null), locations)
     }
 
     @Test

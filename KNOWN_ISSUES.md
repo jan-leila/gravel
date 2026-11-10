@@ -41,6 +41,20 @@ The recordings themselves are in the Notebook either way.
 This entry leaves the file when the Notebook recognizes a ring recording it
 already holds.
 
+## A ring recording is placed where the phone is at the sync
+
+**Status: accepted; the ring has no position of its own.**
+
+The ring records no location, so a ring recording that ended within the
+Ring Recording Location setting's window before it reaches the phone (10
+minutes by default) is placed where the phone is when it syncs. Anyone who moved
+since recording gets a position up to that long's travel away from where
+they spoke, which a Place router reads as given, and a router allowed the
+location receives it. A recording synced later, or one the ring gave no
+usable time for, has no location and goes where the routing sends a
+recording without one. Setting Ring Recording Location to Off in
+Settings > Notebook leaves every ring recording without a location.
+
 ## Kable stays on 0.43.1
 
 **Status: deferred; the upgrade goes on its own branch.**

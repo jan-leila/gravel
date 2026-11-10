@@ -988,7 +988,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                         description = NotebookSettingsText.RECORDING_LOCATION + when {
                             !locationAccess -> ": not allowed, tap to allow"
                             // A watch recording is located with Gravel in the background, which needs the "all the time" grant.
-                            !backgroundLocationAccess -> ": allowed while Gravel is open; tap to allow all the time, so watch recordings are placed too"
+                            !backgroundLocationAccess -> ": allowed while Gravel is open; tap to allow all the time, so watch and ring recordings are placed too"
                             else -> ": allowed"
                         },
                         topLevelType = TopLevelType.Phone,
@@ -1004,6 +1004,19 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                                 }
                             }
                         },
+                    )
+                },
+                notebookSettings?.let { notebook ->
+                    basicSettingsDropdownItem(
+                        title = "Ring Recording Location",
+                        description = NotebookSettingsText.RING_LOCATION,
+                        topLevelType = TopLevelType.Phone,
+                        section = Section.Notebook,
+                        keywords = "notebook ring index recording location place sync",
+                        items = NotebookSettingsChoices.ringLocationWithCurrent(notebook.ringLocationSeconds),
+                        selectedItem = notebook.ringLocationSeconds,
+                        onItemSelected = { notebookTab?.setRingLocationSeconds(it) },
+                        itemText = { NotebookSettingsChoices.ringLocationText(it) },
                     )
                 },
                 notebookSettings?.let { notebook ->

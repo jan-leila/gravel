@@ -10,7 +10,9 @@ import android.os.Build
 import android.os.SystemClock
 import android.text.format.DateUtils
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.notebook.alarms.NotebookPreferences
 import com.anopticlabs.gravel.notebook.capture.QueuedCapture
+import com.anopticlabs.gravel.notebook.capture.RecordingLocation
 import com.anopticlabs.gravel.notebook.pipeline.CaptureIngest
 import com.anopticlabs.gravel.notebook.pipeline.MAX_CAPTURE_MILLIS
 import com.anopticlabs.gravel.notebook.storage.DeviceStateFile
@@ -537,7 +539,9 @@ val ringClientModule = module {
                 val queue = get<QueueStore>()
                 withContext(Dispatchers.IO) { queue.readQueue().count(QueuedCapture::fromRing) } + queue.retainedRingCount()
             },
-            ingest = { wav, at -> get<CaptureIngest>().ingest(wav, "wav", capturedAtMillis = at, fromRing = true) },
+            ingest = { wav, at, location -> get<CaptureIngest>().ingest(wav, "wav", capturedAtMillis = at, location = location, fromRing = true) },
+            locate = { get<RecordingLocation>().current() },
+            locationWindowSeconds = { get<NotebookPreferences>().ringLocationSeconds },
         )
     }
     single {

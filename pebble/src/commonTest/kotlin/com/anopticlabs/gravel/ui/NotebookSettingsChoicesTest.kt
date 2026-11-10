@@ -29,4 +29,19 @@ class NotebookSettingsChoicesTest {
         assertEquals("1 year", NotebookSettingsChoices.daysText(365))
         assertEquals("Forever", NotebookSettingsChoices.daysText(0))
     }
+
+    @Test
+    fun theRingLocationWindowListsOffLastAndReadsItAsOff() {
+        assertEquals(
+            listOf(15, 30, 45, 60, 120, 300, 600, 900, 1_800, 3_600, null),
+            NotebookSettingsChoices.ringLocationWithCurrent(45),
+        )
+        assertEquals(NotebookSettingsChoices.ringLocationSeconds, NotebookSettingsChoices.ringLocationWithCurrent(null))
+        assertEquals("Off", NotebookSettingsChoices.ringLocationText(null))
+        assertEquals("1 second", NotebookSettingsChoices.ringLocationText(1))
+        assertEquals("30 seconds", NotebookSettingsChoices.ringLocationText(30))
+        assertEquals("90 seconds", NotebookSettingsChoices.ringLocationText(90))
+        assertEquals("10 minutes", NotebookSettingsChoices.ringLocationText(600))
+        assertEquals("1 hour", NotebookSettingsChoices.ringLocationText(3_600))
+    }
 }

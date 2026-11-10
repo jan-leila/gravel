@@ -170,7 +170,13 @@ takes what a sync reads. The sink drops recordings under a second as
 taps, resamples the rest to 16 kHz with `:resampler`, and ingests them as
 WAV marked as from the ring, dated by the ring's clock unless the ring
 gives no time, one before 2025 (a clock the phone never set) or one ahead
-of the phone's, in the phone's time zone at the sync. As for a watch
+of the phone's, in the phone's time zone at the sync. The ring has no
+position, so a recording dated by the ring's clock that ended at most the
+Ring Recording Location setting's window before the sync (10 minutes by
+default, 15 seconds to an hour; Off is stored as -1, since preferences
+hold no null)
+is placed with a `RecordingLocation` lookup at the sync; any other has no
+location, and with the setting Off none has one. As for a watch
 recording, Pause all does not hold a ring recording and it never counts as
 long, whatever its length, so it does not wait for the charger; the
 Notebook's settings texts and paused lines name the exception. While the
@@ -1902,8 +1908,9 @@ in the app's device suite:
   entry's capture time, which the phone recorder and the watch handler
   take at the recording's start) and, when the phone knew it, where the
   recording was made (a `RecordingLocation` lookup runs beside every
-  recording, phone or watch, with the location permission the record
-  button asks for once; a watch recording is looked up with Gravel in the
+  recording, phone or watch, and at the sync for a recent ring recording
+  (see Gravel's ring client), with the location permission the record
+  button asks for once; a watch or ring recording is looked up with Gravel in the
   background, which from Android 10 needs the "all the time" grant that
   the Recording Location setting asks for next, else the lookup answers
   nothing; the fix is stored on the queue entry), into a

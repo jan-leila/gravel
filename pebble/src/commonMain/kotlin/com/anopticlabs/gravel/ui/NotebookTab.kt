@@ -47,6 +47,9 @@ interface NotebookTab {
 
     fun setLongRecordingsWaitForPower(on: Boolean)
 
+    /** Null places no ring recording. */
+    fun setRingLocationSeconds(seconds: Int?)
+
     fun turnOffTriggerWord()
 
     /** Turns the trigger word on, or changes it while it is on; [onDismiss] runs when it closes, a saved word included. */
@@ -200,6 +203,7 @@ data class NotebookSettingsValues(
     val phoneCalendars: Set<String>,
     val interruptLongRecordings: Boolean,
     val longRecordingsWaitForPower: Boolean,
+    val ringLocationSeconds: Int?,
 )
 
 @Composable

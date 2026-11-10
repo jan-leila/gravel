@@ -10,3 +10,11 @@ fun interface RecordingLocation {
         val NONE = RecordingLocation { null }
     }
 }
+
+/**
+ * A ring recording is only located when the phone takes it in, so it is placed where the phone is then
+ * only if it ended at most this many seconds before; one synced later has no location.
+ */
+const val DEFAULT_RING_LOCATION_SECONDS = 600
+const val MIN_RING_LOCATION_SECONDS = 1
+const val MAX_RING_LOCATION_SECONDS = 7_200
