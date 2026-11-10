@@ -95,3 +95,19 @@ jobs:
           fi
           printf '%s' "$manifest" | grep -q 'networkSecurityConfig' || { echo "built manifest declares no networkSecurityConfig"; exit 1; }
           echo "built manifest: no usesCleartextTraffic, networkSecurityConfig declared"
+      # The two F-Droid listings build from one tag; -Pgravel.unsigned=true is the unsigned recipe's
+      # gradleprops. Last, because it replaces the release APK the steps above read. One JDK
+      # leg is enough: the property changes identity and one flag, not the toolchain.
+      - name: Build the unsigned listing and check both identities
+        if: matrix.java-version == 21
+        run: |
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)"
+          apk=androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk
+          identity() { "$aapt2" dump badging "$apk" | sed -n -e "s/^package: name='\([^']*\)'.*/\1/p" -e "s/^application-label:'\(.*\)'$/\1/p" | paste -sd '|'; }
+          signed="$(identity)"
+          echo "default build: $signed"
+          test "$signed" = "com.anopticlabs.gravel.signed|Gravel"
+          ./gradlew :androidApp:assembleRelease :androidApp:testDebugUnitTest --tests com.anopticlabs.gravel.UnsignedListingTest -Pgravel.unsigned=true
+          unsigned="$(identity)"
+          echo "unsigned build: $unsigned"
+          test "$unsigned" = "com.anopticlabs.gravel|Gravel (unsigned)"

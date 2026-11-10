@@ -1,0 +1,183 @@
+name: Release
+
+# Publishes a release when its tag is pushed: the tag (the versionName) goes on the release commit
+# on master, as releases always have. The workflow builds the tagged commit, signs it, and creates
+# the tag's GitHub release.
+#
+# The GitHub release is what Obtainium installs from and what F-Droid's "Gravel" listing
+# (com.anopticlabs.gravel.signed) names as its Binaries: F-Droid finds the new tag, builds it
+# itself, copies this APK's signature onto its own unsigned build, and ships this APK only if the
+# result verifies, i.e. only if the two builds are byte-identical outside the signature. The
+# unsigned listing (-Pgravel.unsigned=true) is F-Droid's alone and is not built here.
+#
+# The APK is built unsigned, exactly as F-Droid builds it (no keystore.jks in the checkout), and
+# signed afterwards with apksigner, so the signing
+# step adds the APK Signing Block and changes nothing else. See DESIGN_NOTES.md, F-Droid.
+#
+# Secrets: GRAVEL_KEYSTORE_BASE64 (the release keystore, base64), GRAVEL_KEYSTORE_PASSWORD,
+# GRAVEL_KEY_ALIAS, GRAVEL_KEY_PASSWORD. Variable: GRAVEL_SIGNER_SHA256, the signing
+# certificate's SHA-256 (lowercase hex, no colons), the same value as the recipe's
+# AllowedAPKSigningKeys; a release signed with any other key stops before publishing.
+
+# The filter is a coarse SemVer match; the first step checks the exact shape.
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+# A tag deleted and pushed again must not race its first run to publish.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          # The token has contents: write and the build and tools below run third-party code, so
+          # it is not left in .git/config; the gh steps pass it as GH_TOKEN themselves.
+          persist-credentials: false
+          submodules: recursive
+          # All branches and tags, for the master and version checks below.
+          fetch-depth: 0
+      - name: Read the release number and skip a published one
+        id: version
+        run: |
+          name="$TAG"
+          code="$(sed -n 's/^versionCode=\([0-9][0-9]*\)$/\1/p' androidApp/version.properties)"
+          echo "tag: $name, version file: $code"
+          printf '%s' "$name" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          test -n "$code"
+          if gh release view "$name" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "$name is already released; nothing to publish"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+      # Only reviewed code is released: a tag on a feature branch publishes nothing.
+      - name: Check the tagged commit is on master
+        if: steps.version.outputs.publish == 'true'
+        run: git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/master
+      # F-Droid offers an update only for a higher versionCode, and Obtainium compares
+      # versionNames, so both must go up against the newest other release tag.
+      - name: Check the number goes up
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          previous="$(git tag --list | grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | grep -vxF "$NAME" | sort -V | tail -n 1)"
+          echo "newest other release tag: ${previous:-none}"
+          if [ -n "$previous" ]; then
+            test "$(printf '%s\n%s\n' "$previous" "$NAME" | sort -V | tail -n 1)" = "$NAME" && test "$previous" != "$NAME"
+            before="$(git show "$previous:androidApp/version.properties" | sed -n 's/^versionCode=\([0-9][0-9]*\)$/\1/p')"
+            echo "versionCode at $previous: $before"
+            test "$CODE" -gt "$before"
+          fi
+          test -f "fastlane/metadata/android/en-US/changelogs/$CODE.txt"
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+          CODE: ${{ steps.version.outputs.code }}
+      # 21 is the JDK F-Droid's buildserver builds with.
+      - name: Setup JDK
+        if: steps.version.outputs.publish == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+      # No dependency cache: a release builds from a clean Gradle home, as F-Droid does. On the tag
+      # checkout, VerifyReleaseVersionFile fails the build unless the file is the commit count.
+      - name: Build the unsigned release APK
+        if: steps.version.outputs.publish == 'true'
+        run: ./gradlew :androidApp:assembleRelease --no-daemon --stacktrace
+      - name: Check the built APK against the release number
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)"
+          badging="$("$aapt2" dump badging androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk | head -n 1)"
+          echo "$badging"
+          test "$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")" = "$NAME"
+          test "$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")" = "$CODE"
+          test "$(printf '%s' "$badging" | sed -n "s/.*package: name='\([^']*\)'.*/\1/p")" = "com.anopticlabs.gravel.signed"
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+          CODE: ${{ steps.version.outputs.code }}
+      - name: Sign the APK
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)"
+          printf '%s' "$GRAVEL_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          test -s "$RUNNER_TEMP/release.jks"
+          mkdir -p "$RUNNER_TEMP/out"
+          # --alignment-preserved: apksigner otherwise re-aligns entries to its own defaults,
+          # which would change bytes F-Droid's build does not change.
+          "$apksigner" sign \
+            --ks "$RUNNER_TEMP/release.jks" --ks-key-alias "$GRAVEL_KEY_ALIAS" \
+            --ks-pass env:GRAVEL_KEYSTORE_PASSWORD --key-pass env:GRAVEL_KEY_PASSWORD \
+            --alignment-preserved true \
+            --out "$RUNNER_TEMP/out/gravel-$NAME.apk" \
+            androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk
+          rm -f "$RUNNER_TEMP/release.jks"
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+          GRAVEL_KEYSTORE_BASE64: ${{ secrets.GRAVEL_KEYSTORE_BASE64 }}
+          GRAVEL_KEYSTORE_PASSWORD: ${{ secrets.GRAVEL_KEYSTORE_PASSWORD }}
+          GRAVEL_KEY_ALIAS: ${{ secrets.GRAVEL_KEY_ALIAS }}
+          GRAVEL_KEY_PASSWORD: ${{ secrets.GRAVEL_KEY_PASSWORD }}
+      - name: Check the signer
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)"
+          certs="$("$apksigner" verify --print-certs "$RUNNER_TEMP/out/gravel-$NAME.apk")"
+          printf '%s\n' "$certs"
+          test "$(printf '%s\n' "$certs" | grep -c '^Signer #')" = 1
+          digest="$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          test -n "$GRAVEL_SIGNER_SHA256" && test "$digest" = "$GRAVEL_SIGNER_SHA256"
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+          GRAVEL_SIGNER_SHA256: ${{ vars.GRAVEL_SIGNER_SHA256 }}
+      # The check F-Droid makes against its own build: copy the signature onto the unsigned APK
+      # and verify. Here it proves signing changed nothing but the signing block.
+      - name: Check the signature copies onto the unsigned APK
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          # Installed from PyPI only if each wheel matches its pinned hash (click is apksigcopier's
+          # one dependency); a re-pin takes the sha256 from the wheel's PyPI file listing.
+          printf '%s\n' \
+            'apksigcopier==1.1.1 --hash=sha256:0834bb7d6f3607bb0994cf8cd2e26b8f0c9d481e13b75872e0fa9cec052e519b' \
+            'click==8.5.0 --hash=sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360' \
+            > "$RUNNER_TEMP/apksigcopier.txt"
+          python3 -m venv "$RUNNER_TEMP/apksigcopier"
+          "$RUNNER_TEMP/apksigcopier/bin/pip" install --require-hashes --only-binary :all: -r "$RUNNER_TEMP/apksigcopier.txt"
+          PATH="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1):$PATH"
+          "$RUNNER_TEMP/apksigcopier/bin/apksigcopier" compare --unsigned \
+            "$RUNNER_TEMP/out/gravel-$NAME.apk" \
+            androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+      # --verify-tag attaches the release to the pushed tag and never creates one.
+      - name: Publish the GitHub release
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          cd "$RUNNER_TEMP/out"
+          sha256sum "gravel-$NAME.apk" > "gravel-$NAME.apk.sha256"
+          {
+            cat "$GITHUB_WORKSPACE/fastlane/metadata/android/en-US/changelogs/$CODE.txt"
+            printf '\nSigning certificate SHA-256: `%s`\n' "$GRAVEL_SIGNER_SHA256"
+          } > notes.md
+          gh release create "$NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Gravel $NAME" --notes-file notes.md \
+            "gravel-$NAME.apk" "gravel-$NAME.apk.sha256"
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+          CODE: ${{ steps.version.outputs.code }}
+          GH_TOKEN: ${{ github.token }}
+          GRAVEL_SIGNER_SHA256: ${{ vars.GRAVEL_SIGNER_SHA256 }}

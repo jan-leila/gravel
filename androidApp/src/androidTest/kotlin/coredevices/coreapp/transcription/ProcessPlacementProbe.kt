@@ -21,7 +21,7 @@ import org.koin.mp.KoinPlatform
  * line is the baseline every later line is read against. Run on its own:
  *   adb shell am instrument -w \
  *     -e class coredevices.coreapp.transcription.ProcessPlacementProbe \
- *     com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *     com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class ProcessPlacementProbe {
 

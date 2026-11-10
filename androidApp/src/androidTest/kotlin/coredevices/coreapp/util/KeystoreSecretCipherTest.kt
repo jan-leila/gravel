@@ -16,7 +16,7 @@ import kotlin.test.assertNotEquals
  * Run with:
  * adb shell am instrument -w -e class \
  *   coredevices.coreapp.util.KeystoreSecretCipherTest \
- *   com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *   com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class KeystoreSecretCipherTest {
 

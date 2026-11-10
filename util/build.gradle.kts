@@ -1,4 +1,5 @@
 
+import com.anopticlabs.gravel.UnsignedListing
 import com.codingfeline.buildkonfig.compiler.FieldSpec
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
@@ -186,9 +187,11 @@ dependencies {
 
 val headSha by lazy {
     project.providers.exec {
-        commandLine("git", "describe", "--always", "--dirty")
+        commandLine("git", "rev-parse", "--short=12", "HEAD")
     }.standardOutput.asText.get().trim()
 }
+
+val unsignedListing = UnsignedListing.selected { providers.gradleProperty(it).orNull }
 val enableQa = System.getenv("QA")?.toBoolean() ?: properties.getProperty("QA")?.toBoolean() ?: true
 
 fun gradleStringPropOrNull(name: String): String? {
@@ -217,5 +220,6 @@ buildkonfig {
         buildConfigField(FieldSpec.Type.BOOLEAN, "GOOGLE_AUTH_ENABLED", gradleBooleanProp("googleAuthEnabled", default = true).toString())
         buildConfigField(FieldSpec.Type.BOOLEAN, "APPLE_AUTH_ENABLED", gradleBooleanProp("appleAuthEnabled", default = true).toString())
         buildConfigField(FieldSpec.Type.BOOLEAN, "GITHUB_AUTH_ENABLED", gradleBooleanProp("githubAuthEnabled", default = true).toString())
+        buildConfigField(FieldSpec.Type.BOOLEAN, "UNSIGNED_LISTING", unsignedListing.toString())
     }
 }

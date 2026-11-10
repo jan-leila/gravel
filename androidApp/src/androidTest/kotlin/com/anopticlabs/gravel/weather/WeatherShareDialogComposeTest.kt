@@ -26,7 +26,7 @@ import kotlin.time.Duration.Companion.hours
  *
  * Run with:
  * adb shell am instrument -w -e class com.anopticlabs.gravel.weather.WeatherShareDialogComposeTest \
- *   com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *   com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class WeatherShareDialogComposeTest {
 

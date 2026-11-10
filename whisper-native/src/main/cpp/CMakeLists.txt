@@ -60,6 +60,11 @@ add_compile_options(
     "-ffile-prefix-map=${CMAKE_BINARY_DIR}=build"
     "-ffile-prefix-map=${CMAKE_ANDROID_NDK}=ndk")
 
+# ggml stamps `git rev-parse --short HEAD` of the submodule, plus "-dirty" when git sees a change
+# in it, into its debug info, and through it the build ID; We set GIT_EXE to skip ggml's find_program,
+# which leaves the commit "unknown" so that builds can be reproducible.
+set(GIT_EXE OFF)
+
 add_subdirectory(whisper.cpp)
 
 # CPU capability probe. A separate baseline-arch library so the check can

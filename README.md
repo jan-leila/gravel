@@ -1,8 +1,9 @@
 # Gravel
 
-[<img src="https://f-droid.org/badge/get-it-on.png" alt="Get it on F-Droid" height="80">](https://f-droid.org/packages/com.anopticlabs.gravel/)
+[<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="80">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.anopticlabs.gravel.signed%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fdavid-cant-code%2Fpebble-app-degoogled%22%2C%22author%22%3A%22david-cant-code%22%2C%22name%22%3A%22Gravel%22%2C%22preferredApkIndex%22%3A0%2C%22additionalSettings%22%3A%22%7B%7D%22%7D)
 
-[<img src="https://img.shields.io/f-droid/v/com.anopticlabs.gravel" alt="F-Droid version" hspace="13">](https://f-droid.org/packages/com.anopticlabs.gravel/)
+[<img src="https://f-droid.org/badge/get-it-on.png" alt="Get it on F-Droid" height="80">](https://f-droid.org/packages/com.anopticlabs.gravel.signed/)
+[<img src="https://img.shields.io/f-droid/v/com.anopticlabs.gravel.signed" alt="F-Droid version" hspace="13">](https://f-droid.org/packages/com.anopticlabs.gravel.signed/)
 
 Gravel is a companion app for Pebble watches that runs fully featured
 without Google Play services or Firebase, for GrapheneOS, LineageOS, and
@@ -12,7 +13,7 @@ security posture tightened beyond upstream's defaults.
 Gravel is an **unofficial, Android-only fork** of the
 [Pebble mobile app by Core Devices](https://github.com/coredevices/mobileapp).
 It is not affiliated with or endorsed by Core Devices. It ships under its
-own name, icon, and application id (`com.anopticlabs.gravel`) precisely so
+own name, icon, and application id (`com.anopticlabs.gravel.signed`) precisely so
 it cannot be mistaken for the official app.
 
 ## Status
@@ -160,7 +161,7 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   is installed.
 - **Distribution through F-Droid.** Gravel is in F-Droid's main
   repository, as
-  [`com.anopticlabs.gravel`](https://f-droid.org/packages/com.anopticlabs.gravel/),
+  [`com.anopticlabs.gravel.signed`](https://f-droid.org/packages/com.anopticlabs.gravel.signed/),
   and staying there constrains every change: the tree holds no binaries
   and every dependency is free software from a repository F-Droid allows.
   The speech and text engines are built from source, and the Ring

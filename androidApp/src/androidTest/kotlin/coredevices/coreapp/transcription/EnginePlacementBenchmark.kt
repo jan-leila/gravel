@@ -29,7 +29,7 @@ import kotlin.time.TimeSource
  * own, against a persistent install with the model:
  *   adb shell am instrument -w \
  *     -e class coredevices.coreapp.transcription.EnginePlacementBenchmark \
- *     com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *     com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class EnginePlacementBenchmark {
 

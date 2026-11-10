@@ -51,6 +51,13 @@ add_compile_options(
     "-ffile-prefix-map=${CMAKE_BINARY_DIR}=build"
     "-ffile-prefix-map=${CMAKE_ANDROID_NDK}=ndk")
 
+# ggml stamps the submodule's git state into its debug info (see whisper-native's CMakeLists.txt);
+# a set GIT_EXE skips that, and llama.cpp hands ggml LLAMA_BUILD_COMMIT/NUMBER instead, whose own
+# git-derived defaults (a clone-dependent abbreviation and commit count) apply only when unset.
+set(GIT_EXE OFF)
+set(LLAMA_BUILD_COMMIT "unknown")
+set(LLAMA_BUILD_NUMBER 0)
+
 add_subdirectory(llama.cpp)
 
 # CPU capability probe, a baseline-arch library (llm_cpu.c).

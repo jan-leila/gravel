@@ -40,7 +40,7 @@ which describes upstream's build, and their `am broadcast` recipes
 address `coredevices.coreapp`, which is the namespace, not the installed
 package; on a Gravel debug build the package half of `-n` is the
 applicationId, as in
-`-n com.anopticlabs.gravel/coredevices.coreapp.debug.QemuSetupReceiver`. The
+`-n com.anopticlabs.gravel.signed/coredevices.coreapp.debug.QemuSetupReceiver`. The
 loud failure here is `VerifyExportedComponents`: a removal that misses
 leaves the receiver exported in the merged manifest, which fails the
 release build.
@@ -2707,10 +2707,43 @@ hold its rules.
 
 ## F-Droid
 
-Gravel is in F-Droid's main repository, as `com.anopticlabs.gravel`.
+Gravel is in F-Droid's main repository as two listings built from the
+same tags:
+
+- **Gravel**, `com.anopticlabs.gravel.signed`, the default build. It is
+  signed with the developer's key and reproducible: the Release workflow
+  (`.github/workflows/release.yml`) publishes the signed APK on the tag's
+  GitHub release, which Obtainium installs from, and F-Droid builds the
+  tag itself, copies that APK's signature onto its own unsigned build,
+  and publishes the developer-signed APK only if the copy verifies, that
+  is only if both builds are identical outside the signing block. A tag
+  whose builds differ is not published on F-Droid at all.
+- **Gravel (unsigned)**, `com.anopticlabs.gravel`, the original listing,
+  built with `-Pgravel.unsigned=true` and signed by F-Droid's key. Installs
+  from before the split update along it. The property sets the
+  applicationId and app name (`androidApp/build.gradle.kts`) and
+  `CommonBuildKonfig.UNSIGNED_LISTING` (`util`); both scripts read it
+  through `UnsignedListing` in `buildSrc`. The flag shows
+  `UnsignedListingDialog` on every launch until the user closes it with
+  "Don't Show Again" ticked (a `Settings` flag): why to switch, and how.
+  The backup and restore steps are left out only when `NotebookDataCheck`
+  finds nothing a backup would carry (notes, folders, queued captures,
+  reminders, reminder history); a store it cannot read counts as data.
+  The button carries the F-Droid logo as a one-colour silhouette
+  (`drawable/fdroid_logo.png`, rendered from
+  `fdroid-logo-2015/default_notification.svg` in
+  gitlab.com/fdroid/artwork, GPL-3.0-or-later or CC-BY-SA-3.0; (c) William
+  Theaker, Robert Martinez, Andrew Nayenko), drawn with `Icon` so it takes
+  the button's text colour. The two builds cannot be installed side by
+  side (both declare the fixed `com.getpebble.android.provider.basalt`
+  authority) and have different signers, so switching means a Notebook
+  backup, an uninstall, a fresh install, a restore and a new watch
+  pairing. `UnsignedListingTest` checks that the built applicationId
+  matches the flag and the dialog's link.
+
 Staying there rests on a split between what the tree guarantees on its
-own and what the build recipe (the app's metadata file in F-Droid's
-`fdroiddata` repository, maintained out of tree) has to supply. The two
+own and what the build recipes (the apps' metadata files in F-Droid's
+`fdroiddata` repository, maintained out of tree) have to supply. The two
 must agree, so both halves are recorded here.
 
 What the tree guarantees, and how it is pinned:
@@ -2794,8 +2827,32 @@ What the tree guarantees, and how it is pinned:
   variant's dictation test clip from the release one. CI builds the
   release variant on a keystore-less checkout and compares the built
   `versionName` with `git describe` of the built commit.
+- Nothing the build stamps into the APK depends on the state of the
+  working tree, only on the commit. F-Droid's checkout is always dirty
+  (the recipe's `rm:` paths inside the submodules, and fdroidserver's
+  `remove_signing_keys`, which strips `signingConfigs` blocks and
+  `signingConfig = …` lines from every gradle file before building), so
+  `util`'s `GIT_HASH`/`USER_AGENT_VERSION` is `git rev-parse --short=12
+  HEAD` where upstream uses `git describe --always --dirty`. The fixed
+  abbreviation length matters too: git's default scales with the
+  clone's object count. The engines' ggml stamps `git rev-parse --short
+  HEAD` of its submodule, plus `-dirty`, into its debug info, which the
+  linker hashes into the libraries' build ID: two checkouts of one commit
+  built arm64 `libllmjni.so` and `libwhisperjni.so` that differed in the
+  build ID alone. Both native modules' CMakeLists.txt set `GIT_EXE` to
+  `OFF` before adding the submodule, which skips ggml's git query, and
+  llm-native pins `LLAMA_BUILD_COMMIT`/`LLAMA_BUILD_NUMBER`, whose
+  defaults are a git abbreviation and a commit count.
+- The Release workflow builds the APK unsigned on JDK 21, like the
+  buildserver, and signs it afterwards with `apksigner --alignment-preserved
+  true`, so signing adds the APK Signing Block and nothing else. It then
+  runs `apksigcopier compare`, the check F-Droid runs against its own
+  build, between the signed and unsigned APKs, and refuses to publish
+  unless the signer is the one in the `GRAVEL_SIGNER_SHA256` repository
+  variable. The release's notes are the tag's fastlane changelog.
 
-What the recipe has to supply (field names as in the fdroiddata format):
+What the recipes have to supply (field names as in the fdroiddata format;
+everything below applies to both listings unless it names one):
 
 - `submodules: yes`: the engines are compiled from the whisper.cpp and
   llama.cpp submodules.
@@ -2826,8 +2883,24 @@ What the recipe has to supply (field names as in the fdroiddata format):
   tags and errors if none of them carries the file, so the recipe can
   only enable update checking once a tag containing
   `androidApp/version.properties` exists.
-- The build subdirectory is `androidApp`; the unsigned release APK is the
-  output F-Droid signs.
+- The build subdirectory is `androidApp`, and the output is the unsigned
+  release APK.
+- Gravel (`com.anopticlabs.gravel.signed`): `Binaries:` the GitHub
+  release asset, `https://github.com/david-cant-code/pebble-app-degoogled/releases/download/%v/gravel-%v.apk`
+  (`%v` is the versionName, which is the tag name), and
+  `AllowedAPKSigningKeys:` the signing certificate's SHA-256, the same
+  value as `GRAVEL_SIGNER_SHA256`. The GitHub release has to exist before
+  F-Droid's build of the tag runs; the Release workflow creates it on
+  the tag push, so a failed run must be fixed before F-Droid builds the
+  tag.
+- Gravel (unsigned) (`com.anopticlabs.gravel`): `gradleprops:
+  [gravel.unsigned=true]` on every build entry, and no `Binaries:`; F-Droid
+  signs this one with its own key. Its listing name and text override the
+  in-tree fastlane metadata (which both listings read, as the repo-root
+  `fastlane/metadata/android/` applies to every app built from the
+  repository) from `metadata/com.anopticlabs.gravel/en-US/` in
+  fdroiddata, which fdroidserver reads after the source tree's (update.py
+  `insert_localized_app_metadata`).
 - Anti-features: the on-device dictation models and the Notebook's text
   models are runtime downloads from Hugging Face (`ModelCatalog`), which
   is expected to draw the NonFreeNet anti-feature flag; that documents
@@ -2837,7 +2910,8 @@ What the recipe has to supply (field names as in the fdroiddata format):
 
 ## Branding assets
 
-applicationId is `com.anopticlabs.gravel`; the Kotlin `namespace` and
+applicationId is `com.anopticlabs.gravel.signed` (`com.anopticlabs.gravel`
+for the unsigned listing, see F-Droid above); the Kotlin `namespace` and
 source packages stay `coredevices.coreapp` (see the branding rule in
 `CLAUDE.md`). The launcher icon, in-app wordmark, and fastlane graphics
 come from `art/gravel-logo.png`; the brand color is `gravelPurple`

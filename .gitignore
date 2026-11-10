@@ -2,6 +2,7 @@
 /build
 /.idea
 /.gradle
+/buildSrc/.gradle
 **.DS_Store
 /.kotlin
 **/build/

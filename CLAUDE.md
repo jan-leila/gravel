@@ -35,7 +35,9 @@ Firebase stubs, the unplugged Ring module) lives in `DESIGN_NOTES.md`.
   its models are integrity-pinned runtime downloads too
   (`LlmModelCatalog`).
 - **Distinct branding: the app is Gravel.** applicationId is
-  `com.anopticlabs.gravel`; the Kotlin `namespace` and source packages
+  `com.anopticlabs.gravel.signed`, or `com.anopticlabs.gravel` for the
+  F-Droid-signed unsigned listing built with `-Pgravel.unsigned=true` (the two
+  listings are in `DESIGN_NOTES.md`, F-Droid); the Kotlin `namespace` and source packages
   deliberately stay `coredevices.coreapp` so upstream commits stay cheap to
   cherry-pick; only the applicationId and user-facing branding are renamed
   (asset and color details in `DESIGN_NOTES.md`). Code Gravel adds goes
@@ -49,7 +51,7 @@ Firebase stubs, the unplugged Ring module) lives in `DESIGN_NOTES.md`.
   works. adb commands in upstream code
   comments (the debug receivers' KDocs, for example) still name
   `coredevices.coreapp` as the installed package; substitute
-  `com.anopticlabs.gravel`. Nominative references to Pebble watches and
+  `com.anopticlabs.gravel.signed`. Nominative references to Pebble watches and
   Core Devices stay (they state compatibility and attribution); using their
   branding as ours does not.
 - **Verify against the artifact.** De-Google changes are confirmed against the
@@ -107,7 +109,10 @@ Firebase stubs, the unplugged Ring module) lives in `DESIGN_NOTES.md`.
   tests, with an imperative subject and a body explaining what and why.
 - **Upstream syncs keep Gravel's side.** A merge or cherry-pick from upstream
   must not bring back what Gravel removed or replaced, including toolchain
-  pins, the tag-packed versionCode (both below), Firebase/GMS dependencies,
+  pins, the tag-packed versionCode (both below), `util`'s
+  `git describe --dirty` GIT_HASH (a sync that changes the native modules'
+  CMakeLists.txt keeps their `set(GIT_EXE OFF)`; both keep the build
+  reproducible), Firebase/GMS dependencies,
   upstream's `LICENSE-COMMERCIAL`, and code Gravel deleted outright, such as
   the FCM push stack (`PushMessaging`, `PushService` and their call sites; push
   either registers a device token with Google or does not exist) and the
@@ -154,6 +159,15 @@ Firebase stubs, the unplugged Ring module) lives in `DESIGN_NOTES.md`.
   `FdroidGuardrailsTest`, and the tag-build step in CI alike. The test
   also requires `changelogs/<versionCode>.txt` to exist for the value the
   file names, on every commit.
+- **Pushing the release tag publishes the release.**
+  `.github/workflows/release.yml` checks the tagged commit is on master
+  and both numbers went up, builds it unsigned, signs it with the
+  `GRAVEL_KEYSTORE_*` secrets, and creates the tag's GitHub release,
+  which Obtainium and F-Droid's `Binaries:` read. Anything stamped into
+  the APK, native libraries included, must depend on the commit alone,
+  never on the working tree, build path, clock or machine: F-Droid
+  rebuilds the tag from a dirty checkout and publishes only if its APK
+  matches the GitHub one.
 - Gradle wrapper at the root (`./gradlew`); version catalog in
   `gradle/libs.versions.toml`. Debug build: `./gradlew
   :androidApp:assembleDebug`.
@@ -219,14 +233,18 @@ When asked to make a release build and install it on a local device:
    explicitly asks.
 3. Install over the existing app with `adb -s <device-id> install -r
    androidApp/build/outputs/apk/release/androidApp-release.apk`. Do not
-   uninstall first unless explicitly requested.
+   uninstall first unless explicitly requested. A device still holding a
+   `com.anopticlabs.gravel` install (the unsigned listing or a pre-split build) refuses
+   the install with `INSTALL_FAILED_CONFLICTING_PROVIDER`: both declare
+   the fixed PebbleKit provider authority. Report it rather than
+   uninstalling.
 4. Launch and verify with logcat:
     - `adb -s <device-id> logcat -c`
-    - `adb -s <device-id> shell monkey -p com.anopticlabs.gravel -c
+    - `adb -s <device-id> shell monkey -p com.anopticlabs.gravel.signed -c
       android.intent.category.LAUNCHER 1`
     - wait long enough for `PebbleService` to start, then check for
       `FATAL EXCEPTION`, `ClassNotFoundException`, `Room cannot verify`, and
-      `Process: com.anopticlabs.gravel`.
+      `Process: com.anopticlabs.gravel.signed`.
 
 Release builds are minified. If a release-only crash appears, check the R8
 keep rules before changing app logic.

@@ -43,7 +43,7 @@ import kotlin.test.assertNull
  * Run with:
  * adb shell am instrument -w -e class \
  *   coredevices.coreapp.util.PebbleKit2SessionTest \
- *   com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *   com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class PebbleKit2SessionTest {
 

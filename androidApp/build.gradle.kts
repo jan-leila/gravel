@@ -1,3 +1,4 @@
+import com.anopticlabs.gravel.UnsignedListing
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -31,6 +32,8 @@ val localReleaseBuild = properties["LOCAL_RELEASE_BUILD"]?.toString()?.toBoolean
 // debug build.
 val releaseKeystore = rootDir.resolve("keystore.jks")
 val signReleaseWithKeystore = !localReleaseBuild && releaseKeystore.exists()
+
+val unsignedListing = UnsignedListing.selected { providers.gradleProperty(it).orNull }
 
 // Number of commits in the git history, so it always increases on main.
 val gitVersionCode = providers.exec {
@@ -76,7 +79,9 @@ android {
         // Fork identity: the installed package is Gravel's. The Kotlin namespace above
         // deliberately stays "coredevices.coreapp" so source packages match upstream and
         // merges stay cheap; only the applicationId is rebranded.
-        applicationId = "com.anopticlabs.gravel"
+        // UnsignedListingTest pins these against the unsigned listing's warning link.
+        applicationId = if (unsignedListing) "com.anopticlabs.gravel" else "com.anopticlabs.gravel.signed"
+        resValue("string", "app_name", if (unsignedListing) "Gravel (unsigned)" else "Gravel")
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -84,6 +89,10 @@ android {
             //noinspection ChromeOsAbiSupport
             abiFilters += setOf("armeabi-v7a", "arm64-v8a")
         }
+    }
+    buildFeatures {
+        resValues = true
+        buildConfig = true
     }
     packaging {
         resources {

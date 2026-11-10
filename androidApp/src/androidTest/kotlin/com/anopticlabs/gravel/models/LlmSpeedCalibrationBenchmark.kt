@@ -34,7 +34,7 @@ import kotlin.test.assertTrue
  * ([LlmCatalogModelsDeviceTest] stages one). Run on its own:
  *   adb shell am instrument -w \
  *     -e class com.anopticlabs.gravel.models.LlmSpeedCalibrationBenchmark \
- *     com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *     com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class LlmSpeedCalibrationBenchmark {
 
