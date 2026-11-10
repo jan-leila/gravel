@@ -20,6 +20,9 @@ it cannot be mistaken for the official app.
 De-google work is completed, all telemetry is removed. What remains is polish and features:
 
 - [x] Manual weather location entry
+- [x] Weather place search on the phone (built-in town list)
+- [x] Weather asks first: off until you agree, Current Location sent as a
+      nearby town
 - [x] Telemetry strip (Crashlytics, analytics, firmware-diagnostics relay)
 - [x] Google Play services / Firebase removal
 - [x] Core watch firmware updates from the public PebbleOS GitHub releases
@@ -33,7 +36,7 @@ De-google work is completed, all telemetry is removed. What remains is polish an
 - [x] Notebook text routing: a recording's text to a note, a reminder, a
       trusted app or a server of yours, by rules you set
 - [ ] Local on-device battery analytics (secondary goal, feasibility open)
-- [ ] Recording into the Notebook from a Pebble Index 01 ring (planned)
+- [x] Recording into the Notebook from a Pebble Index 01 ring (early beta)
 - [x] F-Droid inclusion (listing live)
 
 ## Goals
@@ -102,8 +105,28 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   cohorts endpoint and install its offer from the Devices tab. Upstream's
   Memfault update check and what remained of the firmware-diagnostics relay
   are removed.
-- **Weather without Play services.** Manual latitude/longitude entry, since
-  the stock place search relies on the GMS-backed platform geocoder.
+- **Weather place search on the phone.** Searching for a weather
+  location, naming the Current Location, and the place lookups in the
+  Yahoo and OpenWeather requests Gravel answers for watchapps use a town
+  list built into the app (GeoNames, places of about 1,000 people or
+  more) instead of Android's geocoder, which can send the lookup online.
+  A place too small for the list can still be entered by latitude and
+  longitude.
+- **Weather asks first.** Gravel's own weather is off until you agree
+  to what it sends to Core Devices' weather server: the position of each
+  place in your weather list, with your language and region setting and
+  your units, at the refresh interval and at times such as when you open
+  Gravel before the first forecast arrives, tap Refresh, or change a
+  weather, units or sunrise setting. Current Location is sent as a listed
+  town near the phone (the largest within 10 km, with sizes rounded to the
+  thousand, else the nearest) rather than the phone's own position.
+  Switching weather off clears the stored Current Location position;
+  taking away location access, or switching the phone's location off,
+  stops Current Location weather and clears it at the next sync.
+  Watchapps you allow online can still get
+  weather from that server: while "Use Pebble Weather Service when apps
+  are broken" is on, Gravel answers their OpenWeather and Yahoo requests
+  through it, with the position the watchapp sends.
 - **Free on-device dictation.** Voice dictation runs on whisper.cpp,
   built from source as a pinned git submodule, with a choice of
   integrity-pinned model downloads; the proprietary speech engine
@@ -167,10 +190,12 @@ The Ring feature module (`experimental`) depends on the Firebase SDKs and is
 unplugged from the build; the `libindex`/`index-ai`/`mcp` libraries stay
 compiled because the watch UI shares code with them, but their runtime is
 disabled at the dependency-injection seam (verified against the built APK:
-no Ring services, no Ring endpoints, rings cannot be scanned or paired).
+no Ring services, no Ring endpoints).
 The Notebook is separate from those features and was written
 independently of them. Recording into the Notebook from an Index 01 ring
-is planned; bringing back Index AI is not.
+goes through Gravel's own ring client, paired from the Devices tab, and
+is in early beta, tested on a ring by one tester so far; bringing back
+Index AI is not planned.
 
 ## Using your own transcription server
 
@@ -192,8 +217,9 @@ model. From Android 10, a VPN counts as that Wi-Fi only while Android
 shows it running over Wi-Fi; `KNOWN_ISSUES.md` covers older versions.
 The switch starts on for a server set up before Gravel had it. "Flaky
 Network Mode", offered in the two fallback modes once the phone has a
-speech model, keeps watch dictation on the phone everywhere, for
-connections that cannot return the words within the watch's 15 seconds.
+speech model, keeps watch dictation, and Notebook recordings from the
+watch and the ring, on the phone everywhere, for connections that
+cannot return the words within the watch's 15 seconds.
 
 Notebook recordings follow the same setting. Server only sends each one
 to the server. Server with local fallback sends each one to the server
@@ -325,6 +351,7 @@ Kermit (logging).
 | `socketfilter` | A process-wide filter that refuses the creation of UDP sockets, built from its C source with the NDK; not installed, for example, where the platform's name lookups need UDP, before Android 10, or on a device that is not ARM (see `KNOWN_ISSUES.md`) |
 | `notebook` | The Notebook feature (voice and typed notes, reminders): its tab, note screens, reminder list, calendar (which can also show the phone's calendar) and editor, completion review, reminder alarms, its reminder and quick-completion settings, backup, restore and check of a backup file, automatic backups to a folder, with their keeping rules, warnings and recovery key checks, recovery from a damaged file or a lost key, its text model settings, a setup guide, and recordings from the Notebook watch app. Its settings, setup guide and text model screens are in `pebble`, its engine wiring in `composeApp` and `util`, and its watch app wiring in `composeApp` and `libpebble3` |
 | `llm`, `llm-native` | The Notebook's text engine: Kotlin bindings, and the NDK/CMake build of the pinned llama.cpp submodule |
+| `ring` | Gravel's client for the Pebble Index 01 ring: the protocol's parsing and audio decoding, the sync session and the Bluetooth link; the app pairs and syncs through it from `composeApp` |
 | `resampler` | Audio resampling |
 | `blobannotations`, `blobdbgen` | KSP annotations and code generator for BlobDB records |
 | `libindex`, `index-ai`, `mcp` | Ring and Index AI libraries, compiled because the watch UI depends on them, with their runtime disabled |
@@ -375,7 +402,12 @@ The bundled Inter typeface (version 4.001, copyright 2016 The Inter Project
 Authors) is licensed under the SIL Open Font License 1.1; the notice and
 license text are in [LICENSE-Inter-OFL](LICENSE-Inter-OFL). The whisper.cpp
 speech engine and llama.cpp text engine submodules each carry their own MIT
-license file.
+license file. The built-in town list is derived from
+[GeoNames](https://www.geonames.org) data, licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/);
+`tools/place-table/make_place_table.py` trims it to names, positions,
+regions and populations, and each list file names the download it came
+from.
 
 Development of Gravel uses AI assistance; commits carry `Co-Authored-By`
 trailers accordingly.

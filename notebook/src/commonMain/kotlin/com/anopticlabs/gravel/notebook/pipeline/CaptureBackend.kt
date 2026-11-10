@@ -36,11 +36,11 @@ data class CaptureSettings(
 )
 
 /**
- * One queued recording to process. [capturedAt] is when the recording started, on the phone or on
- * the watch, never when it was queued or processed: it dates the note, stamps what is built from
+ * One queued recording to process. [capturedAt] is when the recording started, on the phone, the
+ * watch or the ring, never when it was queued or processed: it dates the note, stamps what is built from
  * the transcript, and is the "now" the reminder's time is read against; [location] is where it was made, when known.
  * [folders] are the ones a note may be routed to.
- * [phoneTried], [markPhoneTried], [long], [fromWatch], [serverTries], [serverTriedAtMillis] and [markServerTry] are what
+ * [phoneTried], [markPhoneTried], [long], [fromWearable], [serverTries], [serverTriedAtMillis] and [markServerTry] are what
  * the entry gives its [SpeechCapture].
  */
 class CaptureRequest(
@@ -54,7 +54,7 @@ class CaptureRequest(
     val phoneTried: Boolean = false,
     val markPhoneTried: suspend () -> Unit = {},
     val long: Boolean = false,
-    val fromWatch: Boolean = false,
+    val fromWearable: Boolean = false,
     val serverTries: Int = 0,
     val serverTriedAtMillis: Long? = null,
     val markServerTry: suspend (atMillis: Long) -> Boolean = { false },

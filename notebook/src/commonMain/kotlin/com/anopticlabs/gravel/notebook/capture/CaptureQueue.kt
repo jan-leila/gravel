@@ -11,7 +11,8 @@ import kotlinx.serialization.Serializable
  * keyed by [id]. [zoneId] is the time zone the recording was made in, see [captureZone];
  * [durationMillis] its length when known, see [isLong]; [failure] the code of why it was flagged, see [failureReason];
  * [phoneTried] that the phone's speech step already failed it under a phone-then-server route; [serverTries] how
- * often the server could not be reached for it under a server-then-phone route, the last at [serverTriedAtMillis].
+ * often the server could not be reached for it under a server-then-phone route, the last at [serverTriedAtMillis];
+ * [fromWatch] and [fromRing] where it was recorded.
  * [latitude], [longitude] and [accuracyMeters] are where it was made when the phone knew, see [location].
  * [awaiting] is set while the routing waits on the user for it, see [awaitsUser].
  */
@@ -33,6 +34,7 @@ data class QueuedCapture(
     val longitude: Double? = null,
     val accuracyMeters: Float? = null,
     val awaiting: AwaitingUser? = null,
+    val fromRing: Boolean = false,
 )
 
 /**
@@ -66,14 +68,26 @@ val QueuedCapture.location: RoutedLocation?
 const val MAX_ZONE_ID_CHARS = 64
 
 private const val WATCH_RECORDING_PREFIX = "watch_"
+private const val RING_RECORDING_PREFIX = "ring_"
 
-/** A new recording's file name; one made on the watch is named so a copy kept outside the queue is queued as one again. */
-fun captureFileName(capturedAtMillis: Long, extension: String, fromWatch: Boolean): String =
-    "${if (fromWatch) WATCH_RECORDING_PREFIX else "recording_"}$capturedAtMillis.$extension"
+/**
+ * A new recording's file name; one made on the watch or the ring is named so a copy kept outside the queue is
+ * queued as one again.
+ */
+fun captureFileName(capturedAtMillis: Long, extension: String, fromWatch: Boolean, fromRing: Boolean = false): String {
+    val prefix = when {
+        fromWatch -> WATCH_RECORDING_PREFIX
+        fromRing -> RING_RECORDING_PREFIX
+        else -> "recording_"
+    }
+    return "$prefix$capturedAtMillis.$extension"
+}
 
 fun isWatchRecordingName(name: String): Boolean = name.startsWith(WATCH_RECORDING_PREFIX)
 
-private val CAPTURE_FILE_NAME = Regex("^(?:watch|recording)_(\\d{1,15})\\.[A-Za-z0-9]+$")
+fun isRingRecordingName(name: String): Boolean = name.startsWith(RING_RECORDING_PREFIX)
+
+private val CAPTURE_FILE_NAME = Regex("^(?:watch|ring|recording)_(\\d{1,15})\\.[A-Za-z0-9]+$")
 
 /** The start time a [captureFileName] carries, or null for any other name. */
 fun capturedAtFromName(name: String): Long? = CAPTURE_FILE_NAME.matchEntire(name)?.groupValues?.get(1)?.toLong()

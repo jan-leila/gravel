@@ -29,9 +29,11 @@ object NotebookSettingsChoices {
 /** Descriptions Settings > Notebook and the setup guide share, without a closing period as Settings shows them. */
 object NotebookSettingsText {
     const val INTERRUPT_LONG =
-        "A recording of 30 seconds or less stops a long one that is being transcribed. The long one starts over afterward, which uses more battery"
+        "A recording of 30 seconds or less, or one from the ring, stops a long one that is being transcribed. " +
+            "The long one starts over afterward, which uses more battery"
     const val WAIT_FOR_POWER =
-        "Recordings over 30 seconds that this phone transcribes start only while it is plugged in. The Notebook tab offers Process now"
+        "Recordings over 30 seconds that this phone transcribes start only while it is plugged in, except recordings from the ring. " +
+            "The Notebook tab offers Process now"
     const val QUICK_REMIND = "A voice reminder with no clear time is set to this default time from when it was processed"
     const val RECORDING_LOCATION =
         "Recordings note where they were made, so Text Routing can go by place and a router you allow can be told. Needs location access"
