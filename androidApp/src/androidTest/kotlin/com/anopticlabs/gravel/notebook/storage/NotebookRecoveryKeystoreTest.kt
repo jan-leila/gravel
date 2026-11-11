@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
  * Run with:
  * adb shell am instrument -w -e class \
  *   com.anopticlabs.gravel.notebook.storage.NotebookRecoveryKeystoreTest \
- *   com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *   com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class NotebookRecoveryKeystoreTest {
     private val root = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "notebook-recovery-test").apply { deleteRecursively() }

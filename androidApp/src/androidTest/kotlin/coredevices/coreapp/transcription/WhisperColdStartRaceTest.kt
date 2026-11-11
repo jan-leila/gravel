@@ -47,7 +47,7 @@ import kotlin.time.Duration.Companion.seconds
  * persistent install so the model isn't wiped between runs:
  *   adb shell am instrument -w \
  *     -e class coredevices.coreapp.transcription.WhisperColdStartRaceTest \
- *     com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *     com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class WhisperColdStartRaceTest {
     private companion object {

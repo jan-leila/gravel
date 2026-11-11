@@ -48,7 +48,7 @@ private const val PK2_SERVICE = "io.rebble.libpebblecommon.pebblekit.two.PebbleS
  * Run with:
  * adb shell am instrument -w -e class \
  *   coredevices.coreapp.util.PebbleKitToggleGateTest \
- *   com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *   com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class PebbleKitToggleGateTest {
 

@@ -56,7 +56,7 @@ import kotlin.uuid.Uuid
  * Run with:
  * adb shell am instrument -w -e class \
  *   coredevices.coreapp.util.ClassicPebbleKitSessionTest \
- *   com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *   com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class ClassicPebbleKitSessionTest {
 

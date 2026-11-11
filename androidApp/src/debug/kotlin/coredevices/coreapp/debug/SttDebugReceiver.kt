@@ -22,7 +22,7 @@ import org.koin.core.component.inject
  * extra is optional; omitted ones are unchanged.
  *
  *     adb shell am broadcast -a coredevices.coreapp.SET_STT_DEBUG \
- *       -n com.anopticlabs.gravel/coredevices.coreapp.debug.SttDebugReceiver \
+ *       -n com.anopticlabs.gravel.signed/coredevices.coreapp.debug.SttDebugReceiver \
  *       --ez substituteAudio true --ez slowDecode true \
  *       --ez singleThread false --ez captureDump false \
  *       --es model whisper-base-en

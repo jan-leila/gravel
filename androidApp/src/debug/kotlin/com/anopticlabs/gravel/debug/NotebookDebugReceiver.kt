@@ -28,7 +28,7 @@ import org.koin.core.component.inject
  * android.permission.DUMP in the debug manifest like the other adb receivers.
  *
  *     adb shell am broadcast -a com.anopticlabs.gravel.notebook.DEBUG_REMINDER \
- *       -n com.anopticlabs.gravel/com.anopticlabs.gravel.debug.NotebookDebugReceiver \
+ *       -n com.anopticlabs.gravel.signed/com.anopticlabs.gravel.debug.NotebookDebugReceiver \
  *       --es message "'take the bins out'" --ei seconds 60 --ez daily false
  *
  * With `--ei disarm <id>` it instead deletes that reminder with its alarms and notifications;
@@ -41,7 +41,7 @@ import org.koin.core.component.inject
  * copy, and tells the coordinator a capture was queued; `--ez drain true` asks for a run alone.
  * The coordinator logs the drain's report. A recording reaches that directory through run-as, for example
  *
- *     adb shell "cat /data/local/tmp/clip.m4a | run-as com.anopticlabs.gravel \
+ *     adb shell "cat /data/local/tmp/clip.m4a | run-as com.anopticlabs.gravel.signed \
  *       sh -c 'mkdir -p files/notebook-debug && cat > files/notebook-debug/clip.m4a'"
  */
 class NotebookDebugReceiver : BroadcastReceiver(), KoinComponent {

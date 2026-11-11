@@ -42,7 +42,7 @@ import kotlin.time.TimeSource
  * advisory: a warm or busy phone can exceed it. Run on its own:
  *   adb shell am instrument -w \
  *     -e class coredevices.coreapp.transcription.WhisperSpeedCalibrationBenchmark \
- *     com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *     com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class WhisperSpeedCalibrationBenchmark {
 
