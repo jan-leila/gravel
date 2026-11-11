@@ -3003,7 +3003,8 @@ What the tree guarantees, and how it is pinned:
   and a `versionName=<major>.<minor>.<patch>` line, in any order, and
   `androidApp/build.gradle.kts` stamps both into the APK, so the built
   numbers are a function of the committed file alone and nothing in the
-  build reads a tag. Between releases the file names the last release.
+  build reads a tag. Between releases the file names the next release,
+  which the Release workflow commits to main after each release.
   The Release workflow creates each release tag from the file's
   versionName on the commit it built, so a tag checkout's file always
   names its own tag; F-Droid's update checker reads the versionCode from

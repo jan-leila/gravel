@@ -333,7 +333,8 @@ tested and saved without it unless you type one.
 - Both version numbers come from `androidApp/version.properties`
   (one `versionCode=` line and one `versionName=` line, in any order;
   no other line may mention either key, comments included). Between
-  releases it names the last release.
+  releases it names the next one: the Release workflow commits the next
+  patch version to main as soon as a release is published.
 
 ## Releasing
 
@@ -345,6 +346,15 @@ Otherwise it builds the pushed commit unsigned (the way F-Droid builds it),
 signs it, and creates the GitHub release together with its tag. Obtainium
 and F-Droid both pick the release up from there. Don't push release tags
 by hand.
+
+Once the release is published, the same workflow commits the next version
+to main: `versionName`'s patch number and `versionCode` each go up by one,
+and `changelogs/<new versionCode>.txt` is added holding a `RELEASE NOTES
+PENDING` placeholder. The workflow refuses to release a changelog that
+still holds it. If main already declares a different version by then, it
+is left alone. The commit is pushed with the workflow token, so a branch
+rule on main that requires pull requests has to let GitHub Actions bypass
+it.
 
 ### One-time setup
 
@@ -404,31 +414,32 @@ use them.
 
 ### Cutting a release
 
-1. On a branch off master, edit `androidApp/version.properties`:
-   - raise `versionName` (`major.minor.patch`), and
-   - raise `versionCode` above the previous release's (adding one is
-     enough).
-
-   Also add `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`
-   with the release notes. That file becomes the GitHub release notes and
-   F-Droid's "What's New", and it has to stay under 500 characters.
+1. On a branch off main, replace the placeholder in
+   `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` (the
+   versionCode main already declares) with the release notes. That file
+   becomes the GitHub release notes and F-Droid's "What's New", and it has
+   to stay under 500 characters. For a minor or major release, also raise
+   `versionName` in `androidApp/version.properties`; the versionCode main
+   declares is already one above the last release's.
 2. Check the tree passes the F-Droid guardrails:
    `./gradlew :androidApp:testDebugUnitTest --tests '*FdroidGuardrailsTest*' --rerun`
-   (the test reads tracked files, so `git add` the new changelog first).
-   Open a pull request into master and merge it.
-3. Open a pull request from `master` into `release` and merge it. The
-   workflow only publishes a tree that is exactly some commit on master,
-   so merge master unchanged and don't commit to `release` directly.
+   (the test reads tracked files, so `git add` the changelog first).
+   Open a pull request into main and merge it.
+3. Open a pull request from `main` into `release` and merge it. The
+   workflow only publishes a tree that is exactly some commit on main,
+   so merge main unchanged and don't commit to `release` directly.
 4. Watch the Release run in the Actions tab. When it finishes, the GitHub
    release `<versionName>` exists with `gravel-<versionName>.apk` and its
-   `.sha256`, and the tag sits on the commit it built. F-Droid builds that
-   tag on its own schedule.
+   `.sha256`, and the tag sits on the commit it built, and main has a new
+   commit declaring the next version. F-Droid builds that tag on its own
+   schedule.
 
 If the run fails, nothing has been published yet: no tag and no release
-are created until every check passes. Fix the cause on master and merge
-master into `release` again, or re-run the job if the failure was
-transient. Merging into `release` without bumping the version is
-harmless: the run finds that version already released and stops.
+are created until every check passes. Fix the cause on main and merge
+main into `release` again, or re-run the job if the failure was
+transient. Merging into `release` before the release notes are written is
+harmless: the run stops at the placeholder changelog. If only the
+next-version job fails (main moved while it ran), re-run that job.
 
 ## Architecture
 
