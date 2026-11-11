@@ -39,7 +39,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -108,6 +109,12 @@ class NoteDraft(folder: String = UNCLASSIFIED_FOLDER, title: String = "", body: 
 /** What the status depends on among the rows: the settled rows and how many are in flight, not their stages. */
 internal fun statusKey(items: List<CaptureQueueItem>): Any =
     items.filterNot { it.inFlight }.map { it.id to it.status } to items.count { it.inFlight }
+
+/**
+ * [this] flow's values from the first that differs from [start]. [start] is read before collecting,
+ * so a change made before a late collector subscribes still comes through.
+ */
+internal fun <T> Flow<T>.changesFrom(start: T): Flow<T> = distinctUntilChanged().dropWhile { it == start }
 
 class NotebookViewModel(
     private val rows: CaptureRows,
@@ -450,11 +457,11 @@ class NotebookViewModel(
         }
         merge(
             rows.items.map(::statusKey).distinctUntilChanged(),
-            drain.passes.drop(1),
+            drain.passes.changesFrom(drain.passes.value),
             refreshes,
-            claimWrites.drop(1),
-            recovery.state.map { it.runs }.distinctUntilChanged().drop(1),
-            controls.pause.drop(1),
+            claimWrites.changesFrom(claimWrites.value),
+            recovery.state.map { it.runs }.changesFrom(recovery.state.value.runs),
+            controls.pause.changesFrom(controls.pause.value),
         ).collectLatest { readStatus() }
     }
 
