@@ -521,7 +521,7 @@ class RemindersViewModel(
             is NotebookLink.Occurrence -> if (link.snooze) openSnooze(link.key)
             is NotebookLink.Edit -> editReminder(link.reminderId)
             NotebookLink.Completions -> openCompletions()
-            NotebookLink.Reminders, NotebookLink.BackupSettings, NotebookLink.KeyCheck -> Unit
+            NotebookLink.Reminders, NotebookLink.Awaiting, NotebookLink.BackupSettings, NotebookLink.KeyCheck -> Unit
             is NotebookLink.Calendar -> {
                 val day = Instant.fromEpochMilliseconds(link.atMillis).toLocalDateTime(zone()).date
                 _state.update { it.copy(month = firstOfMonth(day), day = day, info = null).withListing(clock()) }

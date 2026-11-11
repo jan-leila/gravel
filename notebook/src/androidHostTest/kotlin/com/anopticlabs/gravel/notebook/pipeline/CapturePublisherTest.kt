@@ -12,6 +12,8 @@ import com.anopticlabs.gravel.notebook.reminders.ReminderItem
 import com.anopticlabs.gravel.notebook.reminders.ReminderProposal
 import com.anopticlabs.gravel.notebook.reminders.ReminderRefreshSignal
 import com.anopticlabs.gravel.notebook.reminders.ReminderTimeStatus
+import com.anopticlabs.gravel.notebook.routers.RoutedText
+import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import com.anopticlabs.gravel.notebook.storage.FakeCryptographer
 import com.anopticlabs.gravel.notebook.storage.NoteStore
 import com.anopticlabs.gravel.notebook.storage.ReminderEventStore
@@ -281,6 +283,26 @@ class CapturePublisherTest {
     }
 
     @Test
+    fun theAwaitingNoticePostsOnlyOffScreenWithRecordingsBehindItAndGoesWhenTheyAreShown() = runBlocking<Unit> {
+        publisher().awaitingParked(2)
+        assertEquals(2, notifier.awaitingCount)
+        publisher().awaitingShown()
+        assertNull(notifier.awaitingCount)
+        publisher().awaitingParked(0)
+        assertNull(notifier.awaitingCount)
+        backgrounded = false
+        publisher().awaitingParked(1)
+        assertNull(notifier.awaitingCount)
+    }
+
+    @Test
+    fun aCaptureWaitingOnTheUserIsNeverPublished() = runBlocking<Unit> {
+        val hook = RouterConfig.Network("hook", "Hook", "https://example.test/notes")
+        val parked = BuiltCapture.ToConfirm(hook, RoutedText("c1", "2026-09-22T17:00:00+02:00", "hello"), emptySet())
+        assertFailsWith<IllegalArgumentException> { publisher().publish(parked, now, emptyList()) }
+    }
+
+    @Test
     fun aClaimTheStoreCannotKeepFailsThePublish() = runBlocking<Unit> {
         crypto.failSealWhenAadContains = VoiceCompletionStore.FILE_NAME
         assertFailsWith<TransientCryptoException> { publisher().publish(BuiltCapture.Completion("one"), now, emptyList()) }
@@ -302,5 +324,16 @@ class CapturePublisherTest {
         assertIs<PublishedCapture.ReminderSet>(publisher.publish(reminder(ReminderTimeStatus.TO_CHECK), now, emptyList()))
         assertEquals(1, completions.readAll(strict = true).size)
         assertTrue(reminders.readAll(strict = true).single().timeToCheck)
+    }
+
+    @Test
+    fun aForwardPublishesAsForwardedWithNothingOfTheNotebooksWritten() = runBlocking<Unit> {
+        val router = RouterConfig.App("tasks", "Tasks", "com.example.tasks", "com.example.tasks.Router", "a".repeat(64))
+        val published = publisher().publish(BuiltCapture.Forward(router, RoutedText("c1", "2026-09-22T17:00:00+02:00", "hello")), now, emptyList())
+        assertEquals(PublishedCapture.Forwarded("Tasks"), published)
+        assertTrue(notes.readMetadata(strict = true).isEmpty())
+        assertTrue(reminders.readAll(strict = true).isEmpty())
+        assertTrue(completions.readAll(strict = true).isEmpty())
+        assertTrue(notifier.setNotices.isEmpty())
     }
 }

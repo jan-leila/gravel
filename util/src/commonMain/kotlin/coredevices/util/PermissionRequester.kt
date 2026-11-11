@@ -41,7 +41,7 @@ fun Permission.name(): String = when (this) {
 }
 
 fun Permission.description(): String = when (this) {
-    Permission.Location -> "To power watchfaces using location for e.g. weather"
+    Permission.Location -> "To power watchfaces using location for e.g. weather, and to note where Notebook recordings were made"
     Permission.BackgroundLocation -> "To power watchfaces using location for e.g. weather, while the Pebble app is running in the background"
     Permission.PostNotifications -> "Get a notification when there is a new software update for your Pebble and show connection status"
     Permission.Bluetooth -> "Connect to your Pebble"

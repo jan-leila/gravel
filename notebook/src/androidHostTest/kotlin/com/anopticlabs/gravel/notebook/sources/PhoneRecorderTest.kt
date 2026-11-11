@@ -1,11 +1,13 @@
 package com.anopticlabs.gravel.notebook.sources
 
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.AppVisibility
 import com.anopticlabs.gravel.notebook.capture.MAX_RECORDING_SAMPLES
 import com.anopticlabs.gravel.notebook.capture.WAV_HEADER_BYTES
 import com.anopticlabs.gravel.notebook.pipeline.CaptureCoordinator
 import com.anopticlabs.gravel.notebook.pipeline.CaptureKeepAlive
 import com.anopticlabs.gravel.notebook.pipeline.IngestResult
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +63,7 @@ class PhoneRecorderTest {
         h.awaitIdle()
         assertTrue(h.ingested.isEmpty())
         assertEquals(RecorderNotice.TOO_SHORT, h.recorder.notice.value)
-        assertEquals(listOf("hold", "mic start", "mic close", "release"), h.events.filterNot { it == "preload" })
+        assertEquals(listOf("hold", "mic start", "mic close", "release"), h.events.filterNot { it == "preload" || it == "locate" })
     }
 
     @Test
@@ -214,7 +216,8 @@ class PhoneRecorderTest {
 
     @Test
     fun aRecordingIsDatedWhenAndWhereItsMicrophoneStarted() = runBlocking<Unit> {
-        val h = RecorderHarness(chunks = 20)
+        val here = RoutedLocation(35.68, 139.69, 8f)
+        val h = RecorderHarness(chunks = 20, locate = { delay(50); here })
         h.recorder.record()
         h.awaitReads(25)
         h.recorder.stop()
@@ -222,6 +225,26 @@ class PhoneRecorderTest {
         val recording = h.recordings.single()
         assertEquals(RecorderHarness.START_MILLIS, recording.startedAtMillis)
         assertEquals(TimeZone.of("Asia/Tokyo"), recording.zone)
+        assertEquals(here, recording.location)
+        assertTrue(h.events.indexOf("locate") < h.events.indexOf("ingest"), "the location lookup ran beside the recording: ${h.events}")
+    }
+
+    @Test
+    fun aLocationLookupThatFailsOrFindsNothingStillSavesTheRecording() = runBlocking<Unit> {
+        val failing = RecorderHarness(chunks = 20, locate = { error("no provider") })
+        failing.recorder.record()
+        failing.awaitReads(25)
+        failing.recorder.stop()
+        failing.awaitIdle()
+        assertEquals(null, failing.recordings.single().location)
+        assertEquals(null, failing.recorder.notice.value)
+
+        val slow = RecorderHarness(chunks = 20, locate = { delay(300); null })
+        slow.recorder.record()
+        slow.awaitReads(25)
+        slow.recorder.stop()
+        slow.awaitIdle()
+        assertEquals(null, slow.recordings.single().location)
     }
 
     @Test

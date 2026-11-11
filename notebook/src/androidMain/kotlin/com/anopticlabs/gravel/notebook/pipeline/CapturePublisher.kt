@@ -30,6 +30,9 @@ sealed interface PublishedCapture {
     data class ReminderSet(val reminder: ReminderItem, val scheduled: Boolean, val defaulted: Boolean) : PublishedCapture
 
     data class NoteSaved(val noteId: String, val title: String, val classificationFailed: Boolean) : PublishedCapture
+
+    /** Delivered to the app or server router [routerName]; the drain delivered it before publishing. */
+    data class Forwarded(val routerName: String) : PublishedCapture
 }
 
 /**
@@ -52,6 +55,9 @@ class CapturePublisher(
     // Orders a park's save and notice against readParked's read and cancel.
     private val completionNotice = Mutex()
 
+    // Orders a parked capture's notice against the status read that cancels it.
+    private val awaitingNotice = Mutex()
+
     /** Strict reads of every store file a publish writes, so one that cannot be used is found before any engine runs. */
     fun checkStores() {
         notes.readMetadata(strict = true)
@@ -67,6 +73,9 @@ class CapturePublisher(
             is BuiltCapture.Completion -> park(built.utterance, capturedAtMillis)
             is BuiltCapture.Reminder -> reminder(built.proposal)
             is BuiltCapture.Note -> note(built.note, offeredFolders)
+            // Nothing of the Notebook's is written for a delivery, which the drain made before this.
+            is BuiltCapture.Forward -> PublishedCapture.Forwarded(built.router.name)
+            is BuiltCapture.ToConfirm -> throw IllegalArgumentException("a capture waiting on the user is parked, not published")
         }
 
     private suspend fun park(utterance: String, capturedAtMillis: Long): PublishedCapture {
@@ -80,6 +89,19 @@ class CapturePublisher(
             }
         }
         return PublishedCapture.Parked(completion.completionId)
+    }
+
+    /** [count] recordings now wait on the user: says so with a notification while the app is off screen, best effort. */
+    suspend fun awaitingParked(count: Int) = awaitingNotice.withLock {
+        bestEffort("awaiting notice") {
+            if (shouldPostVoiceCompletionNotification(appBackgrounded(), count)) notifier.postAwaitingToReview(count)
+        }
+    }
+
+    /** The waiting recordings are on screen, so their notification goes. */
+    suspend fun awaitingShown() = awaitingNotice.withLock {
+        currentCoroutineContext().ensureActive()
+        notifier.cancelAwaitingToReview()
     }
 
     /**
@@ -98,7 +120,7 @@ class CapturePublisher(
     private suspend fun reminder(proposal: ReminderProposal): PublishedCapture {
         val message = cutToReminderMessage(proposal.message)
         val plan = planReminderArm(proposal, quickRemindMinutes(), now())
-        val item = reminders.create { id -> ReminderItem(id, plan.millis, message, timeToCheck = plan.toCheck) }
+        val item = reminders.create { id -> ReminderItem(id, plan.millis, message, timeToCheck = plan.toCheck, recordedAt = proposal.recordedAt) }
         // A reminder stored but not armed waits for the next re-arm sweep and gets no set notice.
         val scheduled = bestEffort("alarm for reminder ${item.id}") { alarms.arm(item) }
         // Before this refresh: a save or Keep from the row that came ahead of the post would leave the notice up.

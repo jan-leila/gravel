@@ -352,7 +352,8 @@ private fun WelcomePage(recording: Boolean) {
     if (recording) {
         Body("The Notebook keeps notes and reminders you record or type. Each recording is turned into text, then into a note or a reminder.")
         Body(
-            "A recording becomes a reminder when it starts with a request like \"remind me to call Sam at 5\". A reminder keeps " +
+            "Out of the box a recording becomes a reminder when it starts with a request like \"remind me to call Sam at 5\"; " +
+                "Settings > Notebook > Text Routing changes that, and can send recordings to other apps. A reminder keeps " +
                 "a short message of what to do, not long details, so record longer thoughts separately, without starting them that way."
         )
     } else {

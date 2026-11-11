@@ -26,7 +26,7 @@ object NoteBuilder {
     /**
      * The reply gives the title and tags; the body is always the [transcript]. A reply that is not a
      * JSON object is a failed classification with the fallback title; one with no JSON at all also
-     * gets the fallback tags.
+     * gets the fallback tags. [recordedAt] is when the recording started, written into the front matter.
      */
     fun buildNote(
         rawReply: String,
@@ -34,6 +34,7 @@ object NoteBuilder {
         folders: List<String>,
         folderTags: Map<String, List<String>>,
         now: LocalDateTime,
+        recordedAt: String? = null,
     ): BuiltNote {
         val parsed = NoteReplyParser.parseNoteReply(rawReply)
         val obj = parsed.parsed as? JsonObject
@@ -47,7 +48,7 @@ object NoteBuilder {
             tags = tags,
             folder = folder,
             filename = noteFilename(title, now),
-            markdown = NoteMarkdown.buildMarkdown(title, tags, transcript, date),
+            markdown = NoteMarkdown.buildMarkdown(title, tags, transcript, date, recordedAt),
             transcript = transcript,
             classificationFailed = classificationFailed,
             date = date,

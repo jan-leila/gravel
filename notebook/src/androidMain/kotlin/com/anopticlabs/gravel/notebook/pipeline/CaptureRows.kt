@@ -2,12 +2,15 @@ package com.anopticlabs.gravel.notebook.pipeline
 
 import com.anopticlabs.gravel.notebook.capture.CaptureQueueItem
 import com.anopticlabs.gravel.notebook.capture.CaptureStage
+import com.anopticlabs.gravel.notebook.capture.QueuedCapture
 import com.anopticlabs.gravel.notebook.capture.addCaptureItem
 import com.anopticlabs.gravel.notebook.capture.captureBatchAfterSettle
+import com.anopticlabs.gravel.notebook.capture.syncAwaitingCaptureItems
 import com.anopticlabs.gravel.notebook.capture.withCaptureItemStage
 import com.anopticlabs.gravel.notebook.capture.withRequeuedCaptureItem
 import com.anopticlabs.gravel.notebook.capture.withSettledCaptureItem
 import com.anopticlabs.gravel.notebook.capture.withoutCaptureItem
+import com.anopticlabs.gravel.notebook.routers.Need
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,9 +46,18 @@ class CaptureRows {
         label: String?,
         noteId: String? = null,
         reminderId: Int? = null,
+        transcript: String? = null,
+        target: String? = null,
+        asks: Set<Need> = emptySet(),
+        confirm: Boolean = false,
     ) = synchronized(lock) {
-        _items.value = withSettledCaptureItem(_items.value, id, status, kind, label, noteId, reminderId)
+        _items.value = withSettledCaptureItem(_items.value, id, status, kind, label, noteId, reminderId, transcript, target, asks, confirm)
         _batchSubmitted.value = captureBatchAfterSettle(_items.value, _batchSubmitted.value)
+    }
+
+    /** The AWAITING_USER rows as the queue has them, see [syncAwaitingCaptureItems]; [awaiting] are the entries waiting on the user. */
+    fun syncAwaiting(awaiting: List<QueuedCapture>) = synchronized(lock) {
+        _items.value = syncAwaitingCaptureItems(_items.value, awaiting)
     }
 
     fun requeue(id: String) = synchronized(lock) {

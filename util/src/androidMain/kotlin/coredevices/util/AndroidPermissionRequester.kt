@@ -177,7 +177,9 @@ private fun Permission.asAndroidPermissions(): List<String> = when (this) {
         Manifest.permission.ACCESS_COARSE_LOCATION,
         Manifest.permission.ACCESS_FINE_LOCATION,
     )
-    Permission.BackgroundLocation -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    // Gravel: the background grant exists from Android 10, and an empty list reads as granted, which hid
+    // the gap on 10 to 12 (a Notebook watch recording is located while Gravel is in the background).
+    Permission.BackgroundLocation -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         listOf(ACCESS_BACKGROUND_LOCATION)
     } else emptyList()
 

@@ -41,6 +41,20 @@ The recordings themselves are in the Notebook either way.
 This entry leaves the file when the Notebook recognizes a ring recording it
 already holds.
 
+## A ring recording is placed where the phone is at the sync
+
+**Status: accepted; the ring has no position of its own.**
+
+The ring records no location, so a ring recording that ended within the
+Ring Recording Location setting's window before it reaches the phone (10
+minutes by default) is placed where the phone is when it syncs. Anyone who moved
+since recording gets a position up to that long's travel away from where
+they spoke, which a Place router reads as given, and a router allowed the
+location receives it. A recording synced later, or one the ring gave no
+usable time for, has no location and goes where the routing sends a
+recording without one. Setting Ring Recording Location to Off in
+Settings > Notebook leaves every ring recording without a location.
+
 ## Kable stays on 0.43.1
 
 **Status: deferred; the upgrade goes on its own branch.**
@@ -1608,8 +1622,11 @@ Notebook restores a backup made while the capture was queued, a restore run
 again after a stopped one included. A note with the same content then
 reuses its file, but a reminder or a claim is stored a
 second time, and a note whose second model reply differs is written beside
-the first. Storing the capture's id with each result, and skipping a
-capture already published, would close this.
+the first. A capture routed to an app or a server is delivered again the
+same way (the payload's capture id is the same each time, which
+`ROUTER_API.md` tells receivers to use to recognize a repeat). Storing
+the capture's id with each result, and skipping a capture already
+published, would close this.
 
 ## A Notebook completion backlog past fifty drops the oldest
 
@@ -1784,6 +1801,146 @@ which matters only while two Wi-Fi networks are connected at once. Server
 reach the server only while the network Android gives Gravel runs over
 something besides the VPN; on Android 9 and older, where a VPN may show
 nothing under it, every failure behind a VPN counts, with no signal too.
+
+## A failed text router delivery costs a new transcription
+
+**Status: accepted for now; closing it needs the transcript kept with the
+queued capture.**
+
+The transcript is not stored between attempts. A delivery to an app or a
+server that is tried again (no acknowledgement, a server error, a
+connection lost) transcribes the recording again first, with the engine
+time that costs and, on a server route, a server try that counts toward
+the limit after which a long recording goes to the phone. A delivery that
+waits for the network counts no attempt and transcribes nothing until it
+runs.
+
+## A switch rule is a regular expression in RE2 syntax
+
+**Status: accepted; the engine's design.**
+
+A rule's pattern is matched by RE2/J, whose time is linear in the text
+whatever the pattern, so a rule the user (or the text model) wrote can
+never hold the drain. The platform's own engine backtracks, and on Android
+copies the text before matching, so nothing short of killing the process
+stops a pattern that blows up on a transcript. The price is RE2 syntax:
+backreferences (`(a)\1`) and lookahead or lookbehind (`(?=…)`, `(?<=…)`)
+are refused as not a valid regular expression when the rule is saved,
+imported or proposed. Up to 32 rules in a switch and 16 switches in a row
+bound a walk.
+
+## The default routing's reminder cues have no guards
+
+**Status: accepted; the routing is the user's to edit.**
+
+The default routing sets a reminder for a recording that opens with a
+request for one ("remind me to", "set a reminder for", "don't let me
+forget") within its first eight words, as the cue detector before the
+routing did. That detector also had guards for a reminder merely
+mentioned ("that reminds me", "she said she'd remind me", "remind me what
+the capital is"), which a rule that matches cannot express, so such a
+recording becomes a reminder under the default routing where it used to
+become a note. The rules are plain switch rules under Settings > Notebook
+> Text Routing, to tighten, loosen or remove.
+
+## The Network router sends over any network
+
+**Status: accepted.**
+
+A Network router posts over whatever network the phone has, mobile data
+included; the transcription server's Wi-Fi-only rule does not apply to it.
+The text is small, and the address is one the user entered.
+
+## An exported text routing holds its bearer tokens and places in clear
+
+Settings > Notebook > Text Routing exports the routers, their rules and
+the trusted certificates as one plain JSON file, and a Network router's
+bearer token goes in it as typed, as do the coordinates of a Place
+router's spots (a home, say). The screen says so before the file is
+written, and the file is written where the user picks and never kept by
+Gravel; encrypting it would need a password flow of its own, which the
+manual backup already has for the notes and could be extended to this file
+later.
+
+## A rebuilt queue entry loses the transcript it was waiting with
+
+**Status: accepted; the recording is kept and asked about again.**
+
+A recording parked by the routing (a router set to ask first, or a
+question about what it may receive) keeps its transcript on its queue
+entry. A queue entry rebuilt from the recording alone (a recording salvaged
+from `pending_captures/`, or a queue file restored over) has no transcript,
+so the recording is transcribed again and the user asked again. The
+transcript is the one thing that could be rebuilt from the recording, and
+transcribing it again is exactly what happens.
+
+## The notification for recordings waiting on you is not re-posted after a reboot
+
+**Status: accepted; the rows are on screen whenever the Notebook is.**
+
+The notice that recordings are waiting for an answer is posted when a
+recording is parked while the app is off screen, and cancelled when the
+Notebook's capture area is shown. A reboot clears every notification and
+nothing posts this one again until another recording is parked; the
+recordings themselves wait in the Notebook, where their rows are. The
+completed-tasks notice has the same gap.
+
+## Four router apps allow cleartext to a private address
+
+**Status: accepted; the relays they talk to usually have no TLS on a LAN.**
+
+The Home Assistant, Vikunja, Signal and Actual router apps (`routers/`)
+send over plain `http://` when the address is a private one (a LAN name
+or a name with no dot, a private, shared (100.64/10), link-local or
+loopback range), since a Home Assistant or a
+signal-cli or actual-http-api relay on a home network commonly has no
+certificate. The text of a recording then crosses the LAN in clear. The
+other router apps, and Gravel's own Network router, are https only.
+
+## The Signal and Actual router apps trust a relay's own door
+
+**Status: accepted; the relay is the user's.**
+
+Signal's app and Actual's API offer no way in for another app, so the
+Signal and Actual router apps send through a relay the user runs
+(signal-cli-rest-api, actual-http-api). Whether that relay asks for a
+token or key at all is the relay's configuration, not these apps': one
+left open on a LAN takes a message from anything on it.
+
+## A pinned mail server certificate has to be pinned again when it changes
+
+**Status: accepted; a pin is a pin.**
+
+The email router app can trust an SMTP server by its certificate's
+SHA-256 (for a Proton Bridge, whose certificate is self-signed). A
+server whose certificate changes, as a Bridge's does when it is set up
+again, is then refused until the user pastes the new digest; the test
+send in the app's settings says so.
+
+## The text model's routing edits can come back invalid
+
+**Status: accepted; the preview is the safeguard.**
+
+Settings > Notebook > Text Routing can ask the on-device text model to
+rewrite the routing from a description. The models Gravel ships are small
+(Qwen3 1.7B and 0.8B, greedy decoding, no grammar-constrained output), so
+a larger routing or a vaguer request can come back as JSON the routing
+refuses, or as a change other than the one meant. A refused answer is asked
+for once more with the reason and then given up on; a valid one is shown
+as a list of what changed and stored only when the user keeps it. The
+tokens and the places' coordinates are swapped out before the model sees
+the routing and back afterwards. Constraining the model's output with a
+grammar (llama.cpp's GBNF) would make the shape certain and is a possible
+follow-up.
+
+## An app router gets no answer back
+
+**Status: accepted; the API is one-way.**
+
+An app that acknowledges a delivery and then loses the text has no way to
+ask for it again, and no way to hand text on to another router in Gravel's
+graph. A return path would need an exported receiver in Gravel, gated like
+the delivery is; `ROUTER_API.md` says what the API does not do.
 
 ## Current Location weather is for a town, not where you are
 

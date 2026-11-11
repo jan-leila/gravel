@@ -298,9 +298,11 @@ class NotebookSetupViewModelTest {
         override val supported = true
         override val shown = MutableStateFlow(true)
         override fun setShown(shown: Boolean) = error("not used")
-        @Composable override fun Screen(topBarParams: TopBarParams, openTextModels: () -> Unit, openSpeechSettings: () -> Unit) = Unit
-        override val settings = MutableStateFlow(NotebookSettingsValues(null, 30, 10, 90, 8, false, emptySet(), true, true))
+        @Composable override fun Screen(topBarParams: TopBarParams, openTextModels: () -> Unit, openSpeechSettings: () -> Unit, openRoutingSettings: () -> Unit) = Unit
+        @Composable override fun RoutingScreen(topBarParams: TopBarParams) = Unit
+        override val settings = MutableStateFlow(NotebookSettingsValues(null, 30, 10, 90, 8, false, emptySet(), true, true, 600))
         override fun setQuickRemindMinutes(minutes: Int) = error("not used")
+        override fun setRingLocationSeconds(seconds: Int?) = error("not used")
         override fun setSwipeSnoozeMinutes(minutes: Int) = error("not used")
         override fun setHistoryRetentionDays(days: Int) = error("not used")
         override fun setInterruptLongRecordings(on: Boolean) = error("not used")

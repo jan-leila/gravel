@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.notebook.capture.QueuedCapture
 import com.anopticlabs.gravel.notebook.capture.captureFileName
 import com.anopticlabs.gravel.notebook.capture.wavDurationMillis
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.storage.QueueStore
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +32,7 @@ class CaptureIngest(
 ) {
     /**
      * [extension] names the container of [audio], which the drain's decoder reads by its content;
-     * [capturedAtMillis] and [capturedIn] date the capture; [fromWatch] marks a recording made on the watch,
+     * [capturedAtMillis] and [capturedIn] date the capture, [location] places it; [fromWatch] marks a recording made on the watch,
      * [fromRing] one from the ring.
      */
     suspend fun ingest(
@@ -40,11 +41,13 @@ class CaptureIngest(
         capturedAtMillis: Long = clock(),
         capturedIn: TimeZone = zone(),
         fromWatch: Boolean = false,
+        location: RoutedLocation? = null,
         fromRing: Boolean = false,
     ): IngestResult = withContext(NonCancellable + Dispatchers.IO) {
         val entry = QueuedCapture(
             newId(), captureFileName(capturedAtMillis, extension, fromWatch, fromRing), capturedAtMillis, zoneId = capturedIn.id,
             durationMillis = wavDurationMillis(audio), fromWatch = fromWatch, fromRing = fromRing,
+            latitude = location?.latitude, longitude = location?.longitude, accuracyMeters = location?.accuracyMeters,
         )
         val result = try {
             if (queue.enqueue(entry, audio)) IngestResult.QUEUED else keep(entry, audio, null)

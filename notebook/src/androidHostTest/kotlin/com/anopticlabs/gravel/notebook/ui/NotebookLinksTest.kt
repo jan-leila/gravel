@@ -94,6 +94,13 @@ class NotebookLinksTest {
     }
 
     @Test
+    fun theAwaitingTapOpensTheCaptureRowsAndNeedsTheToken() {
+        assertEquals(NotebookLink.Awaiting, link(ReminderIntents.ACTION_OPEN_AWAITING, withToken))
+        assertNull(link(ReminderIntents.ACTION_OPEN_AWAITING, withToken - ReminderIntents.EXTRA_LINK_TOKEN))
+        assertTrue(isNotebookLinkAction(ReminderIntents.ACTION_OPEN_AWAITING))
+    }
+
+    @Test
     fun aTapWithoutTheTokenIsNotRouted() {
         val missing = occurrence - ReminderIntents.EXTRA_LINK_TOKEN
         assertNull(link(ReminderIntents.ACTION_OPEN_REMINDERS, missing))

@@ -1,5 +1,7 @@
 package com.anopticlabs.gravel.notebook.capture
 
+import com.anopticlabs.gravel.notebook.routers.Need
+import com.anopticlabs.gravel.notebook.routers.RouterRef
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -59,6 +61,41 @@ class CaptureQueueItemsTest {
         assertEquals(42, armed.reminderId)
         val other = withSettledCaptureItem(listOf(item("a", p, CaptureStage.TRANSCRIBING), item("b", q)), "a", note, CaptureQueueItem.Kind.NOTE, "T")
         assertEquals(item("b", q), other.first { it.id == "b" })
+    }
+
+    private val parked = QueuedCapture("w", "w.wav", 7L, awaiting = AwaitingUser(RouterRef.gravel("hook"), "Hook", "buy milk", "2026-09-22T17:00:00+02:00", confirm = true, asks = setOf(Need.LOCATION)))
+
+    @Test
+    fun anAwaitingRowIsSettledAndCarriesWhatTheUserHasToSee() {
+        val wait = CaptureQueueItem.Status.AWAITING_USER
+        val row = withSettledCaptureItem(listOf(item("a", p, CaptureStage.FORWARDING)), "a", wait, null, null, transcript = "buy milk", target = "Hook", asks = setOf(Need.LOCATION), confirm = true).single()
+        assertEquals(wait, row.status)
+        assertFalse(row.inFlight)
+        assertNull(row.stage)
+        assertEquals("buy milk", row.transcript)
+        assertEquals("Hook", row.target)
+        assertEquals(setOf(Need.LOCATION), row.asks)
+        assertTrue(row.confirm)
+        assertEquals("Waiting for you: Hook", captureQueueRowLabel(row))
+        assertEquals("Waiting for you: a router", captureQueueRowLabel(row.copy(target = null)))
+        assertEquals(CaptureQueueItem("w", 7L, wait, transcript = "buy milk", target = "Hook", asks = setOf(Need.LOCATION), confirm = true), awaitingCaptureItem(parked))
+        assertNull(awaitingCaptureItem(parked.copy(awaiting = null)))
+    }
+
+    /** The queue is the record: after a process death the rows come back from it, and an answered question leaves the row. */
+    @Test
+    fun syncAddsRefreshesAndDropsAwaitingRowsAndLeavesEveryOtherRowAlone() {
+        val rows = listOf(item("a", p, CaptureStage.TRANSCRIBING), item("b", note), item("c", fail))
+        val added = syncAwaitingCaptureItems(rows, listOf(parked))
+        assertEquals(rows + awaitingCaptureItem(parked)!!, added)
+        assertEquals(added, syncAwaitingCaptureItems(added, listOf(parked)), "nothing changes when nothing changed")
+        val answered = parked.copy(awaiting = parked.awaiting!!.copy(asks = emptySet(), granted = setOf(Need.LOCATION)))
+        assertEquals(rows + awaitingCaptureItem(answered)!!, syncAwaitingCaptureItems(added, listOf(answered)))
+        val labelled = added.map { if (it.id == parked.id) it.copy(resultLabel = "Hook answered HTTP 503; confirm to try again") else it }
+        assertEquals(labelled.last().resultLabel, syncAwaitingCaptureItems(labelled, listOf(parked)).last().resultLabel, "the drain's label on the row survives a refresh")
+        assertEquals(rows, syncAwaitingCaptureItems(added, emptyList()))
+        val requeued = added.map { if (it.id == "w") it.copy(status = q) else it }
+        assertEquals(requeued, syncAwaitingCaptureItems(requeued, emptyList()), "a row the drain took up again is its to move")
     }
 
     @Test

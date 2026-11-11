@@ -1,5 +1,6 @@
 package com.anopticlabs.gravel.notebook.storage
 
+import com.anopticlabs.gravel.notebook.capture.RecordedAt
 import com.anopticlabs.gravel.notebook.reminders.MAX_REMINDER_MESSAGE_CHARS
 import com.anopticlabs.gravel.notebook.reminders.MAX_SNOOZE_CHAIN
 import com.anopticlabs.gravel.notebook.reminders.Recurrence
@@ -44,12 +45,16 @@ data class ReminderOrigin(val storeId: String, val id: Int) {
 /** 32 lowercase hex digits, 128 random bits. */
 fun isStoreIdentity(value: String): Boolean = value.length == 32 && value.all { it in '0'..'9' || it in 'a'..'f' }
 
-/** An item's own rules: the id in range, the fire instant in the stored window, the message capped, the recurrence rule usable. */
+/**
+ * An item's own rules: the id in range, the fire instant in the stored window, the message capped, the recurrence
+ * rule usable, the recording time well-formed.
+ */
 fun isStorableReminder(item: ReminderItem): Boolean =
     item.id in 1..ReminderFile.MAX_REMINDER_ID &&
         isStoredInstant(item.remindAtMillis) &&
         item.message.length <= MAX_REMINDER_MESSAGE_CHARS &&
-        (item.recurrence == null || Recurrence.isValid(item.recurrence))
+        (item.recurrence == null || Recurrence.isValid(item.recurrence)) &&
+        (item.recordedAt == null || RecordedAt.isWellFormed(item.recordedAt))
 
 /** Every instant in the stored window, the chain within its cap, the message capped. */
 fun isStorableReminderEvent(event: ReminderEvent): Boolean =

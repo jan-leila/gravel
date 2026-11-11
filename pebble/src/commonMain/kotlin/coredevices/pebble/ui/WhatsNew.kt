@@ -22,7 +22,7 @@ import io.rebble.libpebblecommon.voice.PEBBLE_FW_TRANSCRIPTION_TIMEOUT
  * users on update. The popup auto-shows once per user per bump (`WhatsNewDialog` in
  * composeApp) and can be reopened any time from Settings > About.
  */
-const val WHATS_NEW_VERSION = 15
+const val WHATS_NEW_VERSION = 16
 
 /** A single announced change: a short heading and a paragraph of body. */
 data class WhatsNewEntry(val title: String, val body: String)
@@ -33,6 +33,17 @@ data class WhatsNewEntry(val title: String, val body: String)
  * changelog (that lives in git history and the repo docs).
  */
 val whatsNewEntries: List<WhatsNewEntry> = listOf(
+    WhatsNewEntry(
+        title = "Notebook text routing",
+        body = "What a recording becomes is now yours to set under Settings > Notebook > Text Routing: " +
+            "a note, a reminder, a post to your own server, or a delivery to another app that declares " +
+            "itself a router, chosen by what you said, when or where you recorded it. Out of the box " +
+            "nothing changes: a recording that opens with a request like \"remind me to\" still sets a " +
+            "reminder and everything else is a note. A router that sends out of the phone gets the " +
+            "recording time or the location only when you allow it, once or always, and can ask you " +
+            "before each recording. Gravel's own router apps for Slack, Home Assistant, Vikunja, " +
+            "Mastodon, OpenStreetMap notes, Signal, Actual Budget and email are on GitHub.",
+    ),
     WhatsNewEntry(
         title = "Index 01 ring support (early beta)",
         body = "Gravel can now pair a Pebble Index 01 ring and bring its recordings into the " +

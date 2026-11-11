@@ -1,5 +1,8 @@
 package com.anopticlabs.gravel.notebook.capture
 
+import com.anopticlabs.gravel.notebook.routers.Need
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
+import com.anopticlabs.gravel.notebook.routers.RouterRef
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.Serializable
 
@@ -10,6 +13,8 @@ import kotlinx.serialization.Serializable
  * [phoneTried] that the phone's speech step already failed it under a phone-then-server route; [serverTries] how
  * often the server could not be reached for it under a server-then-phone route, the last at [serverTriedAtMillis];
  * [fromWatch] and [fromRing] where it was recorded.
+ * [latitude], [longitude] and [accuracyMeters] are where it was made when the phone knew, see [location].
+ * [awaiting] is set while the routing waits on the user for it, see [awaitsUser].
  */
 @Serializable
 data class QueuedCapture(
@@ -25,8 +30,40 @@ data class QueuedCapture(
     val phoneTried: Boolean = false,
     val serverTries: Int = 0,
     val serverTriedAtMillis: Long? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val accuracyMeters: Float? = null,
+    val awaiting: AwaitingUser? = null,
     val fromRing: Boolean = false,
 )
+
+/**
+ * A capture parked by the routing until the user answers: its transcript and recording time as
+ * routed, kept so the answer never costs a second transcription, the [router] the walk ended at
+ * (by ref, so the current definition is used on resume, and [routerName] for the row meanwhile),
+ * whether that router asks for a [confirm]ation, the needs still [asks]ed about, those
+ * [granted] for this one recording, and those [denied] for it, which a grant the router gains
+ * meanwhile does not override.
+ */
+@Serializable
+data class AwaitingUser(
+    val router: RouterRef,
+    val routerName: String,
+    val text: String,
+    val recordedAt: String,
+    val confirm: Boolean,
+    val location: RoutedLocation? = null,
+    val asks: Set<Need> = emptySet(),
+    val granted: Set<Need> = emptySet(),
+    val denied: Set<Need> = emptySet(),
+) {
+    /** Nothing left to ask: the user confirmed, or there was nothing to confirm once the questions were answered. */
+    val settled: Boolean get() = asks.isEmpty() && !confirm
+}
+
+/** The location an entry carries, or null when it has none. */
+val QueuedCapture.location: RoutedLocation?
+    get() = if (latitude != null && longitude != null) RoutedLocation(latitude, longitude, accuracyMeters) else null
 
 const val MAX_ZONE_ID_CHARS = 64
 
@@ -70,6 +107,37 @@ const val MAX_QUEUE_ATTEMPTS = 10
 
 /** An entry the drain no longer picks up on its own. */
 val QueuedCapture.needsReview: Boolean get() = flagged || attempts >= MAX_QUEUE_ATTEMPTS
+
+/** An entry waiting on the user, which the drain serves only when asked to; a flagged one is a failed capture first. */
+val QueuedCapture.awaitsUser: Boolean get() = awaiting != null && !needsReview
+
+/** Parks the entry [id] with [awaiting] and takes its attempt count back to [attempts], in one copy; a no-op when it is absent. */
+fun awaitUser(queue: List<QueuedCapture>, id: String, awaiting: AwaitingUser, attempts: Int): List<QueuedCapture> =
+    queue.map { if (it.id == id) it.copy(awaiting = awaiting, attempts = attempts) else it }
+
+/** Records the answer to one question of the parked entry [id]: the need leaves [AwaitingUser.asks], and joins [AwaitingUser.granted] when [allow]ed, [AwaitingUser.denied] otherwise. */
+fun answerUser(queue: List<QueuedCapture>, id: String, need: Need, allow: Boolean): List<QueuedCapture> = queue.map {
+    val awaiting = it.awaiting
+    if (it.id != id || awaiting == null) {
+        it
+    } else {
+        it.copy(
+            awaiting = awaiting.copy(
+                asks = awaiting.asks - need,
+                granted = if (allow) awaiting.granted + need else awaiting.granted - need,
+                denied = if (allow) awaiting.denied - need else awaiting.denied + need,
+            ),
+        )
+    }
+}
+
+/** Puts the parked entry [id] back behind a confirmation, for a router that came to ask for one while the entry waited. */
+fun requireConfirmation(queue: List<QueuedCapture>, id: String): List<QueuedCapture> =
+    queue.map { if (it.id == id && it.awaiting != null) it.copy(awaiting = it.awaiting.copy(confirm = true)) else it }
+
+/** Takes the parked entry [id] off its confirmation, so the next resume request delivers it. */
+fun confirmUser(queue: List<QueuedCapture>, id: String): List<QueuedCapture> =
+    queue.map { if (it.id == id && it.awaiting != null) it.copy(awaiting = it.awaiting.copy(confirm = false)) else it }
 
 /** Appends a fresh entry unless [id] is already queued, so a retried write never doubles an entry. */
 fun enqueueCapture(queue: List<QueuedCapture>, id: String, originalFileName: String, queuedAtMillis: Long): List<QueuedCapture> =

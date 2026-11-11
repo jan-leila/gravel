@@ -13,6 +13,9 @@ import com.anopticlabs.gravel.notebook.backup.BackupRunRecord
 import com.anopticlabs.gravel.notebook.backup.UnfinishedRun
 import com.anopticlabs.gravel.notebook.backup.StagedArchive
 import com.anopticlabs.gravel.notebook.backup.StagedBackup
+import com.anopticlabs.gravel.notebook.capture.DEFAULT_RING_LOCATION_SECONDS
+import com.anopticlabs.gravel.notebook.capture.MAX_RING_LOCATION_SECONDS
+import com.anopticlabs.gravel.notebook.capture.MIN_RING_LOCATION_SECONDS
 import com.anopticlabs.gravel.notebook.pipeline.CaptureSettings
 import com.anopticlabs.gravel.notebook.reminders.DEFAULT_HISTORY_RETENTION_DAYS
 import com.anopticlabs.gravel.notebook.reminders.DEFAULT_QUICK_REMIND_MINUTES
@@ -165,6 +168,9 @@ private class FakeStore : NotebookSettingsStore {
     override fun setInterruptLongCaptures(on: Boolean) { interrupt = on }
     override val longCapturesWaitForPower get() = waitForPower
     override fun setLongCapturesWaitForPower(on: Boolean) { waitForPower = on }
+    var ringLocation: Int? = 600
+    override val ringLocationSeconds get() = ringLocation
+    override fun setRingLocationSeconds(seconds: Int?) { ringLocation = seconds }
 }
 
 /** Backup operations the tab tests never reach: they only start runs. */
@@ -260,12 +266,16 @@ class AndroidNotebookTabTest {
 
     @Test
     fun theSettingsReadAndWriteThroughTheStore() {
-        assertEquals(NotebookSettingsValues(null, 30, 10, 90, MAX_SNOOZE_CHAIN, false, emptySet(), true, true), tab.settings.value)
+        assertEquals(NotebookSettingsValues(null, 30, 10, 90, MAX_SNOOZE_CHAIN, false, emptySet(), true, true, 600), tab.settings.value)
         tab.setQuickRemindMinutes(60)
         tab.setSwipeSnoozeMinutes(0)
         tab.setHistoryRetentionDays(0)
-        assertEquals(NotebookSettingsValues(null, 60, 1, 0, MAX_SNOOZE_CHAIN, false, emptySet(), true, true), tab.settings.value)
-        assertEquals(listOf(60, 1, 0), listOf(store.quickRemindMinutes, store.swipeSnoozeMinutes, store.historyRetentionDays))
+        tab.setRingLocationSeconds(null)
+        assertEquals(NotebookSettingsValues(null, 60, 1, 0, MAX_SNOOZE_CHAIN, false, emptySet(), true, true, null), tab.settings.value)
+        assertEquals(
+            listOf(60, 1, 0, null),
+            listOf(store.quickRemindMinutes, store.swipeSnoozeMinutes, store.historyRetentionDays, store.ringLocationSeconds),
+        )
     }
 
     @Test
@@ -290,6 +300,8 @@ class AndroidNotebookTabTest {
         assertTrue(NotebookSettingsChoices.quickRemindMinutes.all { it in MIN_QUICK_REMIND_MINUTES..MAX_QUICK_REMIND_MINUTES })
         assertTrue(NotebookSettingsChoices.swipeSnoozeMinutes.all { it >= 1 })
         assertTrue(NotebookSettingsChoices.historyRetentionDays.all { it >= 0 })
+        assertTrue(DEFAULT_RING_LOCATION_SECONDS in NotebookSettingsChoices.ringLocationSeconds)
+        assertTrue(NotebookSettingsChoices.ringLocationSeconds.filterNotNull().all { it in MIN_RING_LOCATION_SECONDS..MAX_RING_LOCATION_SECONDS })
     }
 
     @Test

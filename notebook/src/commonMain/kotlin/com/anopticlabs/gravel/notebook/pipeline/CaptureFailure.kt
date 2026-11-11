@@ -30,6 +30,9 @@ enum class CaptureRemedy {
 
     /** The transcription server failed: its settings, and a Try again that sends to it once more. */
     SERVER_CHECK,
+
+    /** The text routing could not be read: its settings screen, where it can be reset. */
+    ROUTING_SETTINGS,
 }
 
 /** A line for the screen with what the user can do about it; see [CaptureSpeech.notice]. */

@@ -18,8 +18,8 @@ import kotlinx.coroutines.launch
  * start the capture coordinator with a first run, let the recorder watch the activities, start
  * automatic backups ([startBackups]), the charger watch for long captures ([startCharger]), the
  * network watch for captures waiting on the server ([startNetworkWatch]) and the watch for a changed speech
- * setting or a speech model's finished download ([startSpeechWatch]), and run the backups' checks each time the app
- * comes to the front.
+ * setting or a speech model's finished download ([startSpeechWatch]), load the text routing for its screens
+ * ([loadRouting]), and run the backups' checks each time the app comes to the front.
  */
 class NotebookStartup(
     private val alarms: ReminderAlarms,
@@ -32,6 +32,7 @@ class NotebookStartup(
     private val startCharger: () -> Unit = {},
     private val startNetworkWatch: () -> Unit = {},
     private val startSpeechWatch: () -> Unit = {},
+    private val loadRouting: suspend () -> Unit = {},
     // The default logs a throw out of the sweep: the process is not ended over a store the sweep could not use.
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob() + CoroutineExceptionHandler { _, e -> Logger.withTag("NotebookStartup").w(e) { "startup sweep failed" } }),
     private val supported: () -> Boolean = { isNotebookSupported },
@@ -43,6 +44,7 @@ class NotebookStartup(
         startBackups()
         scope.launch { linkToken.value }
         scope.launch { alarms.rearmAll() }
+        scope.launch { loadRouting() }
         coordinator.start(visibility)
         recorder.start(visibility)
         startCharger()

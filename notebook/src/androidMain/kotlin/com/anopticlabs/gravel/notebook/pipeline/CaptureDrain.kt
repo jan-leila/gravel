@@ -1,6 +1,7 @@
 package com.anopticlabs.gravel.notebook.pipeline
 
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.notebook.capture.AwaitingUser
 import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
 import com.anopticlabs.gravel.notebook.capture.CaptureQueueItem
 import com.anopticlabs.gravel.notebook.capture.CaptureStage
@@ -8,10 +9,13 @@ import com.anopticlabs.gravel.notebook.capture.MAX_QUEUE_ATTEMPTS
 import com.anopticlabs.gravel.notebook.capture.ProcessingRules
 import com.anopticlabs.gravel.notebook.capture.QueuedCapture
 import com.anopticlabs.gravel.notebook.capture.applyQueueDrainResults
+import com.anopticlabs.gravel.notebook.capture.awaitUser
+import com.anopticlabs.gravel.notebook.capture.awaitsUser
 import com.anopticlabs.gravel.notebook.capture.captureZone
 import com.anopticlabs.gravel.notebook.capture.flagQueuedCapture
 import com.anopticlabs.gravel.notebook.capture.fromWearable
 import com.anopticlabs.gravel.notebook.capture.isLong
+import com.anopticlabs.gravel.notebook.capture.location
 import com.anopticlabs.gravel.notebook.capture.markPhoneTried
 import com.anopticlabs.gravel.notebook.capture.markServerTry
 import com.anopticlabs.gravel.notebook.capture.mayStart
@@ -19,6 +23,9 @@ import com.anopticlabs.gravel.notebook.capture.needsReview
 import com.anopticlabs.gravel.notebook.capture.processingOrder
 import com.anopticlabs.gravel.notebook.capture.waitsForPower
 import com.anopticlabs.gravel.notebook.notes.captureRouteFolders
+import com.anopticlabs.gravel.notebook.routers.RoutedText
+import com.anopticlabs.gravel.notebook.routers.RouterDeliveries
+import com.anopticlabs.gravel.notebook.routers.TextDeliverer
 import com.anopticlabs.gravel.notebook.storage.BlobRead
 import com.anopticlabs.gravel.notebook.storage.CorruptFileException
 import com.anopticlabs.gravel.notebook.storage.NoteStore
@@ -26,6 +33,7 @@ import com.anopticlabs.gravel.notebook.storage.QueueStore
 import com.anopticlabs.gravel.notebook.storage.isKeyUnavailableFailure
 import com.anopticlabs.gravel.notebook.storage.isPersistedFormatFailure
 import com.anopticlabs.gravel.notebook.storage.isTransientCryptoFailure
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
@@ -66,6 +74,7 @@ data class DrainReport(
     val flagged: Int = 0,
     val dropped: Int = 0,
     val waited: Int = 0,
+    val awaiting: Int = 0,
     val held: CaptureHold? = null,
 )
 
@@ -102,7 +111,11 @@ private fun holdFor(e: Exception, fallback: String): CaptureHold =
  * queue only once it is published, or when its recording is gone; see [captureFailureKind] for the rest. Nothing
  * of a transcript or a reply is logged. A rerouted capture goes through [rules] again in the same pass, once; a second
  * reroute makes it wait. [notice] is read after each pass, [serverTried] called after each server try is recorded.
- * [admitted] runs once a capture can be stopped and before it starts, for tests.
+ * [admitted] runs once a capture can be stopped and before it starts, for tests. A capture the routing sends to an
+ * app or a server is handed to [deliverer] before it settles, where a stop can still land, and leaves the queue only
+ * once the delivery returned. A capture whose router waits on the user is parked in the queue with its transcript
+ * ([AwaitingUser]), its attempt given back, and left out of every pass until [requestResume] names it; the resume
+ * is served inside the pass, before the next capture is picked, under the same stop and single-flight rules.
  */
 class CaptureDrain(
     private val queue: QueueStore,
@@ -116,6 +129,7 @@ class CaptureDrain(
     private val notice: () -> CaptureNotice? = { null },
     private val serverTried: () -> Unit = {},
     private val admitted: (QueuedCapture) -> Unit = {},
+    private val deliverer: TextDeliverer = RouterDeliveries(),
 ) {
     private val running = Mutex()
     private val requested = AtomicBoolean(false)
@@ -170,6 +184,19 @@ class CaptureDrain(
 
         /** The rules changed since the pass began and no longer let it start. */
         object NotNow : Outcome
+
+        /** Parked with its transcript for the user, its attempt given back in the same write. */
+        object Awaiting : Outcome
+    }
+
+    private val resumes = ConcurrentLinkedQueue<String>()
+
+    // Resumes a pass had to leave waiting, asked for again once the pass ends so it cannot take them up twice in one go.
+    private val deferredResumes = mutableListOf<String>()
+
+    /** Asks the next pass to take up the parked capture [id]; the caller then requests a drain. */
+    fun requestResume(id: String) {
+        if (id !in resumes) resumes.add(id)
     }
 
     /**
@@ -226,13 +253,14 @@ class CaptureDrain(
         val tried = mutableSetOf<String>()
         val rerouted = mutableSetOf<String>()
         val gone = mutableSetOf<String>()
+        val resumed = mutableSetOf<String>()
         try {
             while (true) {
                 currentCoroutineContext().ensureActive()
                 // A stop kept from before this read is answered by the read itself.
                 synchronized(currentLock) { pendingStop = null }
-                pending = try {
-                    queue.readQueue(strict = true).filterNot { it.needsReview }
+                val all = try {
+                    queue.readQueue(strict = true)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -242,17 +270,25 @@ class CaptureDrain(
                     return report.copy(held = CaptureHold("the capture queue could not be read"))
                 }
                 read = true
-                val order = processingOrder(pending.filter { it.id !in tried }, rules())
+                pending = all.filterNot { it.needsReview || it.awaitsUser }
+                // A resume the user asked for goes first: it waited on them already, and may have waited a long time.
+                val parked = nextResume(all)
+                val order = if (parked != null) listOf(parked) else processingOrder(pending.filter { it.id !in tried }, rules())
                 val ids = order.mapTo(mutableSetOf()) { it.id }
                 rows.items.value.filter { it.inFlight && it.id !in ids }.forEach { rows.remove(it.id) }
                 val entry = order.firstOrNull() ?: return report.copy(held = waiting)
-                if (tried.isEmpty() && rerouted.isEmpty()) checkBeforeFirst()?.let { hold ->
+                if (tried.isEmpty() && rerouted.isEmpty() && resumed.isEmpty()) checkBeforeFirst()?.let { hold ->
                     dropRowsInFlight()
                     return report.copy(held = hold)
                 }
                 order.forEach { rows.queued(it.id, it.queuedAtMillis) }
                 // A second reroute in one pass leaves the capture for the next, so a reroute that changes nothing cannot loop.
-                val outcome = start(entry).let { if (it is Outcome.Rerouted && !rerouted.add(entry.id)) Outcome.Waited(it.hold) else it }
+                val outcome = if (parked != null) {
+                    resumed += parked.id
+                    start(parked, mayStart = true) { processResume(parked) }
+                } else {
+                    start(entry, mayStart = rules().mayStart(entry)) { process(entry) }.let { if (it is Outcome.Rerouted && !rerouted.add(entry.id)) Outcome.Waited(it.hold) else it }
+                }
                 if (outcome == Outcome.Published || outcome == Outcome.Dropped || outcome == Outcome.Flagged) gone += entry.id
                 if (outcome != Outcome.NotNow && outcome != Outcome.Interrupted && outcome !is Outcome.Rerouted) tried += entry.id
                 report = when (outcome) {
@@ -260,6 +296,7 @@ class CaptureDrain(
                     Outcome.Dropped -> report.copy(dropped = report.dropped + 1)
                     Outcome.Retried -> report.copy(retried = report.retried + 1)
                     Outcome.Flagged -> report.copy(flagged = report.flagged + 1)
+                    Outcome.Awaiting -> report.copy(awaiting = report.awaiting + 1)
                     Outcome.NotNow, Outcome.Interrupted, is Outcome.Rerouted -> report
                     is Outcome.Waited -> {
                         // A wait the network may end is kept over a later one it may not, so the network watch still wakes it.
@@ -276,6 +313,8 @@ class CaptureDrain(
             dropRowsInFlight()
             throw e
         } finally {
+            deferredResumes.forEach(::requestResume)
+            deferredResumes.clear()
             // A pass whose last read failed leaves the last count.
             if (read) {
                 val now = rules()
@@ -308,6 +347,16 @@ class CaptureDrain(
 
     private fun dropRowsInFlight() = rows.items.value.filter { it.inFlight }.forEach { rows.remove(it.id) }
 
+    // A request for an entry that is gone, flagged, or still has questions open is answered by its rows alone.
+    private fun nextResume(all: List<QueuedCapture>): QueuedCapture? {
+        while (true) {
+            val id = resumes.poll() ?: return null
+            val entry = all.firstOrNull { it.id == id }
+            if (entry != null && entry.awaitsUser && entry.awaiting?.settled == true) return entry
+            rows.syncAwaiting(all.filter { it.awaitsUser })
+        }
+    }
+
     private fun readNotice(): CaptureNotice? = try {
         notice()
     } catch (e: Exception) {
@@ -316,10 +365,10 @@ class CaptureDrain(
     }
 
     // The capture runs as a lazy child registered before it starts, so a stop that lands first keeps it from running at all.
-    private suspend fun start(entry: QueuedCapture): Outcome = coroutineScope {
-        val job = async(start = CoroutineStart.LAZY) { process(entry) }
+    private suspend fun start(entry: QueuedCapture, mayStart: Boolean, body: suspend () -> Outcome): Outcome = coroutineScope {
+        val job = async(start = CoroutineStart.LAZY) { body() }
         val started = synchronized(currentLock) {
-            if (rules().mayStart(entry) && pendingStop?.invoke(entry) != true) Started(entry, job).also { current = it } else null
+            if (mayStart && pendingStop?.invoke(entry) != true) Started(entry, job).also { current = it } else null
         }
         if (started == null) {
             job.cancel()
@@ -332,7 +381,7 @@ class CaptureDrain(
         } catch (e: CancellationException) {
             // Only a stop aimed at this capture is taken here; the drain's own cancellation, or any other, ends the drain.
             if (!isActive || !started.stopped) throw e
-            rows.requeue(entry.id)
+            rowBack(entry)
             Outcome.Interrupted
         } finally {
             synchronized(currentLock) { current = null }
@@ -389,24 +438,101 @@ class CaptureDrain(
                 serverTries = entry.serverTries,
                 serverTriedAtMillis = entry.serverTriedAtMillis,
                 markServerTry = { at -> recordServerTry(entry.id, at) },
+                location = entry.location,
             )
-            val built = backend.process(request) { stage ->
-                rows.stage(entry.id, stage)
-                synchronized(currentLock) { startedFor(entry)?.stage = stage }
-            }
-            if (!settling(entry)) throw CancellationException("capture interrupted")
-            // Once published, the entry must go even if the drain is being canceled.
-            val published = withContext(NonCancellable) {
-                publisher.publish(built, entry.queuedAtMillis, folders).also { dequeue(entry.id) }
-            }
-            settle(entry.id, published)
-            logger.i { "capture ${entry.id} published as ${published::class.simpleName}" }
-            return Outcome.Published
+            val built = backend.process(request) { stage -> stage(entry, stage) }
+            if (built is BuiltCapture.ToConfirm) return park(entry, built)
+            return finish(entry, built, folders)
         } catch (e: CancellationException) {
             giveBack(entry)
             throw e
         } catch (e: Exception) {
             return failed(entry, e, counted)
+        }
+    }
+
+    // The resume is the second half of [process] without the audio: the transcript was kept.
+    private suspend fun processResume(entry: QueuedCapture): Outcome {
+        val awaiting = checkNotNull(entry.awaiting) { "capture ${entry.id} is not parked" }
+        val counted = entry.attempts + 1
+        try {
+            setAttempts(entry.id, counted)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return failed(entry, e, counted = entry.attempts)
+        }
+        try {
+            val folders = captureRouteFolders(notes.readFolders(strict = true))
+            val resume = CaptureResume(
+                router = awaiting.router,
+                routerName = awaiting.routerName,
+                text = RoutedText(entry.id, awaiting.recordedAt, awaiting.text, awaiting.location),
+                granted = awaiting.granted,
+                denied = awaiting.denied,
+                capturedAt = Instant.fromEpochMilliseconds(entry.queuedAtMillis),
+                zone = captureZone(entry.zoneId) ?: zone(),
+                folders = folders,
+                folderTags = notes.readFolderTags(strict = true).filterKeys { it in folders },
+            )
+            val built = backend.resume(resume) { stage -> stage(entry, stage) }
+            return finish(entry, built, folders)
+        } catch (e: CancellationException) {
+            giveBack(entry)
+            throw e
+        } catch (e: Exception) {
+            return failed(entry, e, counted)
+        }
+    }
+
+    private fun stage(entry: QueuedCapture, stage: CaptureStage) {
+        rows.stage(entry.id, stage)
+        synchronized(currentLock) { startedFor(entry)?.stage = stage }
+    }
+
+    private suspend fun finish(entry: QueuedCapture, built: BuiltCapture, folders: List<String>): Outcome {
+        // A delivery can take seconds and is the one write a forward has, so it runs before the
+        // capture settles, cancellable; a failure is read like any other processing failure.
+        if (built is BuiltCapture.Forward) deliverer.deliver(built.router, built.text, built.share)
+        if (!settling(entry)) throw CancellationException("capture interrupted")
+        // Once published, the entry must go even if the drain is being canceled.
+        val published = withContext(NonCancellable) {
+            publisher.publish(built, entry.queuedAtMillis, folders).also { dequeue(entry.id) }
+        }
+        settle(entry.id, published)
+        logger.i { "capture ${entry.id} published as ${published::class.simpleName}" }
+        return Outcome.Published
+    }
+
+    // Parking and giving the attempt back are one write, so a process end between them cannot leave either half.
+    private suspend fun park(entry: QueuedCapture, built: BuiltCapture.ToConfirm): Outcome {
+        if (!settling(entry)) throw CancellationException("capture interrupted")
+        val awaiting = AwaitingUser(
+            built.router.ref, built.router.name, built.text.text, built.text.recordedAt, built.router.confirm, built.text.location, built.asks,
+        )
+        val parked = withContext(NonCancellable) { queue.update { awaitUser(it, entry.id, awaiting, entry.attempts) } }
+        rowBack(entry.copy(awaiting = awaiting))
+        try {
+            publisher.awaitingParked(parked.count { it.awaitsUser })
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.w { "awaiting notice not posted: ${e::class.simpleName}" }
+        }
+        logger.i { "capture ${entry.id} waits on the user for ${built.router.name}" }
+        return Outcome.Awaiting
+    }
+
+    /** The row of [entry] as it stands without the drain: AWAITING_USER for a parked one, QUEUED for the rest. */
+    private fun rowBack(entry: QueuedCapture, label: String? = null) {
+        val awaiting = entry.awaiting
+        if (awaiting == null) {
+            rows.requeue(entry.id)
+        } else {
+            rows.settle(
+                entry.id, CaptureQueueItem.Status.AWAITING_USER, null, label,
+                transcript = awaiting.text, target = awaiting.routerName, asks = awaiting.asks, confirm = awaiting.confirm,
+            )
         }
     }
 
@@ -418,19 +544,30 @@ class CaptureDrain(
         val kind = captureFailureKind(e)
         logger.w { "capture ${entry.id} failed ($kind): ${e::class.simpleName}" }
         return when (kind) {
+            // A parked capture keeps its row through a hold, a wait or a retry: it is still the user's to take up again.
             CaptureFailureKind.HOLD -> {
                 giveBack(entry)
-                rows.remove(entry.id)
+                if (entry.awaiting == null) rows.remove(entry.id) else rowBack(entry)
                 Outcome.Held(holdFor(e, "the Notebook's storage could not be used"))
             }
             CaptureFailureKind.WAIT -> {
                 giveBack(entry)
-                rows.remove(entry.id)
-                Outcome.Waited(holdFor(e, "this recording has to wait").copy(waitOnly = true))
+                val hold = holdFor(e, "this recording has to wait")
+                if (entry.awaiting == null) {
+                    rows.remove(entry.id)
+                } else {
+                    // The user already sent it: a later pass takes it up on its own, with no second Send.
+                    deferredResumes += entry.id
+                    rowBack(entry, "${hold.reason.replaceFirstChar { it.uppercase() }}; it will be sent when it can be")
+                }
+                Outcome.Waited(hold.copy(waitOnly = true))
             }
             CaptureFailureKind.RETRY -> if (counted >= MAX_QUEUE_ATTEMPTS) {
                 rows.settle(entry.id, CaptureQueueItem.Status.FAILED, null, "Couldn't process this recording")
                 Outcome.Flagged
+            } else if (entry.awaiting != null) {
+                rowBack(entry, "${(e as? CaptureProcessingException)?.message ?: "Couldn't send this recording"}; confirm to try again")
+                Outcome.Retried
             } else {
                 rows.settle(entry.id, CaptureQueueItem.Status.FAILED, null, "Couldn't process this recording yet; it will be tried again")
                 Outcome.Retried
@@ -438,7 +575,7 @@ class CaptureDrain(
             CaptureFailureKind.FLAG -> flag(entry, e)
             CaptureFailureKind.REROUTE -> {
                 giveBack(entry)
-                rows.requeue(entry.id)
+                rowBack(entry)
                 Outcome.Rerouted(holdFor(e, "this recording has to wait").copy(waitOnly = true))
             }
         }
@@ -461,6 +598,8 @@ class CaptureDrain(
         is PublishedCapture.ReminderSet ->
             rows.settle(id, CaptureQueueItem.Status.REMINDER_SET, CaptureQueueItem.Kind.REMINDER, published.reminder.message, reminderId = published.reminder.id)
         is PublishedCapture.Parked -> rows.remove(id)
+        is PublishedCapture.Forwarded ->
+            rows.settle(id, CaptureQueueItem.Status.FORWARDED, CaptureQueueItem.Kind.FORWARDED, "Sent to ${published.routerName}")
     }
 
     // A failure here leaves a published capture queued, to be published again by a later drain.

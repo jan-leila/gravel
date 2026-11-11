@@ -19,6 +19,9 @@ class ReminderNoticesTest {
         assertEquals("1 completed task to review", voiceCompletionNotificationText(1))
         assertEquals("1 completed task to review", voiceCompletionNotificationText(0))
         assertEquals("4 completed tasks to review", voiceCompletionNotificationText(4))
+        assertEquals("1 recording waiting for you", awaitingNotificationText(1))
+        assertEquals("1 recording waiting for you", awaitingNotificationText(0))
+        assertEquals("3 recordings waiting for you", awaitingNotificationText(3))
     }
 
     @Test

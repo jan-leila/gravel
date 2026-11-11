@@ -45,6 +45,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.anopticlabs.gravel.notebook.R
+import com.anopticlabs.gravel.notebook.capture.RecordedAt
 import com.anopticlabs.gravel.notebook.reminders.MAX_EDITOR_INTERVAL
 import com.anopticlabs.gravel.notebook.reminders.RecurrenceFrequency
 import com.anopticlabs.gravel.notebook.reminders.ReminderEditPlan
@@ -104,8 +105,15 @@ internal fun ReminderEditor(form: ReminderForm, times: ReminderTimes, viewModel:
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (atLimit) Text(stringResource(R.string.notebook_reminders_error_message_too_long), color = MaterialTheme.colorScheme.error)
-                if ((form.target as? ReminderFormTarget.Edit)?.item?.timeToCheck == true) {
+                val edited = (form.target as? ReminderFormTarget.Edit)?.item
+                if (edited?.timeToCheck == true) {
                     Text(stringResource(R.string.notebook_reminders_time_to_check_note), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                edited?.recordedAt?.let(RecordedAt::parse)?.let { recorded ->
+                    Text(
+                        stringResource(R.string.notebook_reminders_recorded_at, times.format(recorded.toEpochMilliseconds(), now)),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 Field(stringResource(R.string.notebook_reminders_field_date), times.date(form.atMillis)) { pickDate = true }
                 Field(stringResource(R.string.notebook_reminders_field_time), times.time(form.atMillis)) { pickTime = true }

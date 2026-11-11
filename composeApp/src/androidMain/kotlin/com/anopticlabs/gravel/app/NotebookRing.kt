@@ -1,10 +1,12 @@
 package com.anopticlabs.gravel.app
 
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.notebook.capture.DEFAULT_RING_LOCATION_SECONDS
 import com.anopticlabs.gravel.notebook.capture.MIN_RECORDING_MILLIS
 import com.anopticlabs.gravel.notebook.capture.RecordingBuffer
 import com.anopticlabs.gravel.notebook.pipeline.CAPTURE_SAMPLE_RATE
 import com.anopticlabs.gravel.notebook.pipeline.IngestResult
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.storage.DeviceStateFile
 import com.anopticlabs.gravel.ring.protocol.RingRecording
 import com.anopticlabs.gravel.ring.sync.RingRecordingSink
@@ -38,11 +40,17 @@ private const val RING_TIME_FLOOR_MILLIS = 1_735_689_600_000L
  * either limit, or when the Notebook could not keep a recording, it answers false, so the recordings stay on
  * the ring for a later sync, with the reason in [lastWait]. The hourly count spans syncs only when one instance serves
  * every sync in the process.
+ *
+ * The ring has no position, so a recording is placed by [locate] at the phone's position when it is taken in, and only
+ * when it is dated by the ring's clock and ended at most [locationWindowSeconds] before; otherwise, or while
+ * [locationWindowSeconds] is null (the user turned placing off), it has no location.
  */
 class NotebookRingSink(
     private val notebookOn: suspend () -> Boolean,
     private val ringRecordingsQueued: suspend () -> Int,
-    private val ingest: suspend (wav: ByteArray, capturedAtMillis: Long) -> IngestResult,
+    private val ingest: suspend (wav: ByteArray, capturedAtMillis: Long, location: RoutedLocation?) -> IngestResult,
+    private val locate: suspend () -> RoutedLocation? = { null },
+    private val locationWindowSeconds: () -> Int? = { DEFAULT_RING_LOCATION_SECONDS },
     private val clock: () -> Long = System::currentTimeMillis,
     private val marks: TimeSource.WithComparableMarks = TimeSource.Monotonic,
 ) : RingRecordingSink {
@@ -69,9 +77,13 @@ class NotebookRingSink(
         }
         limitReached()?.let { return leftOnRing(firstIndex, it) }
         val now = clock()
-        val capturedAt = capturedAtUnixSeconds?.times(1000)?.takeIf { it in RING_TIME_FLOOR_MILLIS..now } ?: now
+        val ringTime = capturedAtUnixSeconds?.times(1000)?.takeIf { it in RING_TIME_FLOOR_MILLIS..now }
+        val window = locationWindowSeconds()
+        val recent = ringTime != null && window != null && now - (ringTime + millis) <= window * 1_000L
+        val location = if (recent) locate() else null
         val wav = withContext(Dispatchers.Default) { ringWav(sampleRate, samples) }
-        val result = ingest(wav, capturedAt)
+        val capturedAt = ringTime ?: now
+        val result = ingest(wav, capturedAt, location)
         logger.i { "recording at collection $firstIndex, $millis ms: $result" }
         if (result == IngestResult.LOST) return leftOnRing(firstIndex, RingWait.NOT_KEPT)
         synchronized(storedInLastHour) { storedInLastHour.addLast(marks.markNow()) }

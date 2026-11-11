@@ -3,17 +3,25 @@ package com.anopticlabs.gravel.notebook.pipeline
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
 import com.anopticlabs.gravel.notebook.capture.CaptureStage
-import com.anopticlabs.gravel.notebook.capture.captureStageForClassify
 import com.anopticlabs.gravel.notebook.llm.PROMPT_CONTENT_BUDGET
 import com.anopticlabs.gravel.notebook.llm.Prompts
 import com.anopticlabs.gravel.notebook.llm.capToBudget
 import com.anopticlabs.gravel.notebook.notes.NoteBuilder
 import com.anopticlabs.gravel.notebook.reminders.ReminderExtractor
-import com.anopticlabs.gravel.notebook.reminders.ReminderIntent
 import com.anopticlabs.gravel.notebook.reminders.SpokenTimeReader
 import com.anopticlabs.gravel.notebook.reminders.effectiveTriggerEnabled
 import com.anopticlabs.gravel.notebook.reminders.shouldParkTriggerCompletion
+import com.anopticlabs.gravel.notebook.routers.Need
+import com.anopticlabs.gravel.notebook.routers.RouteWalk
+import com.anopticlabs.gravel.notebook.routers.RoutedText
+import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.RoutingConfig
+import com.anopticlabs.gravel.notebook.routers.asked
+import com.anopticlabs.gravel.notebook.routers.forwardsText
+import com.anopticlabs.gravel.notebook.routers.shared
+import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
+import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
 /** The drain's held reason when memory stays short after the text model is freed. */
@@ -33,17 +41,21 @@ fun hasSpeech(transcript: String): Boolean =
 
 /**
  * The capture pipeline: decode, transcribe, then a completion claim is parked without the text
- * model; otherwise the cue detector picks the reminder or note prompt for the text model. Before a
- * transcription on the phone, the text model is freed when memory is short ([SpeechCapture.phoneFits]).
+ * model; otherwise the transcript goes through the text routing ([routing], read for each capture)
+ * to the router that consumes it: a note or a reminder built here with the text model, or a
+ * [BuiltCapture.Forward] for the drain to deliver. Before a transcription on the phone, the text
+ * model is freed when memory is short ([SpeechCapture.phoneFits]).
  */
 class OnDeviceCaptureBackend(
     private val decoder: CaptureAudioDecoder,
     private val speech: CaptureSpeech,
     private val text: CaptureText,
     private val memory: CaptureMemory,
+    private val routing: () -> RoutingConfig = { RoutingConfig.DEFAULT },
 ) : CaptureBackend {
 
     override suspend fun checkReady() {
+        readRouting()
         speech.checkReady()
         text.checkReady()
     }
@@ -59,31 +71,92 @@ class OnDeviceCaptureBackend(
         if (!hasSpeech(transcript)) throw CaptureProcessingException(CaptureFailureKind.FLAG, "no speech was heard", reason = CaptureFailureReason.NO_SPEECH)
         val settings = request.settings
         val triggerOn = effectiveTriggerEnabled(settings.triggerEnabled, settings.triggerWord)
+        // A completion claim is a command to the Notebook, decided before the routing sees the text.
         shouldParkTriggerCompletion(triggerOn, settings.triggerWord, transcript)?.let { utterance ->
             onStage(CaptureStage.COMPLETING_TASK)
             return BuiltCapture.Completion(utterance)
         }
-        val isReminder = ReminderIntent.looksLikeReminder(transcript)
+        val config = readRouting()
+        val routed = RoutedText.of(request.id, request.capturedAt, request.zone, transcript, request.location)
+        val terminal = RouteWalk.terminal(config, routed)
+        // A router that waits on the user gets nothing built now: the answer may change what is sent, or drop it.
+        val asks = terminal.asked()
+        if (terminal.confirm || asks.isNotEmpty()) return BuiltCapture.ToConfirm(terminal, routed, asks)
+        return consume(terminal, routed, emptySet(), emptySet(), request.capturedAt, request.zone, request.folders, request.folderTags, onStage)
+    }
+
+    // The router is read again, not re-walked: the user answered for a destination, not for the rules that led there.
+    override suspend fun resume(resume: CaptureResume, onStage: (CaptureStage) -> Unit): BuiltCapture {
+        val router = readRouting().router(resume.router)
+            ?: unavailable("${resume.routerName} no longer exists in the text routing")
+        if (router.forwardsText) unavailable("${resume.routerName} now forwards elsewhere")
+        return consume(router, resume.text, resume.granted, resume.denied, resume.capturedAt, resume.zone, resume.folders, resume.folderTags, onStage)
+    }
+
+    // What the user refused for this recording stays refused, whatever grant the router gained since it was asked.
+    private suspend fun consume(
+        terminal: RouterConfig,
+        routed: RoutedText,
+        granted: Set<Need>,
+        denied: Set<Need>,
+        capturedAt: Instant,
+        zone: TimeZone,
+        folders: List<String>,
+        folderTags: Map<String, List<String>>,
+        onStage: (CaptureStage) -> Unit,
+    ): BuiltCapture = when (terminal) {
+        is RouterConfig.Note -> buildNote(routed, capturedAt, zone, folders, folderTags, onStage)
+        is RouterConfig.Reminder -> buildReminder(routed, capturedAt, zone, onStage)
+        is RouterConfig.App, is RouterConfig.Network -> {
+            onStage(CaptureStage.FORWARDING)
+            BuiltCapture.Forward(terminal, routed, terminal.shared(granted) - denied)
+        }
+        is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place -> throw IllegalStateException("the routing walk ended at a router that forwards")
+    }
+
+    private fun unavailable(why: String): Nothing =
+        throw CaptureProcessingException(CaptureFailureKind.FLAG, why, reason = CaptureFailureReason.ROUTER_UNAVAILABLE)
+
+    private suspend fun buildNote(
+        routed: RoutedText,
+        capturedAt: Instant,
+        zone: TimeZone,
+        folders: List<String>,
+        folderTags: Map<String, List<String>>,
+        onStage: (CaptureStage) -> Unit,
+    ): BuiltCapture.Note {
         onStage(CaptureStage.THINKING)
         text.prepare()
-        onStage(captureStageForClassify(isCompletion = false, isReminder = isReminder))
-        val capped = capToBudget(transcript, PROMPT_CONTENT_BUDGET)
-        return if (isReminder) {
-            // The model writes the message only; the rules read the time from the whole transcript.
-            val raw = text.generate(Prompts.REMINDER_MESSAGE_SYSTEM, Prompts.reminderMessagePrompt(capped), REPLY_TOKENS)
-            val spoken = SpokenTimeReader.read(transcript, request.capturedAt, request.zone)
-            BuiltCapture.Reminder(ReminderExtractor.proposal(raw, transcript, spoken))
-        } else {
-            val raw = text.generate(Prompts.NOTE_SYSTEM, Prompts.notePromptVerbatim(capped), REPLY_TOKENS)
-            val note = NoteBuilder.buildNote(
-                rawReply = raw,
-                transcript = transcript,
-                folders = request.folders,
-                folderTags = request.folderTags,
-                now = request.capturedAt.toLocalDateTime(request.zone),
-            )
-            BuiltCapture.Note(note)
-        }
+        onStage(CaptureStage.CREATING_NOTE)
+        val raw = text.generate(Prompts.NOTE_SYSTEM, Prompts.notePromptVerbatim(capToBudget(routed.text, PROMPT_CONTENT_BUDGET)), REPLY_TOKENS)
+        val note = NoteBuilder.buildNote(
+            rawReply = raw,
+            transcript = routed.text,
+            folders = folders,
+            folderTags = folderTags,
+            now = capturedAt.toLocalDateTime(zone),
+            recordedAt = routed.recordedAt,
+        )
+        return BuiltCapture.Note(note)
+    }
+
+    private suspend fun buildReminder(routed: RoutedText, capturedAt: Instant, zone: TimeZone, onStage: (CaptureStage) -> Unit): BuiltCapture.Reminder {
+        onStage(CaptureStage.THINKING)
+        text.prepare()
+        onStage(CaptureStage.SETTING_REMINDER)
+        // The model writes the message only; the rules read the time from the whole transcript.
+        val raw = text.generate(Prompts.REMINDER_MESSAGE_SYSTEM, Prompts.reminderMessagePrompt(capToBudget(routed.text, PROMPT_CONTENT_BUDGET)), REPLY_TOKENS)
+        val spoken = SpokenTimeReader.read(routed.text, capturedAt, zone)
+        return BuiltCapture.Reminder(ReminderExtractor.proposal(raw, routed.text, spoken, routed.recordedAt))
+    }
+
+    // Every capture would go the same way without its routing, so a routing that cannot be read holds the drain.
+    private fun readRouting(): RoutingConfig = try {
+        routing()
+    } catch (e: CaptureProcessingException) {
+        throw e
+    } catch (e: Exception) {
+        throw CaptureProcessingException(CaptureFailureKind.HOLD, "the text routing settings could not be read", e, remedy = CaptureRemedy.ROUTING_SETTINGS)
     }
 
     private suspend fun phoneFits(): Boolean {

@@ -46,6 +46,7 @@ class CaptureCoordinatorRunTest {
     private val backend = object : CaptureBackend {
         override suspend fun checkReady() = throw CaptureProcessingException(CaptureFailureKind.HOLD, "not set up")
         override suspend fun process(request: CaptureRequest, onStage: (CaptureStage) -> Unit): BuiltCapture = error("unused")
+        override suspend fun resume(resume: CaptureResume, onStage: (CaptureStage) -> Unit): BuiltCapture = error("unused")
     }
     private val rows = CaptureRows()
     private val drain = CaptureDrain(queue, notes, backend, publisher, rows, { CaptureSettings() })

@@ -2,6 +2,7 @@ package com.anopticlabs.gravel.notebook.storage
 
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.notebook.capture.QueuedCapture
+import com.anopticlabs.gravel.notebook.capture.awaitsUser
 import com.anopticlabs.gravel.notebook.capture.needsReview
 import com.anopticlabs.gravel.notebook.capture.wavDurationMillis
 import com.anopticlabs.gravel.notebook.capture.capturedAtFromName
@@ -190,6 +191,25 @@ class QueueStore internal constructor(
             writeQueue(removeQueuedCapture(current, id))
             blob.delete()
             FailedRemoval.REMOVED
+        }
+    }
+
+    /** What [removeAwaiting] did. */
+    enum class AwaitingRemoval { REMOVED, GONE, NOT_AWAITING }
+
+    /**
+     * Removes the entry [id] while it waits on the user: the entry, then the blob, best effort as in
+     * [remove]. One the drain is serving ([busy]) counts as not waiting; it is asked under the queue
+     * lock, which the drain's attempt write also takes.
+     */
+    suspend fun removeAwaiting(id: String, busy: (String) -> Boolean = { false }): AwaitingRemoval = io {
+        lock.withLock {
+            val current = readQueue(strict = true)
+            val entry = current.firstOrNull { it.id == id } ?: return@withLock AwaitingRemoval.GONE
+            if (!entry.awaitsUser || busy(id)) return@withLock AwaitingRemoval.NOT_AWAITING
+            writeQueue(removeQueuedCapture(current, id))
+            blobFile(id).delete()
+            AwaitingRemoval.REMOVED
         }
     }
 

@@ -123,6 +123,8 @@ class CapturePipelineDeviceTest {
         override fun postedSetNotices() = emptyList<PostedSetNotice>()
         override fun postCompletionsToReview(count: Int) = Unit
         override fun cancelCompletionsToReview() = Unit
+        override fun postAwaitingToReview(count: Int) = Unit
+        override fun cancelAwaitingToReview() = Unit
     }
 
     private val settings = object : ReminderSettings {

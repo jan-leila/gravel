@@ -54,6 +54,9 @@ jobs:
           testDebugUnitTest testAndroidHostTest jvmTest lintDebug
           :androidApp:assembleDebugAndroidTest :socketfilter:assembleDebugAndroidTest
           :libpebble3:compileAndroidDeviceTest
+          :routers:slack:assembleRelease :routers:homeassistant:assembleRelease :routers:vikunja:assembleRelease
+          :routers:mastodon:assembleRelease :routers:osmnote:assembleRelease :routers:signal:assembleRelease
+          :routers:actual:assembleRelease :routers:email:assembleRelease
       # androidApp/version.properties declares both numbers, and on a tag build
       # the versionName must also be the tag. The Gradle-time
       # VerifyReleaseVersionFile task and FdroidGuardrailsTest check the same

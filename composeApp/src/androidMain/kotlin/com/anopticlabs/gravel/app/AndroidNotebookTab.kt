@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import org.koin.android.ext.koin.androidContext
 import com.anopticlabs.gravel.notebook.ui.PhoneCalendarsDialog as NotebookPhoneCalendarsDialog
+import com.anopticlabs.gravel.notebook.ui.RoutingSettingsScreen
 import com.anopticlabs.gravel.notebook.ui.TriggerWordDialog as NotebookTriggerWordDialog
 import com.anopticlabs.gravel.ui.NotebookSettingsValues
 import com.anopticlabs.gravel.notebook.alarms.NotebookPreferences
@@ -109,7 +110,7 @@ class AndroidNotebookTab(
     }
 
     @Composable
-    override fun Screen(topBarParams: TopBarParams, openTextModels: () -> Unit, openSpeechSettings: () -> Unit) {
+    override fun Screen(topBarParams: TopBarParams, openTextModels: () -> Unit, openSpeechSettings: () -> Unit, openRoutingSettings: () -> Unit) {
         val guide by setupGuide.collectAsState()
         val recording by recordingCheck.collectAsState()
         NotebookScreen(
@@ -123,8 +124,12 @@ class AndroidNotebookTab(
             },
             openSpeechSettings = openSpeechSettings,
             notice = { WatchAppUpdateLine(watchApp, updateLineDismissed(), ::dismissWatchAppUpdateLine) },
+            openRoutingSettings = openRoutingSettings,
         )
     }
+
+    @Composable
+    override fun RoutingScreen(topBarParams: TopBarParams) = RoutingSettingsScreen(topBarParams)
 
     private val _settings by lazy { MutableStateFlow(read()) }
     override val settings: StateFlow<NotebookSettingsValues> by lazy { _settings.asStateFlow() }
@@ -141,6 +146,7 @@ class AndroidNotebookTab(
             phoneCalendars = store.phoneCalendar.calendars,
             interruptLongRecordings = store.interruptLongCaptures,
             longRecordingsWaitForPower = store.longCapturesWaitForPower,
+            ringLocationSeconds = store.ringLocationSeconds,
         )
     }
 
@@ -160,6 +166,8 @@ class AndroidNotebookTab(
     override fun setHistoryRetentionDays(days: Int) = write { setHistoryRetentionDays(days) }
 
     override fun setInterruptLongRecordings(on: Boolean) = write { setInterruptLongCaptures(on) }
+
+    override fun setRingLocationSeconds(seconds: Int?) = write { setRingLocationSeconds(seconds) }
 
     // Off lets held captures start; on changes what waits for power.
     override fun setLongRecordingsWaitForPower(on: Boolean) {

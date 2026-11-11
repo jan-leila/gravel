@@ -10,6 +10,21 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- Asked for when the user taps record; the Notebook records only after that tap. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!--
+        The text router API (ROUTER_API.md). The permission is signature-level and defined here, so
+        an app that guards its router receiver with it takes broadcasts from Gravel alone; Gravel
+        holds it to send, and the query lets Gravel find the receivers that declare the action.
+        Nothing is exported: Gravel sends and never receives.
+    -->
+    <permission
+        android:name="com.anopticlabs.gravel.permission.ROUTE_NOTEBOOK_TEXT"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.anopticlabs.gravel.permission.ROUTE_NOTEBOOK_TEXT" />
+    <queries>
+        <intent>
+            <action android:name="com.anopticlabs.gravel.notebook.action.ROUTE_TEXT" />
+        </intent>
+    </queries>
     <application>
         <!--
             The reminder alarms and notification actions of the Notebook. Both
