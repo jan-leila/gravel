@@ -7,6 +7,7 @@ import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.pkjs.UnreportedNetworkDenyEnforcement
 import com.anopticlabs.gravel.pkjs.NetworkDenyEnforcement
 import com.anopticlabs.gravel.watchapp.InjectedWatchAppCaptures
+import com.anopticlabs.gravel.backup.TableRows
 import com.anopticlabs.gravel.watchsync.FirstSyncDecider
 import com.anopticlabs.gravel.watchsync.InjectedFirstSyncDecider
 import com.anopticlabs.gravel.watchapp.WatchAppCaptures
@@ -432,6 +433,8 @@ class LibPebble3(
     private val watchPreferences: WatchPrefs,
     private val weatherManager: WeatherManager,
     private val watchappPermissions: WatchappPermissions,
+    /** Gravel: the rows of this library's database, for the app's settings backup. */
+    val backupRows: TableRows,
 ) : LibPebble, Scanning by scanning, RequestSync by webSyncManager, LockerApi by locker,
     NotificationApps by notificationApi, WatchappPermissions by watchappPermissions,
     Calendar by phoneCalendarSyncer,

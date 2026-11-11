@@ -27,6 +27,7 @@ import io.rebble.libpebblecommon.connection.CreatePlatformIdentifier
 import io.rebble.libpebblecommon.connection.LegacyBtClassicMigrator
 import io.rebble.libpebblecommon.connection.LibPebble
 import io.rebble.libpebblecommon.connection.LibPebble3
+import com.anopticlabs.gravel.backup.TableRows
 import io.rebble.libpebblecommon.connection.Negotiator
 import io.rebble.libpebblecommon.connection.NotificationApps
 import io.rebble.libpebblecommon.connection.PebbleBleIdentifier
@@ -428,6 +429,8 @@ fun initKoin(
                         get(),
                         // watchappPermissions
                         get(),
+                        // Gravel: backupRows
+                        TableRows(get<Database>()),
                     )
                 } bind LibPebble::class
                 single { RealConnectionScopeFactory(koin) } bind ConnectionScopeFactory::class
