@@ -21,3 +21,8 @@ kotlin {
         jvmTarget.set(JvmTarget.JVM_17)
     }
 }
+
+// src/shared holds Gradle-free code that androidApp's unit tests also compile.
+sourceSets.main {
+    kotlin.srcDir("src/shared/kotlin")
+}

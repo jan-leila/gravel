@@ -134,36 +134,31 @@ Firebase stubs, the unplugged Ring module) lives in `DESIGN_NOTES.md`.
   toolchain pin (`jvmToolchain(` or `jvmToolchain {`, or a Java
   `toolchain {` block), which is what an upstream sync would bring back.
   CI builds on both 17 and 21.
-- **versionCode is the commit count; versionName is `git describe --tags
-  --first-parent HEAD`.** Upstream packs its newest reachable tag into
-  versionCode; Gravel keeps the commit count because F-Droid's update
-  checker and the version file below are built on it, and derives
-  versionName from HEAD so a tag checkout reports exactly its own tag. The
-  first-parent walk keeps upstream's tags, reachable through every sync
-  merge, from describing Gravel commits, so release tags go on master's
-  first-parent line (tag the release commit on master). Both are set lazily
-  in `androidComponents.onVariants` so the git commands do not run during
-  configuration.
-- **A release commit bumps `androidApp/version.properties`.** F-Droid's
-  update checker reads a tag's versionCode from that one-line file because
-  it cannot count commits the way the build does. The commit that gets
-  tagged (the same one that adds
-  `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`) sets it
-  to the commit count that commit will have, which is `git rev-list --count
-  HEAD` plus one when committing on top of HEAD; between releases the file
-  names the last release. The value checks fire only on a tag checkout,
-  so after tagging and before pushing the tag run `./gradlew
-  :androidApp:verifyReleaseVersionFile` (or the guardrail suite) on the
-  tagged commit; otherwise a stale file is first rejected once the tag is
-  public, by Gradle's `preBuild` (`VerifyReleaseVersionFile`),
-  `FdroidGuardrailsTest`, and the tag-build step in CI alike. The test
-  also requires `changelogs/<versionCode>.txt` to exist for the value the
-  file names, on every commit.
-- **Pushing the release tag publishes the release.**
-  `.github/workflows/release.yml` checks the tagged commit is on master
-  and both numbers went up, builds it unsigned, signs it with the
-  `GRAVEL_KEYSTORE_*` secrets, and creates the tag's GitHub release,
-  which Obtainium and F-Droid's `Binaries:` read. Anything stamped into
+- **Both version numbers are declared in `androidApp/version.properties`.**
+  It holds one `versionCode=<digits>` line and one
+  `versionName=<major>.<minor>.<patch>` line, in any order among other
+  lines that mention neither key (the parser, `ReleaseVersion` in
+  `buildSrc/src/shared`, is shared by the build and
+  `FdroidGuardrailsTest`), and the build stamps both into
+  every variant (set lazily in `androidComponents.onVariants`); upstream
+  derives them from git tags. Between releases the file names the last
+  release, so dev builds report it too. F-Droid's update checker reads a
+  tag's versionCode from the same file, and on a checkout of a
+  release-shaped tag the versionName must be that tag, which Gradle's
+  `preBuild` (`VerifyReleaseVersionFile`), `FdroidGuardrailsTest`, and CI
+  each check. The test also requires
+  `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` to exist
+  for the value the file names, on every commit.
+- **A release is cut by bumping the file on master and merging master into
+  `release`; tags are never pushed by hand.** The release commit raises
+  both numbers and adds the changelog for the new versionCode (the steps
+  are in `README.md`, Releasing). `.github/workflows/release.yml` runs on
+  every push to `release`: it stops early if the declared versionName
+  already has a GitHub release, and otherwise checks the pushed tree is a
+  commit on master and both numbers went up, builds it unsigned, signs it
+  with the `GRAVEL_KEYSTORE_*` secrets, and creates the GitHub release and
+  its tag on the pushed commit, which Obtainium and F-Droid's `Binaries:`
+  read. Anything stamped into
   the APK, native libraries included, must depend on the commit alone,
   never on the working tree, build path, clock or machine: F-Droid
   rebuilds the tag from a dirty checkout and publishes only if its APK

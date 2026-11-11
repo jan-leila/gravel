@@ -316,6 +316,105 @@ tested and saved without it unless you type one.
   `RELEASE_KEY_PASSWORD` environment variables), produces an unsigned APK
   when it is absent, and signs with the debug key instead if
   `LOCAL_RELEASE_BUILD=true` is set in the root `local.properties`.
+- Both version numbers come from `androidApp/version.properties`
+  (one `versionCode=` line and one `versionName=` line, in any order;
+  no other line may mention either key, comments included). Between
+  releases it names the last release.
+
+## Releasing
+
+Releases are published by GitHub Actions (`.github/workflows/release.yml`)
+from the `release` branch. Every push to `release` reads the version
+declared in `androidApp/version.properties`. If that versionName already
+has a GitHub release, the run stops early and publishes nothing.
+Otherwise it builds the pushed commit unsigned (the way F-Droid builds it),
+signs it, and creates the GitHub release together with its tag. Obtainium
+and F-Droid both pick the release up from there. Don't push release tags
+by hand.
+
+### One-time setup
+
+1. **Signing key.** Every release has to be signed with the same key:
+   F-Droid's `AllowedAPKSigningKeys` and every existing install trust only
+   that key, and a lost key means users can't update. If you have no key
+   yet, create one and keep it, with its passwords, somewhere safe outside
+   the repository:
+
+   ```sh
+   keytool -genkeypair -v -keystore gravel-release.jks -alias gravel \
+     -keyalg RSA -keysize 4096 -validity 10000
+   ```
+
+2. **Repository secrets** (Settings → Secrets and variables → Actions →
+   Secrets), or with the GitHub CLI:
+
+   | Secret | Value |
+   |---|---|
+   | `GRAVEL_KEYSTORE_BASE64` | The keystore file, base64-encoded on one line |
+   | `GRAVEL_KEYSTORE_PASSWORD` | The keystore password |
+   | `GRAVEL_KEY_ALIAS` | The key's alias (`gravel` above) |
+   | `GRAVEL_KEY_PASSWORD` | The key's password (the same as the keystore password unless you set one separately) |
+
+   ```sh
+   base64 -w0 gravel-release.jks | gh secret set GRAVEL_KEYSTORE_BASE64
+   gh secret set GRAVEL_KEYSTORE_PASSWORD
+   gh secret set GRAVEL_KEY_ALIAS --body gravel
+   gh secret set GRAVEL_KEY_PASSWORD
+   ```
+
+3. **Repository variable** (same page, Variables tab):
+   `GRAVEL_SIGNER_SHA256`, the signing certificate's SHA-256 in lowercase
+   hex without colons. This is the value F-Droid's recipe lists as
+   `AllowedAPKSigningKeys`. The workflow refuses to publish an APK signed
+   by any other certificate.
+
+   ```sh
+   keytool -list -v -keystore gravel-release.jks -alias gravel \
+     | sed -n 's/^[[:space:]]*SHA256: //p' | tr -d : | tr A-F a-f \
+     | gh variable set GRAVEL_SIGNER_SHA256
+   ```
+
+4. **The `release` branch.** Create it from master
+   (`git push origin master:release`). It's also worth adding a branch
+   rule that requires a pull request to change it. The first push finds
+   the current version already released and stops.
+
+5. **Actions permissions.** The workflow asks for `contents: write` to
+   create the release and its tag. If a tag ruleset restricts who can
+   create tags matching `*.*.*`, allow GitHub Actions to create them.
+
+The local release-build variables (`RELEASE_KEYSTORE_PASSWORD`,
+`RELEASE_KEYSTORE_ALIAS`, `RELEASE_KEY_PASSWORD`, with `keystore.jks` in
+the repository root) are only for signing on your own machine. CI doesn't
+use them.
+
+### Cutting a release
+
+1. On a branch off master, edit `androidApp/version.properties`:
+   - raise `versionName` (`major.minor.patch`), and
+   - raise `versionCode` above the previous release's (adding one is
+     enough).
+
+   Also add `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`
+   with the release notes. That file becomes the GitHub release notes and
+   F-Droid's "What's New", and it has to stay under 500 characters.
+2. Check the tree passes the F-Droid guardrails:
+   `./gradlew :androidApp:testDebugUnitTest --tests '*FdroidGuardrailsTest*' --rerun`
+   (the test reads tracked files, so `git add` the new changelog first).
+   Open a pull request into master and merge it.
+3. Open a pull request from `master` into `release` and merge it. The
+   workflow only publishes a tree that is exactly some commit on master,
+   so merge master unchanged and don't commit to `release` directly.
+4. Watch the Release run in the Actions tab. When it finishes, the GitHub
+   release `<versionName>` exists with `gravel-<versionName>.apk` and its
+   `.sha256`, and the tag sits on the commit it built. F-Droid builds that
+   tag on its own schedule.
+
+If the run fails, nothing has been published yet: no tag and no release
+are created until every check passes. Fix the cause on master and merge
+master into `release` again, or re-run the job if the failure was
+transient. Merging into `release` without bumping the version is
+harmless: the run finds that version already released and stops.
 
 ## Architecture
 
