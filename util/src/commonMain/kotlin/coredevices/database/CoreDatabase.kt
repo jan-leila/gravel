@@ -8,6 +8,8 @@ import androidx.room.RoomDatabase
 import androidx.room.RoomDatabaseConstructor
 import androidx.room.TypeConverters
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.anopticlabs.gravel.gitsource.GitSourceDao
+import com.anopticlabs.gravel.gitsource.GitSourceEntity
 import io.rebble.libpebblecommon.database.RoomTypeConverters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -23,8 +25,9 @@ internal const val CORE_DATABASE_FILENAME = "coreapp.db"
         HeartEntity::class,
         MemfaultChunkEntity::class,
         AnalyticsHeartbeatEntity::class,
+        GitSourceEntity::class,
     ],
-    version = 9,
+    version = 10,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -34,6 +37,7 @@ internal const val CORE_DATABASE_FILENAME = "coreapp.db"
         AutoMigration(from = 6, to = 7),
         AutoMigration(from = 7, to = 8),
         AutoMigration(from = 8, to = 9),
+        AutoMigration(from = 9, to = 10),
     ],
     exportSchema = true,
 )
@@ -46,6 +50,7 @@ abstract class CoreDatabase : RoomDatabase() {
     abstract fun weatherLocationDao(): WeatherLocationDao
     abstract fun heartsDao(): HeartsDao
     abstract fun analyticsHeartbeatDao(): AnalyticsHeartbeatDao
+    abstract fun gitSourceDao(): GitSourceDao
 }
 
 @Suppress("NO_ACTUAL_FOR_EXPECT")
