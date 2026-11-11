@@ -325,6 +325,9 @@ interface LockerApi {
      */
     suspend fun cachedPbwSha256(id: Uuid): String?
 
+    /** Gravel: the PBW cached on the phone for [id]'s locker entry, or null when none is cached. Never fetches. */
+    suspend fun cachedPbwPath(id: Uuid): Path?
+
     /**
      * Gravel: stores the PBW at [pbwPath] as a sideloaded app like [sideloadApp], without opening it on a watch,
      * when it is the app [id].

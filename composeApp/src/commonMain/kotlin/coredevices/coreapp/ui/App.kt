@@ -12,6 +12,7 @@ import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.app.UnsignedListingDialog
 import com.anopticlabs.gravel.app.WeatherOfferDialog
 import com.anopticlabs.gravel.watchsync.FirstSyncDialog
+import com.anopticlabs.gravel.ui.rememberAppSettingsBackup
 import com.russhwolf.settings.Settings
 import coredevices.coreapp.ui.navigation.AppNavHost
 import coredevices.coreapp.ui.screens.SHOWN_ONBOARDING
@@ -47,6 +48,8 @@ fun App() {
             AppNavHost(navHostController, startDestination)
             // Gravel: above the nav host, since a watch can connect while any screen shows.
             FirstSyncDialog()
+            // Gravel: the app backup's run, which outlives the Settings screen that starts it.
+            rememberAppSettingsBackup()?.Dialogs()
             SttModelUpdatePrompt()
             SttSpeedNudgePrompt()
             // Fork: one-time update notice (currently: watchapp permissions). Self-gates
