@@ -7,6 +7,8 @@ import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.pkjs.UnreportedNetworkDenyEnforcement
 import com.anopticlabs.gravel.pkjs.NetworkDenyEnforcement
 import com.anopticlabs.gravel.watchapp.InjectedWatchAppCaptures
+import com.anopticlabs.gravel.watchsync.FirstSyncDecider
+import com.anopticlabs.gravel.watchsync.InjectedFirstSyncDecider
 import com.anopticlabs.gravel.watchapp.WatchAppCaptures
 import io.rebble.libpebblecommon.ErrorTracker
 import io.rebble.libpebblecommon.Housekeeping
@@ -548,10 +550,13 @@ class LibPebble3(
             // Gravel: an embedder that reports nothing gets no PebbleKit JS for network-denied apps.
             networkDenyEnforcement: NetworkDenyEnforcement = UnreportedNetworkDenyEnforcement,
             watchAppCaptures: WatchAppCaptures? = null,
+            // Gravel: none keeps upstream's wipe of a watch this phone has not set up.
+            firstSyncDecider: FirstSyncDecider? = null,
         ): LibPebble {
             koin = initKoin(
                 defaultConfig, webServices, appContext, tokenProvider, proxyTokenProvider, transcriptionProvider,
                 injectedPKJSHttpInterceptors, networkDenyEnforcement, InjectedWatchAppCaptures(watchAppCaptures),
+                InjectedFirstSyncDecider(firstSyncDecider),
             )
             // Reads the persisted config (not defaultConfig), but must still precede anything that
             // touches Kable's shared central manager. Every Koin single here is lazy, and Kable is

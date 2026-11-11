@@ -35,7 +35,7 @@ interface WatchPrefRealDao : WatchPrefItemDao {
         }
         logger.v { "blobdb handleWrite: $writeItem" }
         val existingItem = getEntry(writeItem.id)
-        if (existingItem == null || writeItem.timestamp.instant > existingItem.timestamp.instant) {
+        if (params.watchWins || existingItem == null || writeItem.timestamp.instant > existingItem.timestamp.instant) {
             insertOrReplace(writeItem)
             markSyncedToWatch(
                 WatchPrefItemSyncEntity(
