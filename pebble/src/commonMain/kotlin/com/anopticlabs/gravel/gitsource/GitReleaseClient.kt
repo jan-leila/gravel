@@ -48,7 +48,7 @@ class GitReleaseClient(private val httpClient: HttpClient) {
 
     /**
      * The newest [PAGE_SIZE] releases, newest first as both hosts list them. With [etag], an unchanged list answers
-     * [ReleaseFetch.NotModified], which GitHub does not count against the anonymous rate limit.
+     * [ReleaseFetch.NotModified] without a body.
      */
     suspend fun releases(repo: GitRepo, etag: String?): ReleaseFetch {
         val response = request(repo.releasesApiUrl) {

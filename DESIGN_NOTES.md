@@ -2917,6 +2917,93 @@ shared `:routers:common` library, and the worked examples of the API
   that cannot be opened reads as missing. The same approach as `:util`'s
   `SecretCipher`, in a copy, since an app cannot share Gravel's runtime.
 
+## Git sources
+
+Git Sources installs watch apps and faces from a repository's releases and
+keeps them updated, as Obtainium does for APKs. The code is in `:pebble`
+under `com.anopticlabs.gravel.gitsource`; the table is in `:util`.
+
+**Storage and the locker**
+
+- A followed repository is a `GitSourceEntity` row in `CoreDatabase`
+  (version 10), keyed by the app's UUID.
+- The app itself is an ordinary sideload, stored through
+  `LockerApi.sideloadAppWithoutLaunch`, the route the Notebook watch app
+  uses. `LockerEntry` and the libpebble database are upstream's, and
+  `Locker.update()` never removes sideloaded entries.
+
+**Hosts**
+
+- `GitReleaseClient` reads GitHub's REST API, or a Forgejo or Gitea
+  instance's `/api/v1`. Their release objects share the fields read.
+- Requests are anonymous and go only to the followed repository's host
+  (for GitHub, `api.github.com`, with downloads from `github.com` and its
+  redirects).
+- No request is made until the user adds a repository.
+- `parseGitRepoUrl` takes the first two path segments as owner and repo,
+  so instances served under a subpath are not supported. A host other
+  than github.com counts as a forge only if `/api/v1/version` answers.
+
+**Choosing a release**
+
+- `selectRelease` takes the newest release by publish time, pre-releases
+  only when asked.
+- It picks the one `.pbw` asset, or with a saved name pattern the one
+  that matches it. Several matches are reported, never guessed.
+- Assets off the repository's origin, empty, or over
+  `MAX_GIT_PBW_BYTES` (2 MiB) are not candidates.
+- `isUpdate` offers only another tag published later, so deleting the
+  newest release does not offer a downgrade.
+- The pattern the add dialog saves is the chosen file's name taken
+  literally, except that each run of digits matches any run of digits
+  (`assetPatternFor`).
+
+**Trust (`GitSourceUpdater`)**
+
+- The UUID the first install declared is the key. A release whose PBW
+  declares another UUID is refused (`WRONG_APP`), and
+  `sideloadAppWithoutLaunch` checks the UUID again.
+- Capabilities are `appinfo.json`'s list plus `pkjs` when the PBW carries
+  phone-side JavaScript (`PKJS_CAPABILITY`). A release that adds any is
+  installed only once the user approves exactly those.
+- Nothing parses a download until its length matches the API's size, and
+  its SHA-256 matches GitHub's digest when one is listed. The body is read
+  through `downloadAtMost`, which stops past the expected size.
+- What is left open is in `KNOWN_ISSUES.md`.
+
+**Background**
+
+- `PebbleAppDelegate.performBackgroundWork` runs `backgroundCheck`.
+- Each source is checked at most every `BACKGROUND_CHECK_INTERVAL` (six
+  hours), sooner after a transient error, and the list request sends the
+  last ETag.
+- Sources set to auto-update are installed. The others get one
+  notification per release (`notifiedTag`), through
+  `AndroidGitSourceNotifier`, which opens the screen through
+  `pebble://git-sources`; that deep link only navigates.
+- A source is never installed in the background when:
+  - its locker copy's digest is not the one it installed (`REPLACED`: a
+    hand sideload or a store install);
+  - its app is no longer in the locker;
+  - the last install of the same release failed for a deterministic
+    reason. That error, and a capability question, stay until the repo
+    publishes another release.
+
+**Tests**
+
+Host tests cover:
+
+- the address parsing;
+- the client against a mock engine (both hosts, ETag, rate limits);
+- selection and the pattern;
+- the updater with a fake locker and DAO (trust on first use, checks of
+  the download, the capability gate, background throttling, auto-update,
+  notify-once, replaced and removed copies);
+- the add dialog's steps in `GitSourcesViewModel`.
+
+Not host-tested, and checked on a device: `LibPebbleGitSourceLocker`
+(`PbwApp` parsing), the Koin wiring, the notification and the screens.
+
 ## F-Droid
 
 Gravel is in F-Droid's main repository as two listings built from the
