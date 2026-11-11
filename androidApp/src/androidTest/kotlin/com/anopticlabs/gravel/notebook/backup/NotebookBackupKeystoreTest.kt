@@ -37,7 +37,7 @@ import kotlin.test.assertTrue
  * Run with:
  * adb shell am instrument -w -e class \
  *   com.anopticlabs.gravel.notebook.backup.NotebookBackupKeystoreTest \
- *   com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *   com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class NotebookBackupKeystoreTest {
 

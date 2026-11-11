@@ -1,6 +1,9 @@
 package com.anopticlabs.gravel.notebook.storage
 
+import com.anopticlabs.gravel.notebook.capture.AwaitingUser
 import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
+import com.anopticlabs.gravel.notebook.capture.awaitUser
+import com.anopticlabs.gravel.notebook.routers.RouterRef
 import com.anopticlabs.gravel.notebook.capture.MAX_QUEUE_ATTEMPTS
 import com.anopticlabs.gravel.notebook.capture.QueuedCapture
 import com.anopticlabs.gravel.notebook.capture.RecordingBuffer
@@ -217,6 +220,23 @@ class QueueStoreTest {
         assertTrue(store.readQueue(strict = true).isEmpty())
         assertFalse(blob("fg_1").exists())
         assertFalse(ownCopy.exists())
+    }
+
+    @Test
+    fun onlyAnEntryWaitingOnTheUserIsRemovedAsAwaiting() = runBlocking {
+        store.enqueue("aw_1", audio, "one.m4a", 1L)
+        assertEquals(QueueStore.AwaitingRemoval.NOT_AWAITING, store.removeAwaiting("aw_1"))
+        val waiting = AwaitingUser(RouterRef.gravel("hook"), "Hook", "buy milk", "2026-09-22T17:00:00+02:00", confirm = true)
+        store.update { q -> awaitUser(q, "aw_1", waiting, attempts = 0) }
+        assertEquals(QueueStore.AwaitingRemoval.NOT_AWAITING, store.removeAwaiting("aw_1") { it == "aw_1" }, "one the drain is serving stays")
+        assertTrue(blob("aw_1").exists())
+        store.update { q -> q.map { it.copy(flagged = true) } }
+        assertEquals(QueueStore.AwaitingRemoval.NOT_AWAITING, store.removeAwaiting("aw_1"), "a flagged entry is a failed capture, not a waiting one")
+        store.update { q -> q.map { it.copy(flagged = false) } }
+        assertEquals(QueueStore.AwaitingRemoval.REMOVED, store.removeAwaiting("aw_1"))
+        assertEquals(QueueStore.AwaitingRemoval.GONE, store.removeAwaiting("aw_1"))
+        assertTrue(store.readQueue(strict = true).isEmpty())
+        assertFalse(blob("aw_1").exists())
     }
 
     @Test

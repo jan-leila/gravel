@@ -64,6 +64,8 @@ data class BackupReminder(
     val recurrence: BackupRecurrence? = null,
     val origin: BackupOrigin? = null,
     val timeToCheck: Boolean = false,
+    /** ISO-8601 with offset, see [com.anopticlabs.gravel.notebook.capture.RecordedAt]. */
+    val recordedAt: String? = null,
 )
 
 @Serializable
@@ -150,13 +152,13 @@ private fun originOf(carried: BackupOrigin?, storeId: String, id: Int): Reminder
 fun BackupReminder.toItem(localId: Int = id): ReminderItem? {
     if (id > MAX_RESTORED_REMINDER_ID) return null
     val rule = recurrence?.let { RecurrenceRule(FREQUENCY_NAMES[it.frequency] ?: return null, it.interval, it.anchorMillis) }
-    return ReminderItem(localId, remindAtMillis, message, rule, timeToCheck).takeIf { isStorableReminder(it) }
+    return ReminderItem(localId, remindAtMillis, message, rule, timeToCheck, recordedAt).takeIf { isStorableReminder(it) }
 }
 
 fun ReminderItem.toBackup(origin: ReminderOrigin? = null): BackupReminder =
     BackupReminder(
         id, remindAtMillis, message, recurrence?.let { BackupRecurrence(it.frequency.name.lowercase(), it.interval, it.anchorMillis) },
-        origin?.let { BackupOrigin(it.storeId, it.id) }, timeToCheck,
+        origin?.let { BackupOrigin(it.storeId, it.id) }, timeToCheck, recordedAt,
     )
 
 /** The stored event under [localId], or null when the archive's entry is one the store would refuse. */

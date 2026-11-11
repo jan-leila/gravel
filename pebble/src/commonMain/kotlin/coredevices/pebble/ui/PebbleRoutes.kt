@@ -80,6 +80,10 @@ object PebbleNavBarRoutes {
     @Serializable
     data object NotebookRoute : NavBarRoute
 
+    /** Gravel: Settings > Notebook > Text Routing. */
+    @Serializable
+    data object NotebookRoutingRoute : NavBarRoute
+
     @Serializable
     data object HealthRoute : NavBarRoute
 
@@ -220,7 +224,11 @@ fun NavGraphBuilder.addNavBarRoutes(
             openSpeechSettings = {
                 nav.navigateTo(PebbleNavBarRoutes.WatchSettingsCategoryRoute(section = Section.Speech.name, topLevelType = TopLevelType.Phone.name))
             },
+            openRoutingSettings = { nav.navigateTo(PebbleNavBarRoutes.NotebookRoutingRoute) },
         )
+    }
+    composableWithAnimations<PebbleNavBarRoutes.NotebookRoutingRoute>(viewModel) {
+        rememberNotebookTab()?.RoutingScreen(topBarParams)
     }
     composableWithAnimations<PebbleNavBarRoutes.NotificationAppRoute>(viewModel) {
         val route: PebbleNavBarRoutes.NotificationAppRoute = it.toRoute()

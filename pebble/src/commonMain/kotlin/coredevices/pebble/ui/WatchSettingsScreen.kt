@@ -149,6 +149,7 @@ import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigHolder
 import coredevices.util.Permission
 import coredevices.util.PermissionRequester
+import coredevices.util.PermissionResult
 import coredevices.util.granted
 import coredevices.util.emailOrNull
 import coredevices.util.models.CactusSTTMode
@@ -638,6 +639,8 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
         notebookTab?.PhoneCalendarsDialog(onDismiss = { showPhoneCalendarsDialog = false })
     }
     val calendarAccess by permissionRequester.granted(Permission.Calendar).collectAsState(false)
+    val locationAccess by permissionRequester.granted(Permission.Location).collectAsState(false)
+    val backgroundLocationAccess by permissionRequester.granted(Permission.BackgroundLocation).collectAsState(false)
     fun showPhoneCalendarInNotebook(pickedNone: Boolean) {
         notebookTab?.setPhoneCalendarShown(true)
         if (pickedNone) showPhoneCalendarsDialog = true
@@ -703,6 +706,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
             notebookSettings,
             notebookAutoBackup,
             calendarAccess,
+            locationAccess,
             textModelFacts,
             notebookGuideDone,
             notebookWatchAppItems,
@@ -964,6 +968,55 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                         section = Section.Notebook,
                         keywords = "notebook trigger word completion",
                         action = { showTriggerWordDialog = true },
+                    )
+                },
+                notebookSettings?.let {
+                    navBarNav?.let { nav ->
+                        basicSettingsActionItem(
+                            title = "Text Routing",
+                            description = NotebookSettingsText.TEXT_ROUTING,
+                            topLevelType = TopLevelType.Phone,
+                            section = Section.Notebook,
+                            keywords = "notebook routing router switch app network forward text transcript",
+                            action = { nav.navigateTo(PebbleNavBarRoutes.NotebookRoutingRoute) },
+                        )
+                    }
+                },
+                notebookSettings?.let {
+                    basicSettingsActionItem(
+                        title = "Recording Location",
+                        description = NotebookSettingsText.RECORDING_LOCATION + when {
+                            !locationAccess -> ": not allowed, tap to allow"
+                            // A watch recording is located with Gravel in the background, which needs the "all the time" grant.
+                            !backgroundLocationAccess -> ": allowed while Gravel is open; tap to allow all the time, so watch and ring recordings are placed too"
+                            else -> ": allowed"
+                        },
+                        topLevelType = TopLevelType.Phone,
+                        section = Section.Notebook,
+                        keywords = "notebook recording location place gps where background watch",
+                        action = {
+                            uiContext?.let { ctx ->
+                                scope.launch {
+                                    val permission = if (locationAccess) Permission.BackgroundLocation else Permission.Location
+                                    if (permissionRequester.requestPermission(permission, ctx) == PermissionResult.RejectedForever) {
+                                        permissionRequester.openPermissionsScreen(ctx)
+                                    }
+                                }
+                            }
+                        },
+                    )
+                },
+                notebookSettings?.let { notebook ->
+                    basicSettingsDropdownItem(
+                        title = "Ring Recording Location",
+                        description = NotebookSettingsText.RING_LOCATION,
+                        topLevelType = TopLevelType.Phone,
+                        section = Section.Notebook,
+                        keywords = "notebook ring index recording location place sync",
+                        items = NotebookSettingsChoices.ringLocationWithCurrent(notebook.ringLocationSeconds),
+                        selectedItem = notebook.ringLocationSeconds,
+                        onItemSelected = { notebookTab?.setRingLocationSeconds(it) },
+                        itemText = { NotebookSettingsChoices.ringLocationText(it) },
                     )
                 },
                 notebookSettings?.let { notebook ->

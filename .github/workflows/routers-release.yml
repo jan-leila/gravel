@@ -1,0 +1,158 @@
+name: Router apps release
+
+# Builds, signs and publishes Gravel's first-party router apps (routers/README.md) when a
+# `routers-v*` tag is pushed: the signed APKs go on a GitHub release, and into Gravel's own
+# F-Droid repository on the `fdroid-repo` branch, which GitHub Pages serves. F-Droid's main
+# repository is not involved: it would sign with its own keys, which Gravel's built-in trust
+# could not match.
+#
+# Secrets: ROUTER_KEYSTORE_BASE64 (the apps' keystore, base64), ROUTER_KEYSTORE_PASSWORD,
+# ROUTER_KEY_ALIAS, ROUTER_KEY_PASSWORD; FDROID_KEYSTORE_BASE64 (the repository's own signing
+# keystore, base64), FDROID_KEYSTORE_PASSWORD, FDROID_KEY_ALIAS, FDROID_KEY_PASSWORD.
+
+on:
+  push:
+    tags:
+      - 'routers-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Cache build deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: android-deps-${{ runner.os }}-${{ hashFiles('gradle/**', 'gradlew*', 'gradle.properties', '*.gradle*') }}
+          restore-keys: |
+            android-deps-${{ runner.os }}-
+      - name: Write the signing keystore
+        run: |
+          printf '%s' "$ROUTER_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/routers.jks"
+          test -s "$RUNNER_TEMP/routers.jks"
+        env:
+          ROUTER_KEYSTORE_BASE64: ${{ secrets.ROUTER_KEYSTORE_BASE64 }}
+      # The shared library is lint-checked in full here: assembleRelease runs only the fatal
+      # checks, which miss a call to an API newer than the apps' minSdk.
+      - name: Lint the router apps
+        run: >-
+          ./gradlew :routers:common:lintDebug
+          :routers:slack:lintDebug :routers:homeassistant:lintDebug :routers:vikunja:lintDebug :routers:mastodon:lintDebug
+          :routers:osmnote:lintDebug :routers:signal:lintDebug :routers:actual:lintDebug :routers:email:lintDebug
+      - name: Build and test the router apps
+        run: >-
+          ./gradlew
+          :routers:common:testDebugUnitTest
+          :routers:slack:assembleRelease :routers:slack:testDebugUnitTest
+          :routers:homeassistant:assembleRelease :routers:homeassistant:testDebugUnitTest
+          :routers:vikunja:assembleRelease :routers:vikunja:testDebugUnitTest
+          :routers:mastodon:assembleRelease :routers:mastodon:testDebugUnitTest
+          :routers:osmnote:assembleRelease :routers:osmnote:testDebugUnitTest
+          :routers:signal:assembleRelease :routers:signal:testDebugUnitTest
+          :routers:actual:assembleRelease :routers:actual:testDebugUnitTest
+          :routers:email:assembleRelease :routers:email:testDebugUnitTest
+        env:
+          ROUTER_KEYSTORE: ${{ runner.temp }}/routers.jks
+          ROUTER_KEYSTORE_PASSWORD: ${{ secrets.ROUTER_KEYSTORE_PASSWORD }}
+          ROUTER_KEY_ALIAS: ${{ secrets.ROUTER_KEY_ALIAS }}
+          ROUTER_KEY_PASSWORD: ${{ secrets.ROUTER_KEY_PASSWORD }}
+      # Every APK must carry the one router signature; an unsigned or otherwise signed one would
+      # not be trusted by Gravel, so the release stops here instead of shipping it.
+      - name: Check the signatures
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)"
+          mkdir -p "$RUNNER_TEMP/apks"
+          expected=""
+          for apk in routers/*/build/outputs/apk/release/*-release.apk; do
+            digest="$("$apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+            test -n "$digest"
+            if [ -z "$expected" ]; then expected="$digest"; fi
+            test "$digest" = "$expected"
+            cp "$apk" "$RUNNER_TEMP/apks/"
+          done
+          echo "router signer SHA-256: $expected"
+          ls "$RUNNER_TEMP/apks"
+      # The tag names the version in routers/version.properties, and every APK carries it: a
+      # release built from a stale file would re-ship the last versionCode, which F-Droid clients
+      # would never offer as an update.
+      - name: Check the version against the tag
+        run: |
+          name="$(sed -n 's/^versionName=\(.*\)$/\1/p' routers/version.properties)"
+          code="$(sed -n 's/^versionCode=\([0-9][0-9]*\)$/\1/p' routers/version.properties)"
+          echo "tag: $GITHUB_REF_NAME, version file: $name ($code)"
+          test "$GITHUB_REF_NAME" = "routers-v$name"
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)"
+          for apk in "$RUNNER_TEMP"/apks/*.apk; do
+            badging="$("$aapt2" dump badging "$apk" | head -n 1)"
+            echo "$badging"
+            test "$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")" = "$code"
+            test "$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")" = "$name"
+          done
+      - name: Publish the GitHub release
+        run: gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP"/apks/*.apk --title "Router apps $GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+      # Gravel's own F-Droid repository lives on the fdroid-repo branch: fdroidserver indexes the
+      # APKs and signs the index with the repository's key; GitHub Pages serves the branch.
+      - name: Checkout the F-Droid repository branch
+        uses: actions/checkout@v4
+        with:
+          ref: fdroid-repo
+          path: fdroid
+      - name: Install fdroidserver
+        run: pipx install fdroidserver
+      - name: Update the F-Droid repository
+        run: |
+          cd fdroid
+          printf '%s' "$FDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/fdroid.jks"
+          test -s "$RUNNER_TEMP/fdroid.jks"
+          mkdir -p repo
+          # An index that already lists a package at this versionCode or above would not be an update.
+          if [ -f repo/index-v1.json ]; then
+            aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)"
+            for apk in "$RUNNER_TEMP"/apks/*.apk; do
+              badging="$("$aapt2" dump badging "$apk" | head -n 1)"
+              pkg="$(printf '%s' "$badging" | sed -n "s/.*package: name='\([^']*\)'.*/\1/p")"
+              built="$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
+              indexed="$(jq -r --arg p "$pkg" '[.packages[$p][]?.versionCode] | max // 0' repo/index-v1.json)"
+              echo "$pkg: built $built, indexed $indexed"
+              test "$built" -gt "$indexed"
+            done
+          fi
+          cp "$RUNNER_TEMP"/apks/*.apk repo/
+          cat > config.yml <<CONFIG
+          repo_url: https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/repo
+          repo_name: Gravel routers
+          repo_description: Gravel's first-party router apps for the Notebook's text routing.
+          keystore: $RUNNER_TEMP/fdroid.jks
+          keystorepass: $FDROID_KEYSTORE_PASSWORD
+          keypass: $FDROID_KEY_PASSWORD
+          repo_keyalias: $FDROID_KEY_ALIAS
+          CONFIG
+          fdroid update --create-metadata --pretty
+          rm config.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A repo metadata
+          git commit -m "Router apps $GITHUB_REF_NAME" || echo "nothing to commit"
+          git push
+        env:
+          FDROID_KEYSTORE_BASE64: ${{ secrets.FDROID_KEYSTORE_BASE64 }}
+          FDROID_KEYSTORE_PASSWORD: ${{ secrets.FDROID_KEYSTORE_PASSWORD }}
+          FDROID_KEY_ALIAS: ${{ secrets.FDROID_KEY_ALIAS }}
+          FDROID_KEY_PASSWORD: ${{ secrets.FDROID_KEY_PASSWORD }}

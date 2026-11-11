@@ -30,11 +30,11 @@ import kotlin.time.Duration.Companion.seconds
  * probe skip unless that is the configured one, so a matrix run cannot
  * silently measure the wrong model. Run on its own, after a force-stop,
  * once per configured model and device:
- *   adb shell am force-stop com.anopticlabs.gravel
+ *   adb shell am force-stop com.anopticlabs.gravel.signed
  *   adb shell am instrument -w \
  *     -e class coredevices.coreapp.transcription.DictationColdPathProbe \
  *     -e model whisper-base-en \
- *     com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *     com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  *   adb logcat -d | grep -E 'ColdPathProbe|dictation (coldpath|engine)'
  */
 class DictationColdPathProbe {

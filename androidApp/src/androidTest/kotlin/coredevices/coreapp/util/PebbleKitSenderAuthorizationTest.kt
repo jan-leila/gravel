@@ -30,7 +30,7 @@ import kotlin.test.fail
  * Run with:
  * adb shell am instrument -w -e class \
  *   coredevices.coreapp.util.PebbleKitSenderAuthorizationTest \
- *   com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *   com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class PebbleKitSenderAuthorizationTest {
 

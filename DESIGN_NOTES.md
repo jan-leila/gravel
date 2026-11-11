@@ -40,7 +40,7 @@ which describes upstream's build, and their `am broadcast` recipes
 address `coredevices.coreapp`, which is the namespace, not the installed
 package; on a Gravel debug build the package half of `-n` is the
 applicationId, as in
-`-n com.anopticlabs.gravel/coredevices.coreapp.debug.QemuSetupReceiver`. The
+`-n com.anopticlabs.gravel.signed/coredevices.coreapp.debug.QemuSetupReceiver`. The
 loud failure here is `VerifyExportedComponents`: a removal that misses
 leaves the receiver exported in the merged manifest, which fails the
 release build.
@@ -170,7 +170,13 @@ takes what a sync reads. The sink drops recordings under a second as
 taps, resamples the rest to 16 kHz with `:resampler`, and ingests them as
 WAV marked as from the ring, dated by the ring's clock unless the ring
 gives no time, one before 2025 (a clock the phone never set) or one ahead
-of the phone's, in the phone's time zone at the sync. As for a watch
+of the phone's, in the phone's time zone at the sync. The ring has no
+position, so a recording dated by the ring's clock that ended at most the
+Ring Recording Location setting's window before the sync (10 minutes by
+default, 15 seconds to an hour; Off is stored as -1, since preferences
+hold no null)
+is placed with a `RecordingLocation` lookup at the sync; any other has no
+location, and with the setting Off none has one. As for a watch
 recording, Pause all does not hold a ring recording and it never counts as
 long, whatever its length, so it does not wait for the charger; the
 Notebook's settings texts and paused lines name the exception. While the
@@ -1846,10 +1852,10 @@ in the app's device suite:
   resampled to 16 kHz by the shared `:resampler`, and transcribed by the
   long-form path or the server (below); a capture that opens with the
   trigger word is parked as a completion claim before the text model is
-  loaded. Otherwise the
-  cue detector picks the reminder or the note prompt for the text model.
+  loaded. Otherwise the text routing (next bullet) picks the router that
+  consumes the transcript.
   A voice note's body is its full transcript: the note prompt asks the
-  model for the title and tags only, and routing reads the transcript.
+  model for the title and tags only, and folder routing reads the transcript.
   The time of the recording, not of the processing, dates the
   note and is the "now" the rules read a reminder's time from. A capture
   is published by storing what it asked for (a
@@ -1895,6 +1901,149 @@ in the app's device suite:
   (`NotebookEngines` in `:composeApp`). A capture is dated in the time zone
   its entry carries; one without a zone, or with one the runtime does not
   know, uses the current zone.
+- Text routing (the `routers` package) decides what a capture's transcript
+  becomes. Past the trigger-word check the pipeline builds the transcript
+  and the recording's start, one ISO-8601 instant with the offset of the
+  zone it was recorded in (`RecordedAt`, rendered once from the queue
+  entry's capture time, which the phone recorder and the watch handler
+  take at the recording's start) and, when the phone knew it, where the
+  recording was made (a `RecordingLocation` lookup runs beside every
+  recording, phone or watch, and at the sync for a recent ring recording
+  (see Gravel's ring client), with the location permission the record
+  button asks for once; a watch or ring recording is looked up with Gravel in the
+  background, which from Android 10 needs the "all the time" grant that
+  the Recording Location setting asks for next, else the lookup answers
+  nothing; the fix is stored on the queue entry), into a
+  `RoutedText`, and `RouteWalk`
+  follows the stored `RoutingConfig` from its entry router to the router
+  that consumes it (every router is named by a `RouterRef`, an id and a
+  namespace: Gravel's own kinds have none, and an app's router has the
+  SHA-256 of the certificate that signed the app, so nothing an app
+  declares can pass as one of Gravel's own routers or collide with
+  another signer's): a `Note` router builds the note with the text model
+  (the stamp goes into the front matter as `recorded:`), a `Reminder`
+  router a reminder (the stamp is stored on the item and carried by the
+  backup), and an `App` or `Network` router a `BuiltCapture.Forward` the
+  drain delivers before the capture settles, cancellable, so a stop or a
+  pause still lands during a delivery; the capture leaves the queue only
+  once the delivery returned. A `Switch` forwards to the target of the
+  first rule whose regular expression matches, else to its fallback; the
+  matcher is RE2/J (`SwitchMatcher`), linear in the text whatever the
+  pattern, so no rule can hold the drain, at the price of RE2 syntax (no
+  backreferences, no lookaround; the platform's engine backtracks, and on
+  Android copies the text to a String before matching, so a deadline read
+  through a `CharSequence` never fired there). The default routing is a
+  Switch of the reminder cues (`RoutingConfig.REMINDER_CUES`, the cue
+  detector's requests as rules, without its guards) before a Reminder
+  router, falling back to a Note router, so an install upgraded from the
+  cue detector (`ReminderIntent`, no longer on the pipeline path) keeps
+  its spoken reminders. Constraints the code relies on:
+  - The routing is `routing`, an encrypted JSON value under the Notebook
+    root (`RoutingConfigStore`), validated on read and on write
+    (`RoutingConfig.requireWellFormed`: ids, names, refs that exist, the
+    namespace rule above, https-only addresses, bounded patterns that
+    compile, no circle of switches). Absent reads as the default; a file that is present but
+    cannot be read, or was written by a newer build, holds the drain with
+    a remedy that opens Settings > Notebook > Text Routing, where Reset
+    sets it aside, and is never taken for the default. It is settings, so
+    the backup leaves it out, and Start over sets it aside with the rest.
+  - An app router is a receiver another app declares under the API in
+    `ROUTER_API.md`: filtering on the action, exported, and guarded by the
+    signature-level permission Gravel's manifest defines and holds, so
+    only Gravel can send to it. A receiver without exactly that guard is
+    not listed: the system skips one guarded otherwise without a word, and
+    any app could reach an unguarded one in Gravel's name. A delivery is
+    one explicit ordered broadcast on the foreground queue
+    (`AppRouterDelivery`, `AndroidRouterBroadcastSender`) carrying the API
+    version, the capture id and the text, plus the recording's start and
+    its location only when the receiver declared it needs them (the
+    `needs` meta-data) and the user granted them for that router (`Shares`,
+    one `Grant` per `Need`: ask, always or never; a Network router has the
+    grants alone, its needs being whatever is not refused), nothing else,
+    acknowledged by the receiver's result code within
+    `RouterApi.DELIVERY_WAIT_MILLIS`; no acknowledgement is a retry, and a
+    receiver can refuse for good with its own result code and a reason,
+    which flags the recording with that reason (`ROUTER_REFUSED`). The
+    receiver, its declared id, its app's signer against the ref's
+    namespace, and the app's trust are checked again at every delivery.
+    A receiver declares its id in meta-data, and an app signed by several
+    certificates has no namespace, so its receivers are not routers.
+    Trust (`RouterTrust`) is per certificate: the list in force is the
+    built-in list (`DEFAULT_TRUSTED_ROUTER_SIGNERS`, empty as shipped)
+    less the built-in ones the user removed, plus the ones the user added
+    by digest or by trusting an app; the user's changes (`TrustEntries`)
+    are kept apart from the built-in list in a no-backup file
+    (`RouterTrustStore`) that reads as no changes when it cannot be read,
+    so a certificate a later build adds reaches a phone that has a file,
+    and a removal survives that. A rotated signer still answers for its
+    namespace and its trust through the platform's signing lineage. The
+    settings screen lists the certificates in force, lists every router
+    the installed apps declare, trusted or not, with the app's name and
+    namespace, asks for the trust (showing the signer) when an untrusted
+    one is picked, and exports and imports the routing and the trust
+    changes as one JSON document (`RoutingExport`, through the Storage
+    Access Framework like a manual backup); an import replaces both only
+    after the whole file validated. Gravel exports nothing for this; `NotebookManifestTest` pins
+    the permission, the query and the absence of exported components.
+  - A `Time` router forwards by when the recording was made, read off
+    the payload's own `recordedAt` in the offset it carries
+    (`TimeMatcher`: minutes of the day, ISO day of the week, day and
+    week of the month and year, month, year; a rule is a conjunction of
+    up to four inclusive ranges, each wrapping round its cycle except the
+    year), so a recording made at 23:00 in Berlin is an evening one
+    wherever the phone is when it is processed. It is the second
+    forwarding kind: `RouterConfig.forwards` and `forwardsText` are what
+    the walk, the circle check and the edits go by, so a third kind adds
+    itself there.
+  - A `Place` router forwards by where the recording was made: the first
+    rule whose spot (a point and a radius, named for the settings) the
+    recording's location is within, or outside of when the rule says so,
+    else the fallback; a recording with no location goes to the router
+    the user named for that, or to the fallback (`PlaceMatcher`, the
+    haversine distance on the mean Earth radius; the `haversine` artifact
+    elsewhere in the tree is an unrelated Ring stub). The payload's
+    location is read here inside Gravel; the grants govern only what
+    leaves the phone.
+  - A router can wait on the user: one set to ask first (`confirm`), or
+    one with an Ask grant for a part it needs. The walk then ends in a
+    `BuiltCapture.ToConfirm` and the drain parks the capture on its queue
+    entry (`AwaitingUser`: the transcript as routed, the router's ref and
+    name, the open questions, the one-time grants and refusals), giving
+    the attempt back in the same write, and leaves it out of every pass
+    until `CaptureDrain.requestResume` names it; the resume is served
+    inside a pass, before the next capture, through
+    `CaptureBackend.resume`, which reads the router as it is now (a
+    confirmation it came to ask for meanwhile is asked, and a grant it
+    gained meanwhile does not override a No given for this recording)
+    and builds from the kept transcript without a speech step. A resume
+    that has to wait (no network) is asked for again once the pass ends,
+    so the network's return sends it without a second Send. The rows show
+    the parked capture with its questions (`UserAnswers` records an
+    answer, makes it the router's grant when asked to, and resumes on the
+    last one), Send, Dismiss and Re-record; the rows are rebuilt from the
+    queue on every status read, keeping the label the drain left on one
+    (why the last send did not go through), and a count-only notification
+    (`notebook_awaiting`) says recordings wait while the app is off screen.
+  - The settings can ask the text model to rewrite the routing from a
+    description (`RoutingViewModel.describeChange`): the routing goes to
+    the model with its secrets swapped out (`RoutingSecrets`: a token
+    becomes `SECRET_n`, a spot loses its coordinates), the answer is read
+    with the same lenient JSON extraction the notes use, the secrets go
+    back, the result is validated like any save, and what changed
+    (`RoutingDiff`) is shown for the user to keep or discard; nothing is
+    stored before that. One retry carries the refusal's reason.
+  - A network router posts the payload (`NetworkPayload`: the same
+    fields, the shared parts only) through a `TextPoster` the app binds to a Ktor client of its
+    own (`KtorTextPoster`), answered by the status alone: a 2xx is taken,
+    a 4xx other than 408 and 429 flags the capture, no network or a server
+    out of reach makes it wait for the network, and the rest is tried
+    again. Cleartext stays blocked app-wide.
+  - Host tests cover the payload, the config's validation and round trip,
+    the walk, the matcher, the two stores, the trust rule, the
+    deliveries and the pipeline on fakes, the Ktor poster on a mock
+    engine, and the screen's view model; the package manager reads, the
+    broadcast sender, the Koin wiring and the screen are checked on a
+    device only.
 - The speech setting routes captures (`NotebookSpeech` in `:composeApp`,
   `SpeechRoute`): Local Only and the Rebble modes with a phone fallback
   use the phone; Server Only, Server (with Local Fallback), and Local
@@ -2705,12 +2854,108 @@ hold its rules.
   `pebble://show-watches` link the notification also carries, so that
   link opens only the Devices tab.
 
+## First-party router apps
+
+The apps under `routers/` are Gravel's own routers for the Notebook's text
+routing (`ROUTER_API.md`), one small Android app per integration on the
+shared `:routers:common` library, and the worked examples of the API
+(`routers/README.md` has the user-facing side). What the tree decides:
+
+- **A separate key, and no F-Droid main listing.** Gravel trusts routers by
+  signing certificate, and F-Droid's main repository signs each app with a
+  key of its own, so a router app built there could never match a
+  built-in trusted signer. The apps are signed with one key kept outside
+  the tree (the build signs release only when the environment names it,
+  and packages release unsigned otherwise, like `:androidApp`), its
+  certificate's SHA-256 is Gravel's built-in trusted signer
+  (`DEFAULT_TRUSTED_ROUTER_SIGNERS`), and the APKs go out as GitHub
+  releases and through Gravel's own F-Droid repository. The modules are
+  still tracked in this tree, so `FdroidGuardrailsTest` scans them with
+  everything else: their build files keep to the catalog and to allowed
+  repositories, although F-Droid's recipe builds `:androidApp` alone.
+- **Acknowledge, then send.** A receiver has the system's foreground
+  broadcast budget, so `RouterReceiver` writes the delivery to an outbox
+  (`Outbox`: one file per capture id, written whole or not at all, so a
+  repeated delivery replaces rather than doubles) and acknowledges; an
+  `OutboxWorker` (WorkManager, network required, exponential backoff)
+  sends what waits. An app can refuse at once (`RouterApp.refusal`) for a
+  delivery that can never be sent as it is set up, with a reason Gravel
+  shows: a missing setting, an address `Http` would refuse, no amount to
+  book, so Gravel flags the recording instead of acknowledging it and
+  finding out at the send. A refusal from the server side (an answer no
+  retry changes: a bad token, a redirect, no such API at the address, a
+  certificate the pin does not match; `HttpAnswer.addressReason` holds
+  the statuses every integration reads alike), or a delivery still
+  waiting after `OutboxWorker.MAX_RUNS`, sets the delivery aside under
+  `not_sent` with its reason and tells the user in a notification (the
+  settings screen asks for the permission on its first showing); the
+  settings screen lists what was set aside, to try again or discard. The
+  text is kept because it is the only copy: Gravel drops the recording
+  once a router acknowledged.
+- **The guard is checked, not assumed.** The system checks a sender's
+  permission by name, so while Gravel is absent any app could define
+  `ROUTE_NOTEBOOK_TEXT` itself and deliver in Gravel's name.
+  `RouterReceiver` therefore asks who defined the permission
+  (`GravelSigners`): the package `com.anopticlabs.gravel`, at signature
+  level, signed by a key in `GravelSigners.TRUSTED` (F-Droid's key for
+  Gravel) or by the router app's own key, so a locally built pair works
+  on one debug key. Nothing else on API 26 identifies a broadcast's
+  sender to its receiver.
+- **One version for all eight.** `routers/version.properties` is what
+  every router build file reads, and the release workflow checks it
+  against the tag, the built APKs and the F-Droid repository's index, so
+  a tag cannot re-ship a `versionCode` the clients already have.
+- **No dependencies beyond the platform and androidx.** HTTP is
+  `HttpsURLConnection` (`Http`), JSON is built by hand (`jsonString`), the
+  outbox format is `java.util.Properties`, so the apps stay tiny and the
+  request builders are pure functions tested on the JVM. Cleartext is
+  allowed only to a private address and only by an app that says so: the
+  self-hosted relays (Home Assistant, Signal, Actual) often have no TLS on
+  a LAN.
+- **Secrets sealed at rest.** A token or password is encrypted with an
+  AES-GCM key the Android Keystore holds for the app (`Secrets`); a value
+  that cannot be opened reads as missing. The same approach as `:util`'s
+  `SecretCipher`, in a copy, since an app cannot share Gravel's runtime.
+
 ## F-Droid
 
-Gravel is in F-Droid's main repository, as `com.anopticlabs.gravel`.
+Gravel is in F-Droid's main repository as two listings built from the
+same tags:
+
+- **Gravel**, `com.anopticlabs.gravel.signed`, the default build. It is
+  signed with the developer's key and reproducible: the Release workflow
+  (`.github/workflows/release.yml`) publishes the signed APK on the tag's
+  GitHub release, which Obtainium installs from, and F-Droid builds the
+  tag itself, copies that APK's signature onto its own unsigned build,
+  and publishes the developer-signed APK only if the copy verifies, that
+  is only if both builds are identical outside the signing block. A tag
+  whose builds differ is not published on F-Droid at all.
+- **Gravel (unsigned)**, `com.anopticlabs.gravel`, the original listing,
+  built with `-Pgravel.unsigned=true` and signed by F-Droid's key. Installs
+  from before the split update along it. The property sets the
+  applicationId and app name (`androidApp/build.gradle.kts`) and
+  `CommonBuildKonfig.UNSIGNED_LISTING` (`util`); both scripts read it
+  through `UnsignedListing` in `buildSrc`. The flag shows
+  `UnsignedListingDialog` on every launch until the user closes it with
+  "Don't Show Again" ticked (a `Settings` flag): why to switch, and how.
+  The backup and restore steps are left out only when `NotebookDataCheck`
+  finds nothing a backup would carry (notes, folders, queued captures,
+  reminders, reminder history); a store it cannot read counts as data.
+  The button carries the F-Droid logo as a one-colour silhouette
+  (`drawable/fdroid_logo.png`, rendered from
+  `fdroid-logo-2015/default_notification.svg` in
+  gitlab.com/fdroid/artwork, GPL-3.0-or-later or CC-BY-SA-3.0; (c) William
+  Theaker, Robert Martinez, Andrew Nayenko), drawn with `Icon` so it takes
+  the button's text colour. The two builds cannot be installed side by
+  side (both declare the fixed `com.getpebble.android.provider.basalt`
+  authority) and have different signers, so switching means a Notebook
+  backup, an uninstall, a fresh install, a restore and a new watch
+  pairing. `UnsignedListingTest` checks that the built applicationId
+  matches the flag and the dialog's link.
+
 Staying there rests on a split between what the tree guarantees on its
-own and what the build recipe (the app's metadata file in F-Droid's
-`fdroiddata` repository, maintained out of tree) has to supply. The two
+own and what the build recipes (the apps' metadata files in F-Droid's
+`fdroiddata` repository, maintained out of tree) have to supply. The two
 must agree, so both halves are recorded here.
 
 What the tree guarantees, and how it is pinned:
@@ -2752,29 +2997,29 @@ What the tree guarantees, and how it is pinned:
   `NativeLibPathsSentinelTest` checks the mappings in the CMake builds
   the Gradle files declare, and the check's registration and its list
   of libraries built here.
-- `versionName` is `git describe --tags --first-parent HEAD` and
-  `versionCode` the commit count, both functions of the built commit
-  (`androidApp/build.gradle.kts`), so a tag checkout reports exactly the
-  tag name and the values the recipe declares for that tag can be checked
-  against the built APK. The first-parent walk keeps upstream's tags,
-  reachable through every sync merge's second parent, from describing a
-  Gravel commit (git describe stops after ten candidate tags, so a non-tag
-  build would otherwise report the newest upstream tag); a release tag
-  has to sit on master's first-parent line, which tagging the release
-  commit on master gives.
-- `androidApp/version.properties` holds one line, `versionCode=<digits>`,
-  the versionCode of the most recent tagged release. It exists for
-  F-Droid's update checker, which reads it from a tag checkout (it cannot
-  count commits) and takes the tag name as versionName. The release commit
-  bumps it to the count that commit will have once tagged. Three checks
-  guard it: the Gradle-time `VerifyReleaseVersionFile` task (wired before
+- `androidApp/version.properties` holds a `versionCode=<digits>` line
+  and a `versionName=<major>.<minor>.<patch>` line, in any order, and
+  `androidApp/build.gradle.kts` stamps both into the APK, so the built
+  numbers are a function of the committed file alone and nothing in the
+  build reads a tag. Between releases the file names the last release.
+  The Release workflow creates each release tag from the file's
+  versionName on the commit it built, so a tag checkout's file always
+  names its own tag; F-Droid's update checker reads the versionCode from
+  the file and takes the tag name as the versionName. Three checks guard
+  it: the Gradle-time `VerifyReleaseVersionFile` task (wired before
   `preBuild`, so it runs on every build everywhere) checks the shape on
-  every build and, on a tag checkout, that the value equals the commit
-  count the build stamps into the APK; `FdroidGuardrailsTest` repeats both
-  and also requires a `changelogs/<value>.txt` for the value the file
-  names; a tag-only CI step compares the file, the commit count, and the
-  versionCode read back from the built APK. All three read the file as
-  exactly one LF-terminated `versionCode=<digits>` line.
+  every build and, on a checkout of a release-shaped tag, that the
+  versionName is that tag; `FdroidGuardrailsTest` repeats both and also
+  requires a `changelogs/<versionCode>.txt` for the value the file names;
+  a CI step compares the file with the numbers read back from the built
+  APK, and with the tag on a tag build. The task and the test share one
+  parser, `ReleaseVersion` in `buildSrc/src/shared` (compiled into
+  buildSrc and into androidApp's unit tests, so it stays free of the
+  Gradle API). It allows other lines but requires each key to be on
+  exactly one line, which must be the whole LF-terminated `key=value`:
+  the recipe's unanchored `versionCode=(\d+)` would otherwise read a
+  second mention, a comment included, and the workflows read each key
+  with a line-anchored sed, which a CRLF line would defeat.
 - No module pins a Gradle JVM toolchain. The buildserver ships a single JDK
   (21) with toolchain provisioning disabled, so upstream's `jvmToolchain(17)`
   calls in `libpebble3`, `blobannotations`, and `blobdbgen` are removed and
@@ -2794,8 +3039,35 @@ What the tree guarantees, and how it is pinned:
   variant's dictation test clip from the release one. CI builds the
   release variant on a keystore-less checkout and compares the built
   `versionName` with `git describe` of the built commit.
+- Nothing the build stamps into the APK depends on the state of the
+  working tree, only on the commit. F-Droid's checkout is always dirty
+  (the recipe's `rm:` paths inside the submodules, and fdroidserver's
+  `remove_signing_keys`, which strips `signingConfigs` blocks and
+  `signingConfig = …` lines from every gradle file before building), so
+  `util`'s `GIT_HASH`/`USER_AGENT_VERSION` is `git rev-parse --short=12
+  HEAD` where upstream uses `git describe --always --dirty`. The fixed
+  abbreviation length matters too: git's default scales with the
+  clone's object count. The engines' ggml stamps `git rev-parse --short
+  HEAD` of its submodule, plus `-dirty`, into its debug info, which the
+  linker hashes into the libraries' build ID: two checkouts of one commit
+  built arm64 `libllmjni.so` and `libwhisperjni.so` that differed in the
+  build ID alone. Both native modules' CMakeLists.txt set `GIT_EXE` to
+  `OFF` before adding the submodule, which skips ggml's git query, and
+  llm-native pins `LLAMA_BUILD_COMMIT`/`LLAMA_BUILD_NUMBER`, whose
+  defaults are a git abbreviation and a commit count.
+- The Release workflow runs on every push to the `release` branch and
+  publishes only a versionName that has no GitHub release yet, from a
+  tree identical to a commit on master, with both numbers above the
+  newest other release tag's. It builds the APK unsigned on JDK 21, like the
+  buildserver, and signs it afterwards with `apksigner --alignment-preserved
+  true`, so signing adds the APK Signing Block and nothing else. It then
+  runs `apksigcopier compare`, the check F-Droid runs against its own
+  build, between the signed and unsigned APKs, and refuses to publish
+  unless the signer is the one in the `GRAVEL_SIGNER_SHA256` repository
+  variable. The release's notes are the tag's fastlane changelog.
 
-What the recipe has to supply (field names as in the fdroiddata format):
+What the recipes have to supply (field names as in the fdroiddata format;
+everything below applies to both listings unless it names one):
 
 - `submodules: yes`: the engines are compiled from the whisper.cpp and
   llama.cpp submodules.
@@ -2826,8 +3098,25 @@ What the recipe has to supply (field names as in the fdroiddata format):
   tags and errors if none of them carries the file, so the recipe can
   only enable update checking once a tag containing
   `androidApp/version.properties` exists.
-- The build subdirectory is `androidApp`; the unsigned release APK is the
-  output F-Droid signs.
+- The build subdirectory is `androidApp`, and the output is the unsigned
+  release APK.
+- Gravel (`com.anopticlabs.gravel.signed`): `Binaries:` the GitHub
+  release asset, `https://github.com/david-cant-code/pebble-app-degoogled/releases/download/%v/gravel-%v.apk`
+  (`%v` is the versionName, which is the tag name), and
+  `AllowedAPKSigningKeys:` the signing certificate's SHA-256, the same
+  value as `GRAVEL_SIGNER_SHA256`. The GitHub release has to exist before
+  F-Droid's build of the tag runs; the Release workflow creates the
+  release and the tag together, after every check has passed, so a tag
+  never exists without its release unless something outside the workflow
+  creates one.
+- Gravel (unsigned) (`com.anopticlabs.gravel`): `gradleprops:
+  [gravel.unsigned=true]` on every build entry, and no `Binaries:`; F-Droid
+  signs this one with its own key. Its listing name and text override the
+  in-tree fastlane metadata (which both listings read, as the repo-root
+  `fastlane/metadata/android/` applies to every app built from the
+  repository) from `metadata/com.anopticlabs.gravel/en-US/` in
+  fdroiddata, which fdroidserver reads after the source tree's (update.py
+  `insert_localized_app_metadata`).
 - Anti-features: the on-device dictation models and the Notebook's text
   models are runtime downloads from Hugging Face (`ModelCatalog`), which
   is expected to draw the NonFreeNet anti-feature flag; that documents
@@ -2837,7 +3126,8 @@ What the recipe has to supply (field names as in the fdroiddata format):
 
 ## Branding assets
 
-applicationId is `com.anopticlabs.gravel`; the Kotlin `namespace` and
+applicationId is `com.anopticlabs.gravel.signed` (`com.anopticlabs.gravel`
+for the unsigned listing, see F-Droid above); the Kotlin `namespace` and
 source packages stay `coredevices.coreapp` (see the branding rule in
 `CLAUDE.md`). The launcher icon, in-app wordmark, and fastlane graphics
 come from `art/gravel-logo.png`; the brand color is `gravelPurple`

@@ -13,12 +13,12 @@ object ReminderExtractor {
     const val FALLBACK_MESSAGE_MAX_CHARS = 200
     const val FALLBACK_MESSAGE = "Reminder"
 
-    fun proposal(raw: String, transcript: String, spoken: SpokenTime): ReminderProposal {
+    fun proposal(raw: String, transcript: String, spoken: SpokenTime, recordedAt: String? = null): ReminderProposal {
         val message = message(raw, transcript)
         return when (spoken) {
-            is SpokenTime.Read -> ReminderProposal(message, spoken.atMillis, ReminderTimeStatus.USABLE)
-            SpokenTime.Unread -> ReminderProposal(message, null, ReminderTimeStatus.TO_CHECK)
-            SpokenTime.None -> ReminderProposal(message, null, ReminderTimeStatus.NO_TIME)
+            is SpokenTime.Read -> ReminderProposal(message, spoken.atMillis, ReminderTimeStatus.USABLE, recordedAt)
+            SpokenTime.Unread -> ReminderProposal(message, null, ReminderTimeStatus.TO_CHECK, recordedAt)
+            SpokenTime.None -> ReminderProposal(message, null, ReminderTimeStatus.NO_TIME, recordedAt)
         }
     }
 

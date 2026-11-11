@@ -28,6 +28,9 @@ class ReminderJsonTest {
         assertEquals("WEEKLY", recurrence.getValue("frequency").jsonPrimitive.content)
 
         assertEquals(setOf("id", "remindAtMillis", "message"), keys(NotebookJson.encodeToString(ReminderItem(1, 2L, "one-shot"))))
+        val spoken = ReminderItem(1, 2L, "spoken", recordedAt = "2026-10-29T14:03:11-04:00")
+        assertEquals(setOf("id", "remindAtMillis", "message", "recordedAt"), keys(NotebookJson.encodeToString(spoken)))
+        assertEquals(spoken, NotebookJson.decodeFromString<ReminderItem>(NotebookJson.encodeToString(spoken)))
         assertEquals(setOf("frequency"), keys(NotebookJson.encodeToString(RecurrenceRule(RecurrenceFrequency.DAILY))))
         assertEquals(
             setOf("reminderId", "originalFireMillis", "message", "firedAt", "latestSnoozeFireAt", "snoozeChainCount", "completedAt", "cancelledAt", "snoozeDeliveredAt"),

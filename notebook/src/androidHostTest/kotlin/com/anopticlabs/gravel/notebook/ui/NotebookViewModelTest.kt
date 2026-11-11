@@ -5,6 +5,10 @@ import com.anopticlabs.gravel.notebook.alarms.FakeScheduler
 import com.anopticlabs.gravel.notebook.alarms.FakeSettings
 import com.anopticlabs.gravel.notebook.alarms.ReminderAlarms
 import com.anopticlabs.gravel.notebook.capture.CaptureQueueItem
+import com.anopticlabs.gravel.notebook.routers.RouterRef
+import com.anopticlabs.gravel.notebook.routers.Need
+import com.anopticlabs.gravel.notebook.capture.answerUser
+import com.anopticlabs.gravel.notebook.capture.AwaitingUser
 import com.anopticlabs.gravel.notebook.capture.CaptureStage
 import com.anopticlabs.gravel.notebook.capture.MAX_QUEUE_ATTEMPTS
 import com.anopticlabs.gravel.notebook.capture.ProcessingPause
@@ -17,6 +21,9 @@ import com.anopticlabs.gravel.notebook.pipeline.CaptureFailureKind
 import com.anopticlabs.gravel.notebook.pipeline.CaptureProcessingException
 import com.anopticlabs.gravel.notebook.pipeline.CapturePublisher
 import com.anopticlabs.gravel.notebook.pipeline.CaptureRequest
+import com.anopticlabs.gravel.notebook.pipeline.CaptureResume
+import com.anopticlabs.gravel.notebook.routers.RoutingConfigStore
+import com.anopticlabs.gravel.notebook.pipeline.UserAnswers
 import com.anopticlabs.gravel.notebook.pipeline.CaptureRows
 import com.anopticlabs.gravel.notebook.pipeline.FailedCaptureActions
 import com.anopticlabs.gravel.notebook.pipeline.ProcessingControls
@@ -81,6 +88,7 @@ class NotebookViewModelTest {
     private val backend = object : CaptureBackend {
         override suspend fun checkReady() = throw CaptureProcessingException(CaptureFailureKind.HOLD, "not set up")
         override suspend fun process(request: CaptureRequest, onStage: (CaptureStage) -> Unit): BuiltCapture = error("unused")
+        override suspend fun resume(resume: CaptureResume, onStage: (CaptureStage) -> Unit): BuiltCapture = error("unused")
     }
     private val navigator = NotebookNavigator()
     private val drain = CaptureDrain(queue, notes, backend, publisher, rows, { CaptureSettings() })
@@ -93,10 +101,14 @@ class NotebookViewModelTest {
     private var retryRequests = 0
     @Volatile
     private var processingId: String? = null
+    @Volatile
+    private var locationAsked = false
     private val viewModel = NotebookViewModel(
         rows, drain, NotebookStatusReader(queue, publisher, recovery), navigator, recording.recorder, TypedNotes(notes), completions.revision,
         { drainRequests++ }, StorageRecoveryRunner(recovery, restoreFile = {}, restoreAutomatic = {}),
         controls, FailedCaptureActions(queue, processing = { it == processingId }) { retryRequests++ },
+        UserAnswers(queue, RoutingConfigStore(root, crypto), drain, processing = { it == processingId }) { drainRequests++ },
+        locationAsked = { locationAsked }, markLocationAsked = { locationAsked = true },
     )
 
     @AfterTest
@@ -200,6 +212,84 @@ class NotebookViewModelTest {
         withTimeout(5.seconds) { while (viewModel.section != NotebookSection.REMINDERS) delay(10) }
         assertEquals(NotebookLink.Completions, navigator.pending.value)
         watching.cancelAndJoin()
+    }
+
+    @Test
+    fun anAwaitingLinkOpensTheRemindersSectionAndIsTakenByThisScreen() = runBlocking<Unit> {
+        val watching = launch(Dispatchers.Default) { viewModel.watch() }
+        navigator.open(NotebookLink.Awaiting)
+        withTimeout(5.seconds) { while (viewModel.section != NotebookSection.REMINDERS || navigator.pending.value != null) delay(10) }
+        watching.cancelAndJoin()
+    }
+
+    /** The queue is the record: a parked capture gets its row from the first status read, so it is there after the process died. */
+    @Test
+    fun aParkedCaptureHasItsRowAfterARestartAndLosesItWhenTheQueueDoes() = runBlocking<Unit> {
+        val waiting = AwaitingUser(RouterRef.gravel("hook"), "Hook", "buy milk", "2026-09-22T17:00:00+02:00", confirm = true, asks = setOf(Need.LOCATION))
+        queue.enqueue(QueuedCapture("parked", "parked.wav", now, awaiting = waiting), byteArrayOf(1))
+        val watching = launch(Dispatchers.Default) { viewModel.watch() }
+        withTimeout(5.seconds) { while (viewModel.items.value.none { it.id == "parked" }) delay(10) }
+        val row = viewModel.items.value.single { it.id == "parked" }
+        assertEquals(CaptureQueueItem.Status.AWAITING_USER, row.status)
+        assertEquals("buy milk", row.transcript)
+        assertEquals("Hook", row.target)
+        assertEquals(setOf(Need.LOCATION), row.asks)
+        assertTrue(row.confirm)
+        queue.update { q -> answerUser(q, "parked", Need.LOCATION, allow = true) }
+        viewModel.refresh()
+        withTimeout(5.seconds) { while (viewModel.items.value.single { it.id == "parked" }.asks.isNotEmpty()) delay(10) }
+        queue.remove("parked")
+        viewModel.refresh()
+        withTimeout(5.seconds) { while (viewModel.items.value.any { it.id == "parked" }) delay(10) }
+        watching.cancelAndJoin()
+    }
+
+    private suspend fun park(id: String, confirm: Boolean, asks: Set<Need>) {
+        val waiting = AwaitingUser(RouterRef.gravel("hook"), "Hook", "buy milk", "2026-09-22T17:00:00+02:00", confirm = confirm, asks = asks)
+        queue.enqueue(QueuedCapture(id, "$id.wav", now, awaiting = waiting), byteArrayOf(1))
+    }
+
+    private fun awaiting(id: String) = queue.readQueue(strict = true).firstOrNull { it.id == id }?.awaiting
+
+    @Test
+    fun theWaitingRowsButtonsReachTheQueueAndAskForARun() = runBlocking<Unit> {
+        park("p1", confirm = true, asks = setOf(Need.LOCATION))
+        val watching = launch(Dispatchers.Default) { viewModel.watch() }
+        withTimeout(5.seconds) { while (viewModel.items.value.none { it.id == "p1" }) delay(10) }
+        val runsBefore = drainRequests
+        viewModel.answer("p1", Need.LOCATION, allow = true, remember = false)
+        withTimeout(5.seconds) { while (viewModel.items.value.single { it.id == "p1" }.asks.isNotEmpty()) delay(10) }
+        assertEquals(setOf(Need.LOCATION), awaiting("p1")!!.granted)
+        assertEquals(runsBefore, drainRequests, "the confirmation is still wanted")
+        viewModel.confirm("p1")
+        withTimeout(5.seconds) { while (drainRequests == runsBefore) delay(10) }
+        assertTrue(awaiting("p1")!!.settled)
+        assertNull(viewModel.answerNotice)
+        viewModel.dismissAwaiting("p1")
+        withTimeout(5.seconds) { while (viewModel.items.value.any { it.id == "p1" }) delay(10) }
+        assertNull(awaiting("p1"))
+        viewModel.answer("p1", Need.LOCATION, allow = true, remember = false)
+        withTimeout(5.seconds) { while (viewModel.answerNotice != AnswerNotice.NOT_WAITING) delay(10) }
+        viewModel.clearAnswerNotice()
+        assertNull(viewModel.answerNotice)
+        watching.cancelAndJoin()
+    }
+
+    @Test
+    fun aReRecordDropsTheWaitingCaptureThenRecordsAndRecordsNothingWhenItCannotDrop() = runBlocking<Unit> {
+        park("p1", confirm = true, asks = emptySet())
+        viewModel.reRecord("p1", hasMic = { true }, requestMic = null)
+        assertNull(awaiting("p1"))
+        assertIs<RecorderState.Recording>(viewModel.recorderState.value)
+        stopRecording()
+        assertEquals(1, recording.ingested.size)
+        park("p2", confirm = true, asks = emptySet())
+        processingId = "p2"
+        viewModel.reRecord("p2", hasMic = { true }, requestMic = null)
+        assertEquals(AnswerNotice.BUSY, viewModel.answerNotice)
+        assertTrue(awaiting("p2") != null, "a capture the drain has is kept")
+        assertEquals(RecorderState.Idle, viewModel.recorderState.value)
+        assertEquals(1, recording.ingested.size)
     }
 
     @Test
@@ -320,6 +410,35 @@ class NotebookViewModelTest {
         assertEquals(1, asked)
         assertNull(viewModel.micProblem)
         assertIs<RecorderState.Recording>(viewModel.recorderState.value)
+        stopRecording()
+    }
+
+    @Test
+    fun theLocationIsAskedForOnceAndTheRecordingStartsWhateverTheAnswer() = runBlocking<Unit> {
+        var asked = 0
+        viewModel.record(hasMic = { true }, requestMic = null, hasLocation = { false }, requestLocation = { asked++; PermissionResult.Rejected })
+        assertEquals(1, asked)
+        assertTrue(locationAsked)
+        assertIs<RecorderState.Recording>(viewModel.recorderState.value)
+        stopRecording()
+        viewModel.record(hasMic = { true }, requestMic = null, hasLocation = { false }, requestLocation = { asked++; PermissionResult.Granted })
+        assertEquals(1, asked, "asked once ever")
+        assertIs<RecorderState.Recording>(viewModel.recorderState.value)
+        recording.awaitReads(55)
+        viewModel.stopRecording()
+        recording.awaitIdle()
+        assertEquals(2, recording.ingested.size)
+    }
+
+    @Test
+    fun aGrantedLocationOrNoWindowToAskFromIsNotAskedFor() = runBlocking<Unit> {
+        var asked = 0
+        viewModel.record(hasMic = { true }, requestMic = null, hasLocation = { true }, requestLocation = { asked++; PermissionResult.Granted })
+        assertEquals(0, asked)
+        assertFalse(locationAsked)
+        stopRecording()
+        viewModel.record(hasMic = { true }, requestMic = null, hasLocation = { false }, requestLocation = null)
+        assertFalse(locationAsked, "a tap with no window to ask from leaves the one ask for later")
         stopRecording()
     }
 

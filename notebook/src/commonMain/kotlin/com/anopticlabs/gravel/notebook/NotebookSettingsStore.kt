@@ -32,4 +32,9 @@ interface NotebookSettingsStore : ReminderSettings {
     val longCapturesWaitForPower: Boolean
 
     fun setLongCapturesWaitForPower(on: Boolean)
+
+    /** How soon after it ended a ring recording must reach the phone to be placed where the phone is; null places none. */
+    val ringLocationSeconds: Int?
+
+    fun setRingLocationSeconds(seconds: Int?)
 }

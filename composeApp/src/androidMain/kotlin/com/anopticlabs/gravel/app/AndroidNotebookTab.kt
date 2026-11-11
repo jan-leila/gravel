@@ -14,7 +14,13 @@ import com.anopticlabs.gravel.notebook.backup.AutoBackupStatus
 import com.anopticlabs.gravel.notebook.backup.BackupFlow
 import com.anopticlabs.gravel.notebook.backup.autoBackupStatusText
 import com.anopticlabs.gravel.notebook.backup.recoveryKeyStatusText
+import com.anopticlabs.gravel.notebook.storage.NoteStore
+import com.anopticlabs.gravel.notebook.storage.NotebookFiles
 import com.anopticlabs.gravel.notebook.storage.NotebookKeystore
+import com.anopticlabs.gravel.notebook.notes.DEFAULT_FOLDERS
+import com.anopticlabs.gravel.notebook.storage.QueueStore
+import com.anopticlabs.gravel.notebook.storage.ReminderEventStore
+import com.anopticlabs.gravel.notebook.storage.ReminderStore
 import com.anopticlabs.gravel.notebook.ui.AutoBackupControls
 import com.anopticlabs.gravel.notebook.ui.keyLocationText
 import com.anopticlabs.gravel.notebook.ui.BackupDialogs as NotebookBackupDialogs
@@ -29,6 +35,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import org.koin.android.ext.koin.androidContext
 import com.anopticlabs.gravel.notebook.ui.PhoneCalendarsDialog as NotebookPhoneCalendarsDialog
+import com.anopticlabs.gravel.notebook.ui.RoutingSettingsScreen
 import com.anopticlabs.gravel.notebook.ui.TriggerWordDialog as NotebookTriggerWordDialog
 import com.anopticlabs.gravel.ui.NotebookSettingsValues
 import com.anopticlabs.gravel.notebook.alarms.NotebookPreferences
@@ -103,7 +110,7 @@ class AndroidNotebookTab(
     }
 
     @Composable
-    override fun Screen(topBarParams: TopBarParams, openTextModels: () -> Unit, openSpeechSettings: () -> Unit) {
+    override fun Screen(topBarParams: TopBarParams, openTextModels: () -> Unit, openSpeechSettings: () -> Unit, openRoutingSettings: () -> Unit) {
         val guide by setupGuide.collectAsState()
         val recording by recordingCheck.collectAsState()
         NotebookScreen(
@@ -117,8 +124,12 @@ class AndroidNotebookTab(
             },
             openSpeechSettings = openSpeechSettings,
             notice = { WatchAppUpdateLine(watchApp, updateLineDismissed(), ::dismissWatchAppUpdateLine) },
+            openRoutingSettings = openRoutingSettings,
         )
     }
+
+    @Composable
+    override fun RoutingScreen(topBarParams: TopBarParams) = RoutingSettingsScreen(topBarParams)
 
     private val _settings by lazy { MutableStateFlow(read()) }
     override val settings: StateFlow<NotebookSettingsValues> by lazy { _settings.asStateFlow() }
@@ -135,6 +146,7 @@ class AndroidNotebookTab(
             phoneCalendars = store.phoneCalendar.calendars,
             interruptLongRecordings = store.interruptLongCaptures,
             longRecordingsWaitForPower = store.longCapturesWaitForPower,
+            ringLocationSeconds = store.ringLocationSeconds,
         )
     }
 
@@ -154,6 +166,8 @@ class AndroidNotebookTab(
     override fun setHistoryRetentionDays(days: Int) = write { setHistoryRetentionDays(days) }
 
     override fun setInterruptLongRecordings(on: Boolean) = write { setInterruptLongCaptures(on) }
+
+    override fun setRingLocationSeconds(seconds: Int?) = write { setRingLocationSeconds(seconds) }
 
     // Off lets held captures start; on changes what waits for power.
     override fun setLongRecordingsWaitForPower(on: Boolean) {
@@ -385,6 +399,23 @@ class NotebookIntents(
 }
 
 val notebookTabModule = module {
+    single<NotebookDataCheck> {
+        val root = NotebookFiles.root(androidContext())
+        StoreNotebookDataCheck(
+            holdsFiles = { NotebookFiles.holdsSealedFiles(root) },
+            // The records a backup carries. Strict reads, so a store that cannot be read throws
+            // (which the check counts as data) instead of reading as empty.
+            hasContent = {
+                val notes = get<NoteStore>()
+                notes.readMetadata(strict = true).isNotEmpty() ||
+                    notes.readFolders(strict = true) != DEFAULT_FOLDERS ||
+                    notes.readFolderTags(strict = true).isNotEmpty() ||
+                    get<QueueStore>().readQueue(strict = true).isNotEmpty() ||
+                    get<ReminderStore>().readAll(strict = true).isNotEmpty() ||
+                    get<ReminderEventStore>().readAll(strict = true).isNotEmpty()
+            },
+        )
+    }
     single<NotebookTab> {
         val prefs = get<NotebookPreferences>()
         val resources = androidContext().resources

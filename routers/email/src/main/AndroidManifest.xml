@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:name=".EmailApp"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false">
+        <!-- Gravel's router API (ROUTER_API.md): exported, guarded by Gravel's signature-level permission, never defined here. -->
+        <receiver
+            android:name=".EmailRouter"
+            android:exported="true"
+            android:permission="com.anopticlabs.gravel.permission.ROUTE_NOTEBOOK_TEXT">
+            <intent-filter>
+                <action android:name="com.anopticlabs.gravel.notebook.action.ROUTE_TEXT" />
+            </intent-filter>
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.id" android:value="mail" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.label" android:value="Send as email" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.description" android:value="Sends what you said as an email through an SMTP server you set up, a Proton Bridge for example" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.needs" android:value="recorded_at" />
+        </receiver>
+        <activity android:name=".EmailSettingsActivity" android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

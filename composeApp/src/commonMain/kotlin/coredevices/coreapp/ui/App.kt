@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.app.UnsignedListingDialog
 import com.anopticlabs.gravel.app.WeatherOfferDialog
 import com.russhwolf.settings.Settings
 import coredevices.coreapp.ui.navigation.AppNavHost
@@ -50,6 +51,8 @@ fun App() {
             WhatsNewDialog()
             // Gravel: shows once What's New is closed (weatherOfferDue).
             WeatherOfferDialog()
+            // Gravel: last, so it sits above any other launch dialog; unsigned listing only.
+            UnsignedListingDialog()
         }
     }
 }

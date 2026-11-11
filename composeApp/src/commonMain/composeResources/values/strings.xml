@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <resources>
-
+    <string name="unsigned_listing_title">Signed Gravel App Available</string>
+    <string name="unsigned_listing_why">The Gravel build you are using is signed by F-Droid instead of directly by the developer. Gravel now provides developer signed builds on F-Droid and as released tags on GitHub.</string>
+    <string name="unsigned_listing_how">Because the signing keys have changed Android can't update this app directly into the new one. To switch to the signed builds please do the following:</string>
+    <string name="unsigned_listing_step_backup">%1$s. Back up your settings:</string>
+    <string name="unsigned_listing_step_uninstall">%1$s. Uninstall Gravel (unsigned).</string>
+    <string name="unsigned_listing_step_install">%1$s. Install Gravel from F-Droid or GitHub.</string>
+    <string name="unsigned_listing_step_restore">%1$s. Re-pair your devices and import your settings:</string>
+    <string name="unsigned_listing_step_re_pair">%1$s. Re-pair your devices.</string>
+    <string name="unsigned_listing_backup_restore_menu_settings">Settings</string>
+    <string name="unsigned_listing_backup_restore_menu_notebook">Notebook</string>
+    <string name="unsigned_listing_backup_restore_menu_back_up">Back Up Notebook</string>
+    <string name="unsigned_listing_backup_restore_menu_restore">Restore From Backup</string>
+    <string name="unsigned_listing_install_signed">F-Droid</string>
+    <string name="unsigned_listing_close">Close</string>
+    <string name="unsigned_listing_dont_show_again">Don't Show Again</string>
 </resources>

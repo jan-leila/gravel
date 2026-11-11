@@ -4,7 +4,10 @@ import com.anopticlabs.gravel.notebook.alarms.FakeNotifier
 import com.anopticlabs.gravel.notebook.alarms.FakeScheduler
 import com.anopticlabs.gravel.notebook.alarms.FakeSettings
 import com.anopticlabs.gravel.notebook.alarms.ReminderAlarms
+import com.anopticlabs.gravel.notebook.capture.AwaitingUser
 import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
+import com.anopticlabs.gravel.notebook.capture.awaitUser
+import com.anopticlabs.gravel.notebook.routers.RouterRef
 import com.anopticlabs.gravel.notebook.capture.CaptureQueueItem
 import com.anopticlabs.gravel.notebook.capture.FailedCapture
 import com.anopticlabs.gravel.notebook.capture.MAX_QUEUE_ATTEMPTS
@@ -94,6 +97,27 @@ class NotebookStatusTest {
         val gone = FailedCapture("gone", now - 1, null, CaptureFailureReason.DAMAGED, retryable = false)
         // Captures of unknown length count as long; the failed list is newest first.
         assertEquals(NotebookStatus(waiting = 2, failed = listOf(flagged, spent, gone), longToRun = true), reader.read(setOf("running", "last")))
+    }
+
+    /** A parked capture is the user's, not the drain's: listed on its own, counted as neither waiting nor failed, and its notice goes with the read. */
+    @Test
+    fun capturesWaitingOnTheUserAreListedApartAndTheirNoticeClearedByTheRead() = runBlocking<Unit> {
+        enqueue("waiting")
+        enqueue("parked")
+        enqueue("serving", at = now + 1)
+        val waiting = AwaitingUser(RouterRef.gravel("hook"), "Hook", "buy milk", "2026-09-22T17:00:00+02:00", confirm = true)
+        queue.update { q -> awaitUser(awaitUser(q, "parked", waiting, 0), "serving", waiting, 0) }
+        notifier.awaitingCount = 2
+        val status = reader.read(setOf("serving"))
+        assertEquals(1, status.waiting)
+        assertEquals(listOf("parked"), status.awaiting.map { it.id })
+        assertEquals(waiting, status.awaiting.single().awaiting)
+        assertTrue(status.failed.isEmpty())
+        assertNull(notifier.awaitingCount)
+        queue.update { q -> q.map { if (it.id == "parked") it.copy(flagged = true, failure = "router_unavailable") else it } }
+        val flagged = reader.read(emptySet())
+        assertTrue(flagged.awaiting.map { it.id } == listOf("serving"))
+        assertEquals(listOf("parked"), flagged.failed.map { it.id }, "a flagged entry is a failed capture before anything else")
     }
 
     @Test

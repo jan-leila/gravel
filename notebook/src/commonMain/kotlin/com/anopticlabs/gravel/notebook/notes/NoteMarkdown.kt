@@ -14,8 +14,10 @@ object NoteMarkdown {
         return "\"$escaped\""
     }
 
-    fun buildMarkdown(title: String, tags: List<String>, content: String, date: String): String {
+    /** [recorded] is a voice note's [com.anopticlabs.gravel.notebook.capture.RecordedAt] value; a typed note has none. */
+    fun buildMarkdown(title: String, tags: List<String>, content: String, date: String, recorded: String? = null): String {
         val tagsStr = tags.joinToString(", ") { yamlSafe(it) }
-        return "---\ntitle: ${yamlSafe(title)}\ndate: $date\ntags: [$tagsStr]\ntype: note\n---\n\n$content\n"
+        val recordedLine = recorded?.let { "recorded: $it\n" }.orEmpty()
+        return "---\ntitle: ${yamlSafe(title)}\ndate: $date\n${recordedLine}tags: [$tagsStr]\ntype: note\n---\n\n$content\n"
     }
 }

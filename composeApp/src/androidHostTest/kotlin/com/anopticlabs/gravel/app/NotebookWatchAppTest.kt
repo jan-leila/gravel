@@ -1,5 +1,6 @@
 package com.anopticlabs.gravel.app
 
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.capture.MAX_RECORDING_SAMPLES
 import com.anopticlabs.gravel.notebook.capture.wavDurationMillis
 import com.anopticlabs.gravel.notebook.pipeline.IngestResult
@@ -55,6 +56,8 @@ class NotebookWatchAppTest {
     // Unconfined runs a lookup at once, so the virtual clock of runTest cannot pass its limit first.
     private var lookupContext: CoroutineContext = Dispatchers.Unconfined
     private val stored = mutableListOf<Pair<Long, Long?>>()
+    private val placed = mutableListOf<RoutedLocation?>()
+    private var locate: suspend () -> RoutedLocation? = { null }
 
     @Volatile
     private var decodes = 0
@@ -74,8 +77,9 @@ class NotebookWatchAppTest {
             if (decodeFails) error("Speex frame not decoded")
             ByteArray(frames.size * 640)
         },
-        store = { wav, at -> synchronized(stored) { stored += at to wavDurationMillis(wav) }; ingest },
+        store = { wav, at, location -> synchronized(stored) { stored += at to wavDurationMillis(wav); placed += location }; ingest },
         waitFor = { wait() },
+        locate = { locate() },
         clock = { now },
         marks = source,
         lookupContext = lookupContext,
@@ -103,6 +107,17 @@ class NotebookWatchAppTest {
         assertEquals("Saved", record(), "a recording kept outside the queue is saved")
         ingest = IngestResult.LOST
         assertEquals("Couldn't save. Try again.", record())
+    }
+
+    @Test
+    fun aRecordingIsStoredWhereThePhoneWasAndWithoutAPlaceWhenTheLookupFails() = runTest {
+        val here = RoutedLocation(52.52, 13.405, 30f)
+        locate = { delay(100); here }
+        assertEquals("Saved", record())
+        assertEquals(listOf<RoutedLocation?>(here), placed)
+        locate = { error("no provider") }
+        assertEquals("Saved", record())
+        assertEquals(listOf(here, null), placed)
     }
 
     @Test

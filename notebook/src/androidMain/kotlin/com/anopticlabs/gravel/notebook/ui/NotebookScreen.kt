@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -21,8 +22,10 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,6 +63,7 @@ import com.anopticlabs.gravel.notebook.capture.captureProgressText
 import com.anopticlabs.gravel.notebook.capture.captureQueueProgress
 import com.anopticlabs.gravel.notebook.capture.captureQueueRowLabel
 import com.anopticlabs.gravel.notebook.pipeline.CaptureHold
+import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.pipeline.CaptureNotice
 import com.anopticlabs.gravel.notebook.pipeline.CaptureRemedy
 import com.anopticlabs.gravel.notebook.sources.TypedNoteResult
@@ -84,6 +88,7 @@ fun NotebookScreen(
     setupGuide: (@Composable () -> Unit)? = null,
     openSpeechSettings: () -> Unit = {},
     notice: (@Composable () -> Unit)? = null,
+    openRoutingSettings: () -> Unit = {},
 ) {
     val title = stringResource(R.string.notebook_title)
     LaunchedEffect(title) {
@@ -92,7 +97,11 @@ fun NotebookScreen(
         topBarParams.title(title)
     }
     NotebookSecureContent {
-        if (setupGuide != null) setupGuide() else NotebookContent(topBarParams, HoldActions(openTextModels, openSpeechSettings), recordingSupported, notice)
+        if (setupGuide != null) {
+            setupGuide()
+        } else {
+            NotebookContent(topBarParams, HoldActions(openTextModels, openSpeechSettings, openRoutingSettings = openRoutingSettings), recordingSupported, notice)
+        }
     }
 }
 
@@ -140,6 +149,8 @@ private fun NotebookContent(topBarParams: TopBarParams, links: HoldActions, reco
                         viewModel.record(
                             hasMic = { permissions.hasPermission(Permission.RecordAudio) },
                             requestMic = uiContext?.let { ctx -> { permissions.requestPermission(Permission.RecordAudio, ctx) } },
+                            hasLocation = { permissions.hasPermission(Permission.Location) },
+                            requestLocation = uiContext?.let { ctx -> { permissions.requestPermission(Permission.Location, ctx) } },
                         )
                     }
                 },
@@ -171,7 +182,22 @@ private fun NotebookContent(topBarParams: TopBarParams, links: HoldActions, reco
                         }
                     },
                     onDismiss = viewModel::dismiss,
+                    onAnswer = viewModel::answer,
+                    onConfirm = viewModel::confirm,
+                    onDismissAwaiting = viewModel::dismissAwaiting,
+                    onReRecord = { id ->
+                        scope.launch {
+                            viewModel.reRecord(
+                                id,
+                                hasMic = { permissions.hasPermission(Permission.RecordAudio) },
+                                requestMic = uiContext?.let { ctx -> { permissions.requestPermission(Permission.RecordAudio, ctx) } },
+                                hasLocation = { permissions.hasPermission(Permission.Location) },
+                                requestLocation = uiContext?.let { ctx -> { permissions.requestPermission(Permission.Location, ctx) } },
+                            )
+                        }
+                    },
                 )
+                viewModel.answerNotice?.let { notice -> AnswerNoticeLine(notice, viewModel::clearAnswerNotice) }
             }
             SectionRow(viewModel.section) { section ->
                 viewModel.select(section)
@@ -233,6 +259,7 @@ private fun RemedyButtons(remedy: CaptureRemedy?, holdActions: HoldActions) {
             TextButton(onClick = holdActions.openSpeechSettings) { Text(stringResource(R.string.notebook_speech_settings)) }
             TextButton(onClick = holdActions.tryServerAgain) { Text(stringResource(R.string.notebook_server_try_again)) }
         }
+        CaptureRemedy.ROUTING_SETTINGS -> TextButton(onClick = holdActions.openRoutingSettings) { Text(stringResource(R.string.notebook_routing_settings)) }
         null -> {}
     }
 }
@@ -242,6 +269,7 @@ private data class HoldActions(
     val openTextModels: () -> Unit,
     val openSpeechSettings: () -> Unit,
     val tryServerAgain: () -> Unit = {},
+    val openRoutingSettings: () -> Unit = {},
 )
 
 @Composable
@@ -384,7 +412,35 @@ internal fun sectionFor(item: CaptureQueueItem): NotebookSection? = when (item.s
 }
 
 @Composable
-private fun CaptureResults(items: List<CaptureQueueItem>, onOpen: (CaptureQueueItem) -> Unit, onDismiss: (String) -> Unit) {
+private fun AnswerNoticeLine(notice: AnswerNotice, onDismiss: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            stringResource(
+                when (notice) {
+                    AnswerNotice.FAILED -> R.string.notebook_awaiting_notice_failed
+                    AnswerNotice.NOT_WAITING -> R.string.notebook_awaiting_notice_not_waiting
+                    AnswerNotice.GRANT_NOT_KEPT -> R.string.notebook_awaiting_notice_grant_not_kept
+                    AnswerNotice.BUSY -> R.string.notebook_awaiting_notice_busy
+                },
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.notebook_result_dismiss)) }
+    }
+}
+
+@Composable
+private fun CaptureResults(
+    items: List<CaptureQueueItem>,
+    onOpen: (CaptureQueueItem) -> Unit,
+    onDismiss: (String) -> Unit,
+    onAnswer: (String, Need, Boolean, Boolean) -> Unit,
+    onConfirm: (String) -> Unit,
+    onDismissAwaiting: (String) -> Unit,
+    onReRecord: (String) -> Unit,
+) {
     var expanded by rememberSaveable { mutableStateOf(true) }
     Column {
         Row(
@@ -408,7 +464,11 @@ private fun CaptureResults(items: List<CaptureQueueItem>, onOpen: (CaptureQueueI
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items.sortedBy { it.createdAt }.forEach { item ->
-                    CaptureResultRow(item, onOpen = sectionFor(item)?.let { { onOpen(item) } }, onDismiss = { onDismiss(item.id) })
+                    if (item.status == CaptureQueueItem.Status.AWAITING_USER) {
+                        AwaitingRow(item, onAnswer, onConfirm = { onConfirm(item.id) }, onDismiss = { onDismissAwaiting(item.id) }, onReRecord = { onReRecord(item.id) })
+                    } else {
+                        CaptureResultRow(item, onOpen = sectionFor(item)?.let { { onOpen(item) } }, onDismiss = { onDismiss(item.id) })
+                    }
                 }
             }
         }
@@ -431,6 +491,7 @@ private fun CaptureResultRow(item: CaptureQueueItem, onOpen: (() -> Unit)?, onDi
             } else {
                 val (icon, tint) = when (item.status) {
                     CaptureQueueItem.Status.REMINDER_SET -> Icons.Filled.Alarm to MaterialTheme.colorScheme.primary
+                    CaptureQueueItem.Status.FORWARDED -> Icons.AutoMirrored.Filled.Send to MaterialTheme.colorScheme.primary
                     CaptureQueueItem.Status.FAILED -> Icons.Filled.ErrorOutline to MaterialTheme.colorScheme.error
                     else -> Icons.Filled.Description to MaterialTheme.colorScheme.primary
                 }
@@ -443,6 +504,7 @@ private fun CaptureResultRow(item: CaptureQueueItem, onOpen: (() -> Unit)?, onDi
                             item.inFlight -> R.string.notebook_result_working
                             item.status == CaptureQueueItem.Status.NOTE_CREATED -> R.string.notebook_result_note
                             item.status == CaptureQueueItem.Status.REMINDER_SET -> R.string.notebook_result_reminder
+                            item.status == CaptureQueueItem.Status.FORWARDED -> R.string.notebook_result_forwarded
                             else -> R.string.notebook_result_failed
                         }
                     ),
@@ -455,6 +517,58 @@ private fun CaptureResultRow(item: CaptureQueueItem, onOpen: (() -> Unit)?, onDi
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.notebook_result_dismiss))
                 }
+            }
+        }
+    }
+}
+
+/**
+ * A capture parked for the user: the transcript, the questions still open (one answer each, kept
+ * for good with the checkbox), and once none is open the Send that takes it up again. The
+ * transcript is shown, so the user knows what the answer is about.
+ */
+@Composable
+private fun AwaitingRow(
+    item: CaptureQueueItem,
+    onAnswer: (String, Need, Boolean, Boolean) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    onReRecord: () -> Unit,
+) {
+    var remember by rememberSaveable(item.id) { mutableStateOf(false) }
+    val target = item.target ?: ""
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("${stringResource(R.string.notebook_result_awaiting)} \u00B7 $target", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            item.resultLabel?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            item.transcript?.let { Text(it, maxLines = 8, overflow = TextOverflow.Ellipsis) }
+            item.asks.sortedBy { it.ordinal }.forEach { need ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(
+                            when (need) {
+                                Need.LOCATION -> R.string.notebook_awaiting_share_location
+                                Need.RECORDED_AT -> R.string.notebook_awaiting_share_recorded_at
+                            },
+                            target,
+                        ),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    TextButton(onClick = { onAnswer(item.id, need, true, remember) }) { Text(stringResource(R.string.notebook_awaiting_yes)) }
+                    TextButton(onClick = { onAnswer(item.id, need, false, remember) }) { Text(stringResource(R.string.notebook_awaiting_no)) }
+                }
+            }
+            if (item.asks.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().clickable { remember = !remember }, verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = remember, onCheckedChange = { remember = it })
+                    Text(stringResource(R.string.notebook_awaiting_remember), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onReRecord) { Text(stringResource(R.string.notebook_awaiting_rerecord)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.notebook_awaiting_dismiss)) }
+                if (item.asks.isEmpty()) Button(onClick = onConfirm) { Text(stringResource(R.string.notebook_awaiting_send)) }
             }
         }
     }

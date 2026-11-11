@@ -61,7 +61,7 @@ import kotlin.time.Duration.Companion.minutes
  * largest installed text model, and never downloads. Run on its own, against a persistent install:
  *   adb shell am instrument -w \
  *     -e class com.anopticlabs.gravel.notebook.pipeline.CapturePipelineDeviceTest \
- *     com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *     com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class CapturePipelineDeviceTest {
 
@@ -123,6 +123,8 @@ class CapturePipelineDeviceTest {
         override fun postedSetNotices() = emptyList<PostedSetNotice>()
         override fun postCompletionsToReview(count: Int) = Unit
         override fun cancelCompletionsToReview() = Unit
+        override fun postAwaitingToReview(count: Int) = Unit
+        override fun cancelAwaitingToReview() = Unit
     }
 
     private val settings = object : ReminderSettings {

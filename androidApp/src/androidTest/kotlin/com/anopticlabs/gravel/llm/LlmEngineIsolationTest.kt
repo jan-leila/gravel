@@ -43,7 +43,7 @@ import kotlin.time.Duration.Companion.milliseconds
  *   adb push <model.gguf> /data/local/tmp/gravel-llm-test.gguf
  *   adb shell am instrument -w \
  *     -e class com.anopticlabs.gravel.llm.LlmEngineIsolationTest \
- *     com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *     com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class LlmEngineIsolationTest {
 

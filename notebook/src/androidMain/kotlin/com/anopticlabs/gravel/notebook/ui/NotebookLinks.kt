@@ -21,6 +21,9 @@ sealed interface NotebookLink {
     data class Edit(val reminderId: Int) : NotebookLink
     data object Completions : NotebookLink
 
+    /** The capture area, where the recordings waiting on the user are. */
+    data object Awaiting : NotebookLink
+
     /** The Calendar section on the local day of [atMillis]. */
     data class Calendar(val atMillis: Long) : NotebookLink
 
@@ -36,6 +39,7 @@ private val OPEN_ACTIONS = setOf(
     ReminderIntents.ACTION_OPEN_SNOOZE_PICKER,
     ReminderIntents.ACTION_OPEN_REMINDER_EDITOR,
     ReminderIntents.ACTION_OPEN_VOICE_COMPLETIONS,
+    ReminderIntents.ACTION_OPEN_AWAITING,
     ReminderIntents.ACTION_OPEN_REMINDER_CALENDAR,
     ReminderIntents.ACTION_OPEN_BACKUP_SETTINGS,
     ReminderIntents.ACTION_OPEN_KEY_CHECK,
@@ -71,6 +75,7 @@ fun notebookLinkFor(
             ReminderIntents.ACTION_OPEN_REMINDER_EDITOR ->
                 readInt(ReminderIntents.EXTRA_REMINDER_ID)?.takeIf { it >= 1 }?.let(NotebookLink::Edit) ?: NotebookLink.Reminders
             ReminderIntents.ACTION_OPEN_VOICE_COMPLETIONS -> NotebookLink.Completions
+            ReminderIntents.ACTION_OPEN_AWAITING -> NotebookLink.Awaiting
             ReminderIntents.ACTION_OPEN_BACKUP_SETTINGS -> NotebookLink.BackupSettings
             ReminderIntents.ACTION_OPEN_KEY_CHECK -> NotebookLink.KeyCheck
             ReminderIntents.ACTION_OPEN_REMINDER_CALENDAR ->

@@ -14,11 +14,15 @@ enum class ReminderTimeStatus {
     TO_CHECK,
 }
 
-/** A reminder extracted from a capture; [remindAtMillis] is set only for [ReminderTimeStatus.USABLE]. */
+/**
+ * A reminder extracted from a capture; [remindAtMillis] is set only for [ReminderTimeStatus.USABLE].
+ * [recordedAt] is when the recording started, a [com.anopticlabs.gravel.notebook.capture.RecordedAt] value.
+ */
 data class ReminderProposal(
     val message: String,
     val remindAtMillis: Long?,
     val timeStatus: ReminderTimeStatus,
+    val recordedAt: String? = null,
 )
 
 @Serializable
@@ -51,6 +55,8 @@ data class ReminderItem(
     val recurrence: RecurrenceRule? = null,
     /** Armed at the quick-remind default because the time in the words could not be used (unsure, or already past); cleared once the user checks it. */
     val timeToCheck: Boolean = false,
+    /** When the recording it was spoken in started ([com.anopticlabs.gravel.notebook.capture.RecordedAt]); null for a reminder made in the editor. */
+    val recordedAt: String? = null,
 )
 
 /**

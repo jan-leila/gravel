@@ -36,6 +36,8 @@ kotlin {
             implementation(libs.serialization)
             implementation(libs.kotlinx.datetime)
             implementation(libs.kermit)
+            // The switch rules' regex engine: linear time whatever the pattern, so a rule cannot hold the drain.
+            implementation(libs.re2j)
             implementation(libs.coroutines)
         }
         androidMain.dependencies {

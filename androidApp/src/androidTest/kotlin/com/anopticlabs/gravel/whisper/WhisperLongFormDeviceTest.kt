@@ -50,7 +50,7 @@ import kotlin.time.TimeSource
  * a persistent install with the model:
  *   adb shell am instrument -w \
  *     -e class com.anopticlabs.gravel.whisper.WhisperLongFormDeviceTest \
- *     com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *     com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class WhisperLongFormDeviceTest {
 

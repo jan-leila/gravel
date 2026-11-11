@@ -51,6 +51,18 @@ include(":llm-native")
 // Gravel module: the Pebble Index 01 ring client.
 include(":ring")
 include(":libindex")
+// Gravel modules: the first-party router apps (routers/README.md), one app per
+// integration on a shared library, signed with their own key and published
+// outside F-Droid's main repository; the F-Droid recipe builds :androidApp only.
+include(":routers:common")
+include(":routers:slack")
+include(":routers:email")
+include(":routers:actual")
+include(":routers:signal")
+include(":routers:osmnote")
+include(":routers:mastodon")
+include(":routers:vikunja")
+include(":routers:homeassistant")
 // :experimental (the Ring/Index feature module) is unplugged from the fork's
 // build: it carries firebase-auth/firestore/storage, the googleServices
 // plugin, and Supabase. :libindex/:index-ai/:mcp stay included because the

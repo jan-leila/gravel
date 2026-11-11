@@ -31,6 +31,7 @@ import com.anopticlabs.gravel.notebook.backup.WorkAutoBackupScheduler
 import com.anopticlabs.gravel.notebook.backup.BackupStaging
 import com.anopticlabs.gravel.notebook.backup.FileRunRecord
 import com.anopticlabs.gravel.notebook.backup.NotebookBackup
+import com.anopticlabs.gravel.notebook.capture.RecordingLocation
 import com.anopticlabs.gravel.notebook.pipeline.CaptureAudioDecoder
 import com.anopticlabs.gravel.notebook.pipeline.AndroidCaptureKeepAlive
 import com.anopticlabs.gravel.notebook.pipeline.CaptureBackend
@@ -52,15 +53,27 @@ import com.anopticlabs.gravel.notebook.pipeline.CaptureSpeech
 import com.anopticlabs.gravel.notebook.pipeline.ServerCheck
 import com.anopticlabs.gravel.notebook.pipeline.ServerNetworkWatch
 import com.anopticlabs.gravel.notebook.pipeline.SpeechSettingWatch
+import com.anopticlabs.gravel.notebook.pipeline.UserAnswers
 import com.anopticlabs.gravel.notebook.pipeline.WorkManagerNetworkWork
 import com.anopticlabs.gravel.notebook.pipeline.WorkManagerServerTryWork
 import com.anopticlabs.gravel.network.UnmeteredWifi
+import com.anopticlabs.gravel.network.hasUplinkNetwork
 import com.anopticlabs.gravel.notebook.pipeline.isPluggedIn
 import com.anopticlabs.gravel.notebook.reminders.AndroidPhoneCalendar
 import com.anopticlabs.gravel.notebook.reminders.PhoneCalendar
 import com.anopticlabs.gravel.notebook.reminders.ReminderRefreshSignal
+import com.anopticlabs.gravel.notebook.routers.AndroidInstalledRouters
+import com.anopticlabs.gravel.notebook.routers.AndroidRouterBroadcastSender
+import com.anopticlabs.gravel.notebook.routers.AppRouterDelivery
+import com.anopticlabs.gravel.notebook.routers.InstalledRouters
+import com.anopticlabs.gravel.notebook.routers.NetworkRouterDelivery
+import com.anopticlabs.gravel.notebook.routers.RouterDeliveries
+import com.anopticlabs.gravel.notebook.routers.RouterTrustStore
+import com.anopticlabs.gravel.notebook.routers.RoutingConfigStore
+import com.anopticlabs.gravel.notebook.routers.TextDeliverer
 import com.anopticlabs.gravel.notebook.sources.AudioRecordMicrophone
 import com.anopticlabs.gravel.notebook.sources.Microphone
+import com.anopticlabs.gravel.notebook.sources.LocationManagerRecordingLocation
 import com.anopticlabs.gravel.notebook.sources.PhoneRecorder
 import com.anopticlabs.gravel.notebook.sources.TypedNotes
 import com.anopticlabs.gravel.notebook.reminders.ReminderSettings
@@ -86,6 +99,7 @@ import com.anopticlabs.gravel.notebook.ui.NotebookStatusReader
 import com.anopticlabs.gravel.notebook.ui.NotebookViewModel
 import com.anopticlabs.gravel.notebook.ui.NotesViewModel
 import com.anopticlabs.gravel.notebook.ui.RemindersViewModel
+import com.anopticlabs.gravel.notebook.ui.RoutingViewModel
 import com.anopticlabs.gravel.notebook.ui.StorageRecoveryRunner
 import org.koin.android.ext.koin.androidContext
 import java.io.File
@@ -114,6 +128,20 @@ val notebookModule = module {
             get(), get(), get(), get(), get(),
             startBackups = get<AutoBackups<Uri>>()::start, checkBackups = get<AutoBackupChecks>()::request, startCharger = get<LongCaptureCharger>()::start,
             startNetworkWatch = get<ServerNetworkWatch>()::start, startSpeechWatch = get<SpeechSettingWatch>()::start,
+            loadRouting = {
+                get<RoutingConfigStore>().load()
+                get<RouterTrustStore>().load()
+            },
+        )
+    }
+    single { RoutingConfigStore(NotebookFiles.root(androidContext()), get()) }
+    single { RouterTrustStore(androidContext().noBackupFilesDir) }
+    single<InstalledRouters> { AndroidInstalledRouters(androidContext()) }
+    // TextPoster comes from the app, which binds it to its HTTP client.
+    single<TextDeliverer> {
+        RouterDeliveries(
+            app = AppRouterDelivery(get(), { get<RouterTrustStore>().trustedDigests() }, AndroidRouterBroadcastSender(androidContext())),
+            network = NetworkRouterDelivery(get()) { hasUplinkNetwork(androidContext()) },
         )
     }
     single { BackupStaging(NotebookFiles.root(androidContext())) }
@@ -195,7 +223,7 @@ val notebookModule = module {
     single { CaptureRows() }
     single<CaptureAudioDecoder> { MediaCodecAudioDecoder() }
     // CaptureSpeech, CaptureText and CaptureMemory come from the app, which binds them to the engines.
-    single<CaptureBackend> { OnDeviceCaptureBackend(get(), get(), get(), get()) }
+    single<CaptureBackend> { OnDeviceCaptureBackend(get(), get(), get(), get(), routing = { get<RoutingConfigStore>().read() }) }
     single {
         CapturePublisher(
             notes = get(), reminders = get(), completions = get(), alarms = get(), notifier = get(),
@@ -207,7 +235,7 @@ val notebookModule = module {
         CaptureDrain(
             get(), get(), get(), get(), get(), settings = { get<NotebookPreferences>().captureSettings },
             rules = { get<ProcessingControls>().rules() }, notice = { get<CaptureSpeech>().notice() },
-            serverTried = WorkManagerServerTryWork(androidContext())::schedule,
+            serverTried = WorkManagerServerTryWork(androidContext())::schedule, deliverer = get(),
         )
     }
     single {
@@ -229,13 +257,15 @@ val notebookModule = module {
         )
     }
     single { FailedCaptureActions(get(), processing = { get<CaptureDrain>().isProcessing(it) }, requestAgain = { get<CaptureCoordinator>().requestAgain() }) }
+    single { UserAnswers(get(), get(), get(), processing = { get<CaptureDrain>().isProcessing(it) }, requestAgain = { get<CaptureCoordinator>().requestAgain() }) }
     single { LongCaptureCharger(androidContext(), get<CaptureDrain>().passes, get<CaptureDrain>().waitingForPower, controls = { get() }, WorkManagerChargingWork(androidContext())) }
     single { NotebookHousekeeping(get(), get(), get(), removeStartOverLeftovers = { get<NotebookRecovery>().removeStartOverLeftovers() }) }
     single { AndroidCaptureKeepAlive(androidContext()) } binds arrayOf(CaptureKeepAlive::class, RecordingKeepAlive::class)
     single { CaptureCoordinator(drain = get(), housekeeping = get(), rows = get(), keepAlive = get()) }
     single { CaptureIngest(get(), captureQueued = { get<CaptureCoordinator>().captureQueued() }, entryQueued = { get<ProcessingControls>().captureQueued(it) }) }
     single<Microphone> { AudioRecordMicrophone(androidContext()) }
-    single { PhoneRecorder(microphone = get(), ingest = get(), keepAlive = get(), text = get(), coordinator = get()) }
+    single<RecordingLocation> { LocationManagerRecordingLocation(androidContext()) }
+    single { PhoneRecorder(microphone = get(), ingest = get(), keepAlive = get(), text = get(), coordinator = get(), location = get()) }
     single { TypedNotes(get()) }
     single { NotebookNavigator() }
     single<PhoneCalendar> { AndroidPhoneCalendar(androidContext()) }
@@ -248,7 +278,9 @@ val notebookModule = module {
     }
     viewModel {
         NotebookViewModel(
-            get(), get(), get(), get(), get(), get(), get<VoiceCompletionStore>().revision, get<CaptureCoordinator>()::request, get(), get(), get(),
+            get(), get(), get(), get(), get(), get(), get<VoiceCompletionStore>().revision, get<CaptureCoordinator>()::request, get(), get(), get(), get(),
+            locationAsked = { get<NotebookPreferences>().locationAsked },
+            markLocationAsked = { get<NotebookPreferences>().markLocationAsked() },
             serverTryAgain = {
                 get<ServerCheck>().tryAgain()
                 get<CaptureCoordinator>().requestAgain()
@@ -256,6 +288,12 @@ val notebookModule = module {
         )
     }
     viewModel { NotesViewModel(get()) }
+    viewModel {
+        RoutingViewModel(
+            get(), get(), get(), BackupDocuments(androidContext().contentResolver),
+            location = get(), text = get(), processing = { get<CaptureCoordinator>().working.value },
+        )
+    }
     viewModel {
         RemindersViewModel(
             reminders = get(), events = get(), alarms = get(), typedNotes = get(),

@@ -56,6 +56,7 @@ internal class FakeNotifier(var deliverable: Boolean = true) : ReminderNotifier 
     @Volatile var cancelFireThrows = false
     @Volatile var postedSetNoticesThrows = false
     var completionsCount: Int? = null
+    var awaitingCount: Int? = null
 
     override fun postFire(key: ReminderEventKey, message: String): Boolean {
         posted += key to message
@@ -95,6 +96,14 @@ internal class FakeNotifier(var deliverable: Boolean = true) : ReminderNotifier 
 
     override fun postCompletionsToReview(count: Int) {
         completionsCount = count
+    }
+
+    override fun postAwaitingToReview(count: Int) {
+        awaitingCount = count
+    }
+
+    override fun cancelAwaitingToReview() {
+        awaitingCount = null
     }
 
     override fun cancelCompletionsToReview() {

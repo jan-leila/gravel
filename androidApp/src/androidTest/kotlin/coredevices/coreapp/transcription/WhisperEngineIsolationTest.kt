@@ -50,7 +50,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * Run on its own, against a persistent install with the model:
  *   adb shell am instrument -w \
  *     -e class coredevices.coreapp.transcription.WhisperEngineIsolationTest \
- *     com.anopticlabs.gravel.test/androidx.test.runner.AndroidJUnitRunner
+ *     com.anopticlabs.gravel.signed.test/androidx.test.runner.AndroidJUnitRunner
  */
 class WhisperEngineIsolationTest {
 

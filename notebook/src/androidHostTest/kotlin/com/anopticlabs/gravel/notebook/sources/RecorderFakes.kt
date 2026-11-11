@@ -2,6 +2,7 @@ package com.anopticlabs.gravel.notebook.sources
 
 import com.anopticlabs.gravel.notebook.pipeline.IngestResult
 import com.anopticlabs.gravel.notebook.pipeline.RecordingKeepAlive
+import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
@@ -80,6 +81,7 @@ class RecorderHarness(
     private val preload: suspend () -> Unit = {},
     private val onIngest: suspend (FinishedRecording) -> IngestResult = { result },
     @Volatile var processing: Boolean = false,
+    private val locate: suspend () -> RoutedLocation? = { null },
 ) {
     val events: MutableList<String> = CopyOnWriteArrayList()
     val microphone = FakeMicrophone(chunks, after, events, failStart)
@@ -105,6 +107,10 @@ class RecorderHarness(
         },
         processing = { processing },
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        locate = {
+            events += "locate"
+            locate()
+        },
         clock = { START_MILLIS + 60_000L * clockCalls.getAndIncrement() },
         zone = { TimeZone.of("Asia/Tokyo") },
     )
