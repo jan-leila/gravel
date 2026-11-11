@@ -109,6 +109,10 @@ class RealPebbleDeepLinkHandler(
                     NAVBAR_URL -> handleNavbar(uri.path)
                     REGISTER_INDEX_COMPANION_HOST -> handleRegisterIndexCompanion()
                     SHOW_WATCHES_HOST -> handleShowWatches()
+                    GIT_SOURCES_HOST -> {
+                        navigateToTab(PebbleNavBarRoutes.GitSourcesRoute)
+                        true
+                    }
 //                    UPDATE_WATCH_NOW_HOST -> handleShowWatches(uri.path)
                     else -> false
                 }
@@ -375,6 +379,8 @@ class RealPebbleDeepLinkHandler(
         private const val ADD_STORE_FEED_HOST: String = "add-store-feed"
         private const val NAVBAR_URL: String = "navbar"
         private val SHOW_WATCHES_HOST = "show-watches"
+        // Gravel: opens the Git Sources screen (its update notifications), and does nothing else.
+        private const val GIT_SOURCES_HOST = "git-sources"
 //        private val UPDATE_WATCH_NOW_HOST = "update-watch-now"
         private val REGISTER_INDEX_COMPANION_HOST = IndexPlatformBluetoothAssociations.REQUEST_URI_HOST
 
@@ -384,6 +390,7 @@ class RealPebbleDeepLinkHandler(
          */
         internal fun refusedByGravel(host: String?): Boolean = host == REGISTER_INDEX_COMPANION_HOST
         val NOTIFICATION_INTENT_URI_SHOW_WATCHES = Uri.parse("pebble://${SHOW_WATCHES_HOST}")
+        val NOTIFICATION_INTENT_URI_GIT_SOURCES = Uri.parse("pebble://$GIT_SOURCES_HOST")
         val NOTIFICATION_INTENT_URI_REGISTER_INDEX_COMPANION = Uri.parse("pebble://${REGISTER_INDEX_COMPANION_HOST}")
 //        val NOTIFICATION_INTENT_URI_UPDATE_NOW = Uri.parse("pebble://${UPDATE_WATCH_NOW_HOST}")
         private const val GITHUB_OAUTH_CALLBACK_HOST: String = "cloud.repebble.com"

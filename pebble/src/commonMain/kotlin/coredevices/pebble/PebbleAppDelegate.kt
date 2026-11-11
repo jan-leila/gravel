@@ -1,6 +1,7 @@
 package coredevices.pebble
 
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.gitsource.GitSourceUpdater
 import com.russhwolf.settings.Settings
 import coredevices.analytics.CoreAnalytics
 import coredevices.analytics.heartbeatWatchConnectGoalName
@@ -57,6 +58,7 @@ class PebbleAppDelegate(
     private val pebbleWebServices: PebbleWebServices,
     private val batteryChargedNotifier: BatteryChargedNotifier,
     private val weatherFetcher: WeatherFetcher,
+    private val gitSourceUpdater: GitSourceUpdater,
 ) {
     private val logger = Logger.withTag("PebbleAppDelegate")
 
@@ -218,6 +220,10 @@ class PebbleAppDelegate(
             },
             scope.launch {
                 analyticsHeartbeatQueue.uploadPendingFromDb()
+            },
+            // Gravel: watch apps and faces followed from git releases.
+            scope.launch {
+                gitSourceUpdater.backgroundCheck()
             },
         )
         jobs.joinAll()

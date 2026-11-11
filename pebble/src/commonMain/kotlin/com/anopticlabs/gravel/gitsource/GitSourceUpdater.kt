@@ -117,7 +117,7 @@ class GitSourceUpdater(
             .map { (row, uuids) -> row?.let { view(it, uuids) } }
 
     private suspend fun view(row: GitSourceEntity, lockerUuids: Set<Uuid>): GitSourceView? {
-        val repo = row.repo() ?: return null
+        val repo = row.toGitRepo() ?: return null
         return GitSourceView(
             source = row,
             repo = repo,
@@ -223,7 +223,7 @@ class GitSourceUpdater(
 
     private suspend fun checkLocked(uuid: String): GitSourceError? {
         val row = dao.get(uuid) ?: return null
-        val repo = row.repo() ?: return GitSourceError.MALFORMED
+        val repo = row.toGitRepo() ?: return GitSourceError.MALFORMED
         val now = clock.now().toEpochMilliseconds()
         val selection = when (val fetched = client.releases(repo, row.etag)) {
             ReleaseFetch.NotModified -> {
@@ -418,7 +418,7 @@ class GitSourceUpdater(
     }
 }
 
-fun GitSourceEntity.repo(): GitRepo? {
+fun GitSourceEntity.toGitRepo(): GitRepo? {
     val host = GitHost.entries.firstOrNull { it.name == host } ?: return null
     return GitRepo(host, baseUrl, owner, repo)
 }

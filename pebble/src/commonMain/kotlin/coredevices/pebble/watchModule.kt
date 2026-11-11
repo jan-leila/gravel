@@ -28,6 +28,11 @@ import coredevices.pebble.firmware.FirmwareArtifactExpectations
 import coredevices.pebble.firmware.FirmwareUpdateCheck
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
 import coredevices.pebble.firmware.GithubReleases
+import com.anopticlabs.gravel.gitsource.GitReleaseClient
+import com.anopticlabs.gravel.gitsource.GitSourceLocker
+import com.anopticlabs.gravel.gitsource.GitSourceUpdater
+import com.anopticlabs.gravel.gitsource.GitSourcesViewModel
+import com.anopticlabs.gravel.gitsource.LibPebbleGitSourceLocker
 import coredevices.pebble.firmware.RealBatteryChargedNotifier
 import coredevices.pebble.firmware.RealFirmwareUpdateUiTracker
 import coredevices.pebble.firmware.VerifiedFirmwareInstaller
@@ -86,6 +91,7 @@ import io.rebble.libpebblecommon.connection.ConnectedPebbleDevice
 import io.rebble.libpebblecommon.connection.HealthDataApi
 import io.rebble.libpebblecommon.connection.LibPebble
 import io.rebble.libpebblecommon.connection.LibPebble3
+import io.rebble.libpebblecommon.util.getTempFilePath
 import io.rebble.libpebblecommon.connection.NotificationApps
 import io.rebble.libpebblecommon.connection.TokenProvider
 import io.rebble.libpebblecommon.connection.WebServices
@@ -216,6 +222,21 @@ val watchModule = module {
     singleOf(::FirmwareArtifactExpectations)
     singleOf(::PebbleOsChangelogListSource)
     singleOf(::GithubReleases)
+    // Gravel: watch apps and faces followed from git releases.
+    singleOf(::GitReleaseClient)
+    single<GitSourceLocker> { LibPebbleGitSourceLocker(get<LibPebble3>()) }
+    single {
+        GitSourceUpdater(
+            dao = get(),
+            client = get(),
+            httpClient = get(),
+            locker = get(),
+            notifier = get(),
+            stagingDir = getTempFilePath(get<AppContext>(), "git_sources"),
+            clock = get(),
+        )
+    }
+    viewModelOf(::GitSourcesViewModel)
     single {
         // Fork: download+verify+sideload pipeline for firmware installs. Reuses
         // upstream's firmware cache directory (unique per-install filenames);
