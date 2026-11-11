@@ -1,8 +1,13 @@
 name: Release
 
-# Publishes a release when its tag is pushed: the tag (the versionName) goes on the release commit
-# on master, as releases always have. The workflow builds the tagged commit, signs it, and creates
-# the tag's GitHub release.
+# Publishes a release from the `release` branch. Every push to it reads the version that
+# androidApp/version.properties declares; if that version already has a published GitHub release
+# the run stops there, so merging to release without bumping the file publishes nothing.
+# Otherwise it builds the pushed commit, signs it, and creates the GitHub release, which creates
+# the tag (the versionName) on that commit. Tags are never pushed by hand.
+#
+# The tag is created with the workflow token, and GitHub starts no workflow for a ref that token
+# creates, so Build does not run on it; the checks below are the tag's CI.
 #
 # The GitHub release is what Obtainium installs from and what F-Droid's "Gravel" listing
 # (com.anopticlabs.gravel.signed) names as its Binaries: F-Droid finds the new tag, builds it
@@ -19,16 +24,16 @@ name: Release
 # certificate's SHA-256 (lowercase hex, no colons), the same value as the recipe's
 # AllowedAPKSigningKeys; a release signed with any other key stops before publishing.
 
-# The filter is a coarse SemVer match; the first step checks the exact shape.
 on:
   push:
-    tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
+    branches:
+      - release
 
 permissions:
   contents: write
 
-# A tag deleted and pushed again must not race its first run to publish.
+# Two pushes in quick succession must not both publish one version: the second waits, then finds
+# the first's release and stops.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -46,29 +51,41 @@ jobs:
           submodules: recursive
           # All branches and tags, for the master and version checks below.
           fetch-depth: 0
-      - name: Read the release number and skip a published one
+      - name: Read the declared version and skip a released one
         id: version
         run: |
-          name="$TAG"
           code="$(sed -n 's/^versionCode=\([0-9][0-9]*\)$/\1/p' androidApp/version.properties)"
-          echo "tag: $name, version file: $code"
-          printf '%s' "$name" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          name="$(sed -n 's/^versionName=\([0-9][0-9.]*\)$/\1/p' androidApp/version.properties)"
+          echo "version file: versionCode=$code versionName=$name"
           test -n "$code"
+          printf '%s' "$name" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           if gh release view "$name" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "$name is already released; nothing to publish"
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # A tag without a release (created outside this workflow) is reused only if it already
+          # marks this commit; anywhere else the version is taken.
+          if tagged="$(git rev-parse -q --verify "refs/tags/$name^{commit}")" && [ "$tagged" != "$GITHUB_SHA" ]; then
+            echo "tag $name already exists on $tagged, not on $GITHUB_SHA; bump versionName"
+            exit 1
+          fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "publish=true" >> "$GITHUB_OUTPUT"
         env:
-          TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}
-      # Only reviewed code is released: a tag on a feature branch publishes nothing.
-      - name: Check the tagged commit is on master
+      # Only reviewed code is released: the pushed tree must be exactly the tree of a commit on
+      # master. Holds however the PR into release was merged (merge commit, squash, rebase) and
+      # rules out content that exists only on release, conflict resolutions included.
+      - name: Check the released tree is on master
         if: steps.version.outputs.publish == 'true'
-        run: git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/master
+        run: |
+          tree="$(git rev-parse "$GITHUB_SHA^{tree}")"
+          if ! git log --format=%T refs/remotes/origin/master | grep -qxF "$tree"; then
+            echo "the tree of $GITHUB_SHA matches no commit on master; merge master into release unchanged"
+            exit 1
+          fi
       # F-Droid offers an update only for a higher versionCode, and Obtainium compares
       # versionNames, so both must go up against the newest other release tag.
       - name: Check the number goes up
@@ -93,8 +110,9 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: 21
-      # No dependency cache: a release builds from a clean Gradle home, as F-Droid does. On the tag
-      # checkout, VerifyReleaseVersionFile fails the build unless the file is the commit count.
+      # No dependency cache: a release builds from a clean Gradle home, as F-Droid does. The build
+      # stamps both numbers from version.properties; nothing in it depends on the tag, so this
+      # untagged build and F-Droid's build of the tag produce the same APK.
       - name: Build the unsigned release APK
         if: steps.version.outputs.publish == 'true'
         run: ./gradlew :androidApp:assembleRelease --no-daemon --stacktrace
@@ -165,8 +183,9 @@ jobs:
             androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk
         env:
           NAME: ${{ steps.version.outputs.name }}
-      # --verify-tag attaches the release to the pushed tag and never creates one.
-      - name: Publish the GitHub release
+      # Creates the tag on the built commit (or reuses one already there, which the first step
+      # allows only on this commit). Last, so a failed check leaves neither tag nor release.
+      - name: Publish the GitHub release and tag
         if: steps.version.outputs.publish == 'true'
         run: |
           cd "$RUNNER_TEMP/out"
@@ -175,7 +194,7 @@ jobs:
             cat "$GITHUB_WORKSPACE/fastlane/metadata/android/en-US/changelogs/$CODE.txt"
             printf '\nSigning certificate SHA-256: `%s`\n' "$GRAVEL_SIGNER_SHA256"
           } > notes.md
-          gh release create "$NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+          gh release create "$NAME" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Gravel $NAME" --notes-file notes.md \
             "gravel-$NAME.apk" "gravel-$NAME.apk.sha256"
         env:

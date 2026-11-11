@@ -1,5 +1,6 @@
 package coredevices.coreapp
 
+import com.anopticlabs.gravel.ReleaseVersion
 import coredevices.coreapp.FdroidScannerReplica.VersionCatalog
 import java.io.File
 import kotlin.test.Test
@@ -42,8 +43,8 @@ import kotlin.test.assertTrue
  * (no toolchain pin, [noGradleFileConfiguresAJvmToolchain]), the native
  * modules pin one NDK and one CMake ([everyNativeModulePinsTheSameNdkAndCmake]),
  * and the version file F-Droid's update checker reads has the shape its regex
- * expects and, on a tag checkout, the value the build produces
- * ([versionFileMatchesTheBuiltCommitOnATagCheckout]). The toolchain and
+ * expects and, on a tag checkout, names that tag
+ * ([versionFileNamesTheTagOnATagCheckout]). The toolchain and
  * version-file checks each have a positive control proving the matcher
  * fires; the pin check only asserts that it found both modules, and the
  * listing-limit checks at the end have none.
@@ -327,34 +328,30 @@ class FdroidGuardrailsTest {
     }
 
     /**
-     * `androidApp/version.properties` is what the recipe's UpdateCheckData
-     * regex reads as the versionCode of a tag, so it is held to exactly one
-     * `versionCode=<digits>` line: no comment, no second key, nothing the
-     * regex could match first. The value must name a release that has a
-     * changelog (`fastlane/metadata/android/en-US/changelogs/<value>.txt`,
-     * added by the same release commit), and on a tag checkout it must be
-     * the commit count the build derives versionCode from; between releases
-     * the file names the last tagged release. The Gradle-time
+     * `androidApp/version.properties` declares the versionCode and
+     * versionName the build stamps, and the recipe's UpdateCheckData regex
+     * reads the versionCode of a tag from it; [ReleaseVersion.parse], the
+     * build's own parser, holds it to the shape that regex reads
+     * unambiguously. The versionCode must have a changelog
+     * (`fastlane/metadata/android/en-US/changelogs/<value>.txt`, added by
+     * the same release commit), and on a checkout of a release-shaped tag
+     * the versionName must be that tag. The Gradle-time
      * VerifyReleaseVersionFile task makes the shape and tag checks before
      * every build; this is the test-suite copy of it plus the changelog
      * pairing.
      */
     @Test
-    fun versionFileMatchesTheBuiltCommitOnATagCheckout() {
-        val text = read("androidApp/version.properties").readText()
-        val declared = declaredVersionCode(text)
-        assertTrue(declared != null, "androidApp/version.properties must be exactly one line, versionCode=<digits>, but reads:\n$text")
-        val changelog = "fastlane/metadata/android/en-US/changelogs/$declared.txt"
+    fun versionFileNamesTheTagOnATagCheckout() {
+        val declared = ReleaseVersion.parse(read(ReleaseVersion.PATH).readText())
+        val changelog = "fastlane/metadata/android/en-US/changelogs/${declared.code}.txt"
         assertTrue(
             read(changelog).exists(),
-            "androidApp/version.properties declares $declared but there is no $changelog; the release commit adds both",
+            "${ReleaseVersion.PATH} declares ${declared.code} but there is no $changelog; the release commit adds both",
         )
         val tags = TrackedTree.git("tag", "--points-at", "HEAD").lines().filter { it.isNotBlank() }
-        if (tags.isEmpty()) return
-        val count = TrackedTree.git("rev-list", "--count", "HEAD").trim().toInt()
         assertTrue(
-            declared == count,
-            "Tag ${tags.joinToString()} builds versionCode $count but androidApp/version.properties declares $declared",
+            declared.matchesTagsAtHead(tags),
+            "Tag ${tags.joinToString()} is checked out but ${ReleaseVersion.PATH} declares versionName ${declared.name}",
         )
     }
 
@@ -398,42 +395,57 @@ class FdroidGuardrailsTest {
     }
 
     /**
-     * Positive control for [versionFileMatchesTheBuiltCommitOnATagCheckout]:
-     * the shape check accepts exactly one LF-terminated (or unterminated)
-     * `versionCode=<digits>` line and rejects a comment line, a second key,
-     * a blank line, leading space, CRLF, and a non-numeric value. CRLF is
-     * rejected on purpose so the check agrees with the per-line sed in the
-     * CI tag step, which anchors on `$` before the newline.
+     * Positive control for [versionFileNamesTheTagOnATagCheckout]: the
+     * parser takes the two keys in either order among other lines, and
+     * rejects a missing or repeated key, any other mention of `versionCode=`
+     * or `versionName=` (a comment included, since UpdateCheckData's
+     * unanchored regex could read it), leading space, CRLF (which the
+     * workflows' line-anchored sed would not read either), a non-numeric or
+     * overflowing code, and a versionName that is not three numbers.
      */
     @Test
-    fun versionFileShapeCheckAcceptsOnlyOneLine() {
-        val accepted = mapOf("versionCode=2238\n" to 2238, "versionCode=2238" to 2238)
+    fun versionFileParserAcceptsOnlyOneWholeLinePerKey() {
+        val accepted = mapOf(
+            "versionCode=2238\nversionName=0.1.2\n" to ReleaseVersion(2238, "0.1.2"),
+            "versionName=10.0.12\nversionCode=2238" to ReleaseVersion(2238, "10.0.12"),
+            "# the last release\nversionCode=2238\n\nversionName=0.1.2\nother=1\n" to ReleaseVersion(2238, "0.1.2"),
+        )
         val rejected = listOf(
-            "versionCode=2238\r\n",
-            "# the last release\nversionCode=2238\n",
-            "versionCode=2238\nversionName=0.1.2\n",
-            "versionCode=2238\n\n",
-            " versionCode=2238\n",
-            "versionCode=\n",
-            "versionCode=abc\n",
             "",
+            "versionCode=2238\n",
+            "versionName=0.1.2\n",
+            "versionCode=2238\nversionCode=2239\nversionName=0.1.2\n",
+            "# was versionCode=2237\nversionCode=2238\nversionName=0.1.2\n",
+            "versionCode=2238\r\nversionName=0.1.2\r\n",
+            " versionCode=2238\nversionName=0.1.2\n",
+            "versionCode=abc\nversionName=0.1.2\n",
+            "versionCode=99999999999\nversionName=0.1.2\n",
+            "versionCode=2238\nversionName=0.1\n",
+            "versionCode=2238\nversionName=0.01.2\n",
+            "versionCode=2238\nversionName=v0.1.2\n",
+            "versionCode=2238\nversionName=0.1.2-rc1\n",
         )
         for ((text, expected) in accepted) {
-            assertTrue(declaredVersionCode(text) == expected, "shape check rejected ${text.escaped()}")
+            val parsed = runCatching { ReleaseVersion.parse(text) }
+            assertTrue(parsed.getOrNull() == expected, "parser gave $parsed for ${text.escaped()}")
         }
         for (text in rejected) {
-            assertTrue(declaredVersionCode(text) == null, "shape check accepted ${text.escaped()}")
+            val parsed = runCatching { ReleaseVersion.parse(text) }
+            assertTrue(parsed.exceptionOrNull() is IllegalArgumentException, "parser gave $parsed for ${text.escaped()}")
         }
     }
 
-    /**
-     * The versionCode a version file declares, or null when the file is not
-     * exactly one `versionCode=<digits>` line. Mirrored by hand in the
-     * VerifyReleaseVersionFile task in androidApp/build.gradle.kts, which
-     * cannot share test code; keep the two regexes identical.
-     */
-    private fun declaredVersionCode(text: String): Int? =
-        Regex("""versionCode=(\d+)\n?""").matchEntire(text)?.groupValues?.get(1)?.toIntOrNull()
+    /** Positive control for the tag half of [versionFileNamesTheTagOnATagCheckout]. */
+    @Test
+    fun onlyAReleaseTagNamingTheVersionPassesTheTagCheck() {
+        val version = ReleaseVersion(2238, "0.1.2")
+        assertTrue(version.matchesTagsAtHead(emptyList()))
+        assertTrue(version.matchesTagsAtHead(listOf("0.1.2")))
+        assertTrue(version.matchesTagsAtHead(listOf("nightly")))
+        assertTrue(version.matchesTagsAtHead(listOf("0.1.1", "0.1.2")))
+        assertTrue(!version.matchesTagsAtHead(listOf("0.1.3")))
+        assertTrue(!version.matchesTagsAtHead(listOf("nightly", "0.1.1")))
+    }
 
     private fun String.escaped(): String = "\"" + replace("\r", "\\r").replace("\n", "\\n") + "\""
 }

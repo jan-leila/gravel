@@ -2785,29 +2785,29 @@ What the tree guarantees, and how it is pinned:
   `NativeLibPathsSentinelTest` checks the mappings in the CMake builds
   the Gradle files declare, and the check's registration and its list
   of libraries built here.
-- `versionName` is `git describe --tags --first-parent HEAD` and
-  `versionCode` the commit count, both functions of the built commit
-  (`androidApp/build.gradle.kts`), so a tag checkout reports exactly the
-  tag name and the values the recipe declares for that tag can be checked
-  against the built APK. The first-parent walk keeps upstream's tags,
-  reachable through every sync merge's second parent, from describing a
-  Gravel commit (git describe stops after ten candidate tags, so a non-tag
-  build would otherwise report the newest upstream tag); a release tag
-  has to sit on master's first-parent line, which tagging the release
-  commit on master gives.
-- `androidApp/version.properties` holds one line, `versionCode=<digits>`,
-  the versionCode of the most recent tagged release. It exists for
-  F-Droid's update checker, which reads it from a tag checkout (it cannot
-  count commits) and takes the tag name as versionName. The release commit
-  bumps it to the count that commit will have once tagged. Three checks
-  guard it: the Gradle-time `VerifyReleaseVersionFile` task (wired before
+- `androidApp/version.properties` holds a `versionCode=<digits>` line
+  and a `versionName=<major>.<minor>.<patch>` line, in any order, and
+  `androidApp/build.gradle.kts` stamps both into the APK, so the built
+  numbers are a function of the committed file alone and nothing in the
+  build reads a tag. Between releases the file names the last release.
+  The Release workflow creates each release tag from the file's
+  versionName on the commit it built, so a tag checkout's file always
+  names its own tag; F-Droid's update checker reads the versionCode from
+  the file and takes the tag name as the versionName. Three checks guard
+  it: the Gradle-time `VerifyReleaseVersionFile` task (wired before
   `preBuild`, so it runs on every build everywhere) checks the shape on
-  every build and, on a tag checkout, that the value equals the commit
-  count the build stamps into the APK; `FdroidGuardrailsTest` repeats both
-  and also requires a `changelogs/<value>.txt` for the value the file
-  names; a tag-only CI step compares the file, the commit count, and the
-  versionCode read back from the built APK. All three read the file as
-  exactly one LF-terminated `versionCode=<digits>` line.
+  every build and, on a checkout of a release-shaped tag, that the
+  versionName is that tag; `FdroidGuardrailsTest` repeats both and also
+  requires a `changelogs/<versionCode>.txt` for the value the file names;
+  a CI step compares the file with the numbers read back from the built
+  APK, and with the tag on a tag build. The task and the test share one
+  parser, `ReleaseVersion` in `buildSrc/src/shared` (compiled into
+  buildSrc and into androidApp's unit tests, so it stays free of the
+  Gradle API). It allows other lines but requires each key to be on
+  exactly one line, which must be the whole LF-terminated `key=value`:
+  the recipe's unanchored `versionCode=(\d+)` would otherwise read a
+  second mention, a comment included, and the workflows read each key
+  with a line-anchored sed, which a CRLF line would defeat.
 - No module pins a Gradle JVM toolchain. The buildserver ships a single JDK
   (21) with toolchain provisioning disabled, so upstream's `jvmToolchain(17)`
   calls in `libpebble3`, `blobannotations`, and `blobdbgen` are removed and
@@ -2843,7 +2843,10 @@ What the tree guarantees, and how it is pinned:
   `OFF` before adding the submodule, which skips ggml's git query, and
   llm-native pins `LLAMA_BUILD_COMMIT`/`LLAMA_BUILD_NUMBER`, whose
   defaults are a git abbreviation and a commit count.
-- The Release workflow builds the APK unsigned on JDK 21, like the
+- The Release workflow runs on every push to the `release` branch and
+  publishes only a versionName that has no GitHub release yet, from a
+  tree identical to a commit on master, with both numbers above the
+  newest other release tag's. It builds the APK unsigned on JDK 21, like the
   buildserver, and signs it afterwards with `apksigner --alignment-preserved
   true`, so signing adds the APK Signing Block and nothing else. It then
   runs `apksigcopier compare`, the check F-Droid runs against its own
@@ -2890,9 +2893,10 @@ everything below applies to both listings unless it names one):
   (`%v` is the versionName, which is the tag name), and
   `AllowedAPKSigningKeys:` the signing certificate's SHA-256, the same
   value as `GRAVEL_SIGNER_SHA256`. The GitHub release has to exist before
-  F-Droid's build of the tag runs; the Release workflow creates it on
-  the tag push, so a failed run must be fixed before F-Droid builds the
-  tag.
+  F-Droid's build of the tag runs; the Release workflow creates the
+  release and the tag together, after every check has passed, so a tag
+  never exists without its release unless something outside the workflow
+  creates one.
 - Gravel (unsigned) (`com.anopticlabs.gravel`): `gradleprops:
   [gravel.unsigned=true]` on every build entry, and no `Binaries:`; F-Droid
   signs this one with its own key. Its listing name and text override the

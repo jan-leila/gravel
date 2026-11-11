@@ -1,3 +1,4 @@
+import com.anopticlabs.gravel.ReleaseVersion
 import com.anopticlabs.gravel.UnsignedListing
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
@@ -35,34 +36,20 @@ val signReleaseWithKeystore = !localReleaseBuild && releaseKeystore.exists()
 
 val unsignedListing = UnsignedListing.selected { providers.gradleProperty(it).orNull }
 
-// Number of commits in the git history, so it always increases on main.
-val gitVersionCode = providers.exec {
-    isIgnoreExitValue = true
-    commandLine("git", "rev-list", "--count", "HEAD")
-}.standardOutput.asText.map {
-    it.trim().toIntOrNull() ?: throw GradleException("Error reading current commit count")
-}
-
-// Fork: described from HEAD, so the value is a function of the built commit:
-// exactly the tag name on a tag checkout, "<tag>-<n>-g<sha>" past one, and
-// "unknown" when no tag is reachable. Upstream derives it from the newest tag
-// anywhere in the repository, so an older tag rebuilt after a newer one
-// exists reports the newer version and every branch reports the newest tag.
-// F-Droid builds a tag checkout and requires the built versionName to equal
-// the one declared for that tag, which needs the per-commit derivation.
-// The walk follows the first-parent line only: every upstream sync merge
-// makes upstream's tags reachable through its second parent, and git
-// describe gives up after ten candidate tags, so without this a non-tag
-// build reports the newest upstream tag. A release tag therefore sits on
-// master's first-parent line, which tagging the release commit gives.
-val gitVersionName = providers.exec {
-    isIgnoreExitValue = true
-    commandLine("git", "describe", "--tags", "--first-parent", "HEAD")
-}.standardOutput.asText.map { it.trim().ifEmpty { "unknown" } }
+// Fork: both version numbers are declared in androidApp/version.properties,
+// where upstream derives them from git tags. The Release workflow creates the
+// tag from the file, so the file is the one source a tag build, F-Droid's
+// update checker and the workflow all read. The parser, shared with
+// FdroidGuardrailsTest, is buildSrc/src/shared's ReleaseVersion.
+val releaseVersion = providers.fileContents(layout.projectDirectory.file("version.properties"))
+    .asText.map { ReleaseVersion.parse(it) }
 
 android {
     namespace = "coredevices.coreapp"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
+
+    // Fork: FdroidGuardrailsTest checks the version file with the build's own parser.
+    sourceSets.getByName("test").kotlin.srcDir(rootDir.resolve("buildSrc/src/shared/kotlin"))
 
     if (signReleaseWithKeystore) {
         signingConfigs {
@@ -609,15 +596,12 @@ abstract class VerifyNativeLibPaths : DefaultTask() {
     private fun Char.inName() = code >= 0x80 || isLetterOrDigit() || this in "._~+-/"
 }
 
-// Fork: F-Droid's update checker reads the versionCode of a tagged release from
-// androidApp/version.properties (the recipe's UpdateCheckData names that file);
-// it cannot count commits the way the build does. The file is bumped in the
-// commit that gets tagged, so on a tag checkout it must equal the count the
-// build itself uses, and anywhere else it names the last tagged release and only
-// its shape is checked. The task runs before every build (preBuild), so a tag
-// build with a stale file fails locally, in CI, and on the buildserver alike;
-// the unit-test copy of the check is FdroidGuardrailsTest, and F-Droid compares
-// the built APK against the recipe as a third, independent layer.
+// Fork: F-Droid builds a tag checkout and takes the tag name as the versionName,
+// so on a tag checkout the file must name that tag; anywhere else only its shape
+// is checked. The task runs before every build (preBuild), so a tag whose file
+// disagrees fails locally, in CI, and on the buildserver alike; the unit-test
+// copy of the check is FdroidGuardrailsTest, and F-Droid compares the built APK
+// against the recipe as a third, independent layer.
 val gitTagsAtHead = providers.exec {
     isIgnoreExitValue = true
     commandLine("git", "tag", "--points-at", "HEAD")
@@ -642,35 +626,23 @@ abstract class VerifyReleaseVersionFile : DefaultTask() {
     @get:Input
     abstract val tagsAtHead: Property<String>
 
-    @get:Input
-    abstract val builtVersionCode: Property<Int>
-
     @TaskAction
     fun verify() {
-        val file = versionFile.get().asFile
-        val text = file.readText()
-        // Same regex as FdroidGuardrailsTest.declaredVersionCode; LF only, so
-        // the three layers (this task, the test, the CI sed) agree on shape.
-        val declared = Regex("""versionCode=(\d+)\n?""").matchEntire(text)?.groupValues?.get(1)?.toIntOrNull()
-            ?: throw GradleException("$file must be exactly one line, versionCode=<digits>, but reads:\n$text")
+        val declared = ReleaseVersion.parse(versionFile.get().asFile.readText())
         val tags = tagsAtHead.get().lines().filter { it.isNotBlank() }
-        if (tags.isEmpty()) return
-        val built = builtVersionCode.get()
-        if (declared != built) {
-            throw GradleException(
-                "Tag ${tags.joinToString()} builds versionCode $built but $file declares $declared; " +
-                    "the release commit must set the file to the commit count it will have once committed.",
-            )
-        }
+        if (declared.matchesTagsAtHead(tags)) return
+        throw GradleException(
+            "Tag ${tags.joinToString()} is checked out but ${ReleaseVersion.PATH} declares " +
+                "versionName ${declared.name}; the Release workflow tags a commit only with the version its file declares.",
+        )
     }
 }
 
 val verifyReleaseVersionFile = tasks.register<VerifyReleaseVersionFile>("verifyReleaseVersionFile") {
     group = "verification"
-    description = "Fails a tag build whose version.properties disagrees with the built versionCode."
+    description = "Fails a tag build whose version.properties does not name the checked-out tag."
     versionFile.set(layout.projectDirectory.file("version.properties"))
     tagsAtHead.set(gitTagsAtHead)
-    builtVersionCode.set(gitVersionCode)
 }
 
 // preBuild is created by AGP after this script runs, hence configureEach.
@@ -695,8 +667,8 @@ tasks.withType<Test>().configureEach {
 androidComponents {
     onVariants { variant ->
         variant.outputs.forEach {
-            it.versionCode.set(gitVersionCode)
-            it.versionName.set(gitVersionName)
+            it.versionCode.set(releaseVersion.map { v -> v.code })
+            it.versionName.set(releaseVersion.map { v -> v.name })
         }
 
         // Fork: artifact-level check of the packaging decisions above, for
