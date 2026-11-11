@@ -53,11 +53,11 @@ fun selectRelease(
 }
 
 /**
- * Whether [found] replaces the installed release: another tag, published later. An older release that is newest
+ * Whether the release [tag] replaces the installed one: another tag, published later. An older release that is newest
  * only because newer ones were deleted or turned into drafts is not offered.
  */
-fun isUpdate(installedTag: String, installedPublishedAt: Instant, found: GitRelease): Boolean =
-    found.tag != installedTag && found.publishedAt > installedPublishedAt
+fun isUpdate(installedTag: String, installedPublishedAt: Instant, tag: String, publishedAt: Instant): Boolean =
+    tag != installedTag && publishedAt > installedPublishedAt
 
 /**
  * A pattern that matches [assetName] and the same asset in later releases: the name taken literally, except that

@@ -73,9 +73,9 @@ class GitReleaseSelectionTest {
     @Test
     fun anUpdateIsAnotherTagPublishedLater() {
         val installedAt = Instant.parse("2026-01-03T00:00:00Z")
-        assertTrue(isUpdate("v1", installedAt, release("v2", 4)))
-        assertFalse(isUpdate("v1", installedAt, release("v1", 4)))
-        assertFalse(isUpdate("v1", installedAt, release("v0.9", 2)))
-        assertFalse(isUpdate("v1", installedAt, release("v2", 3)))
+        assertTrue(isUpdate("v1", installedAt, "v2", release("v2", 4).publishedAt))
+        assertFalse(isUpdate("v1", installedAt, "v1", release("v1", 4).publishedAt))
+        assertFalse(isUpdate("v1", installedAt, "v0.9", release("v0.9", 2).publishedAt))
+        assertFalse(isUpdate("v1", installedAt, "v2", release("v2", 3).publishedAt))
     }
 }
