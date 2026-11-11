@@ -11,8 +11,8 @@ plugins {
 }
 
 val routerKeystore: String? = System.getenv("ROUTER_KEYSTORE")?.takeIf { it.isNotBlank() }
-// One version for all the router apps, bumped in routers/version.properties for each routers-v* tag.
-val routerVersion = Properties().apply { rootProject.file("routers/version.properties").inputStream().use { load(it) } }
+// The router apps carry the main app's version and are released with it (androidApp/version.properties).
+val routerVersion = Properties().apply { rootProject.file("androidApp/version.properties").inputStream().use { load(it) } }
 
 val localReleaseBuild = Properties().apply {
     val file = rootProject.file("local.properties")
@@ -24,7 +24,7 @@ android {
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.anopticlabs.gravel.router.osmnote"
+        applicationId = "com.jan_leila.apps.osmnote"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = routerVersion.getProperty("versionCode").toInt()

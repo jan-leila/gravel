@@ -8,7 +8,10 @@ import kotlinx.serialization.Serializable
  * with the app's name in a comment beside it, and only for an app whose router Gravel's own
  * documentation points users to. The user can remove any of them in the settings.
  */
-val DEFAULT_TRUSTED_ROUTER_SIGNERS: Set<String> = emptySet()
+val DEFAULT_TRUSTED_ROUTER_SIGNERS: Set<String> = setOf(
+    // Gravel's release key, which also signs the router apps shipped with each Gravel release (routers/README.md).
+    "5a7b2a794dcd6a75c77948283a1d014b4e80e62a2f8a684a10d3bbb57ea36106",
+)
 
 /** A certificate the user added, by its digest, with what they called it. A stored format (the trust file, an export). */
 @Serializable
