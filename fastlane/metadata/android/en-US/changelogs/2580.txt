@@ -1,0 +1,3 @@
+Notebook text routing: each recording's text can now be sent on to a note, a reminder, a time or place router, or to router apps (Slack, Home Assistant, Vikunja, Mastodon, Signal, email and more), chosen by rules you edit in Text Routing settings, or by describing the change to the on-device text model.
+
+What leaves the phone is granted per router, and a capture can wait for your Yes before it is sent. Recordings now note where they were made.
