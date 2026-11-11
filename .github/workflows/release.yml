@@ -49,7 +49,7 @@ jobs:
           # it is not left in .git/config; the gh steps pass it as GH_TOKEN themselves.
           persist-credentials: false
           submodules: recursive
-          # All branches and tags, for the master and version checks below.
+          # All branches and tags, for the main and version checks below.
           fetch-depth: 0
       - name: Read the declared version and skip a released one
         id: version
@@ -76,14 +76,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
       # Only reviewed code is released: the pushed tree must be exactly the tree of a commit on
-      # master. Holds however the PR into release was merged (merge commit, squash, rebase) and
+      # main. Holds however the PR into release was merged (merge commit, squash, rebase) and
       # rules out content that exists only on release, conflict resolutions included.
-      - name: Check the released tree is on master
+      - name: Check the released tree is on main
         if: steps.version.outputs.publish == 'true'
         run: |
           tree="$(git rev-parse "$GITHUB_SHA^{tree}")"
-          if ! git log --format=%T refs/remotes/origin/master | grep -qxF "$tree"; then
-            echo "the tree of $GITHUB_SHA matches no commit on master; merge master into release unchanged"
+          if ! git log --format=%T refs/remotes/origin/main | grep -qxF "$tree"; then
+            echo "the tree of $GITHUB_SHA matches no commit on main; merge main into release unchanged"
             exit 1
           fi
       # F-Droid offers an update only for a higher versionCode, and Obtainium compares
