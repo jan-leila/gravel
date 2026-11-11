@@ -2917,6 +2917,52 @@ shared `:routers:common` library, and the worked examples of the API
   that cannot be opened reads as missing. The same approach as `:util`'s
   `SecretCipher`, in a copy, since an app cannot share Gravel's runtime.
 
+## Reinstalling: the app backup and the first sync
+
+Upstream wipes a watch on its first sync with a phone that has not set
+it up: every BlobDB database the watch has is cleared and refilled from
+the phone (`BlobDB.init`, when the watch reports itself unfaithful or has
+no `lastConnected`). A reinstall counts, so it costs the watch every app
+and setting. Gravel asks first. `LibPebble3.create` takes a
+`FirstSyncDecider` (`com.anopticlabs.gravel.watchsync` in `:libpebble3`),
+asked before the first sync touches the watch; without one, upstream's
+wipe stays. Gravel's is `FirstSyncPrompt` (`:pebble`), which holds the
+sync until the user answers `FirstSyncDialog`, shown above every screen,
+with an ongoing notification while the app is in the background.
+
+- Replace is upstream's wipe.
+- Keep clears only what the phone regenerates in full: notifications,
+  pins, reminders and weather (`databasesToClear`). Pin ids are random
+  per phone, so the old ones would show twice. One clear has to succeed
+  anyway: the firmware marks itself faithful again only after a
+  successful BlobDB clear (pebble-firmware `blob_db/endpoint.c`,
+  `prv_handle_database_clear`). A Test database clear fails (it has no
+  flush), and without a successful one every connection would ask again.
+  Until the requested WatchPrefs sync is done, the watch's system prefs,
+  health settings and notification mutes replace the phone's whatever
+  their timestamps (`ValueParams.watchWins`), since a fresh install seeds
+  some rows as new. `AppOrderManager` keeps the watch's app order.
+- The phone has no way to list a watch's apps. For a watch the user
+  kept, recorded in `KeptWatches`, `KeptAppRecovery` adds each store app
+  the watch reports running (its watchface on connect, then each app
+  opened) by UUID from the enabled appstore sources. Sideloaded apps stay
+  unknown to the phone.
+
+The app backup (`com.anopticlabs.gravel.backup`, `:composeApp`, from
+Settings > General) is how the phone's side moves. It is one file sealed
+like the Notebook archive (`SealedFile`, under the magic `GBAK`) around
+a zip: allowlisted preferences (`AppBackupFormat`), each watchapp's
+PebbleKit JS storage, sideloaded PBWs, table rows, the Notebook archive
+sealed with the same password, and the text routing. Table rows go
+through `TableRows` (`:libpebble3`): rows keyed by column name, written
+back only into columns the current schema has, upserted and never
+deleted, because a synced table's deletes reach a watch only through its
+DAO. Import stages the file, reads it to the sealed stream's
+authenticated end before applying anything, restores in dependency order
+(PBWs before the locker rows, parent tables before children), then
+restarts the app, since the config holders cache the preferences it
+wrote. Sign-in tokens and Keystore-held keys stay behind.
+
 ## F-Droid
 
 Gravel is in F-Droid's main repository as two listings built from the
