@@ -11,6 +11,7 @@ import androidx.navigation.compose.rememberNavController
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.app.UnsignedListingDialog
 import com.anopticlabs.gravel.app.WeatherOfferDialog
+import com.anopticlabs.gravel.watchsync.FirstSyncDialog
 import com.russhwolf.settings.Settings
 import coredevices.coreapp.ui.navigation.AppNavHost
 import coredevices.coreapp.ui.screens.SHOWN_ONBOARDING
@@ -44,6 +45,8 @@ fun App() {
         }
         Box(Modifier.fillMaxSize().dismissKeyboardOnTapOutside()) {
             AppNavHost(navHostController, startDestination)
+            // Gravel: above the nav host, since a watch can connect while any screen shows.
+            FirstSyncDialog()
             SttModelUpdatePrompt()
             SttSpeedNudgePrompt()
             // Fork: one-time update notice (currently: watchapp permissions). Self-gates

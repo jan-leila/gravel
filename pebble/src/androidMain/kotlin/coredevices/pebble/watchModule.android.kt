@@ -1,11 +1,14 @@
 package coredevices.pebble
 
 import android.content.Context
+import com.anopticlabs.gravel.watchsync.AndroidFirstSyncNotifier
+import com.anopticlabs.gravel.watchsync.FirstSyncNotifier
 import com.anopticlabs.gravel.weather.AndroidLocationAccess
 import com.anopticlabs.gravel.weather.LocationAccess
 import io.rebble.libpebblecommon.connection.AppContext
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.singleOf
+import org.koin.dsl.bind
 import org.koin.dsl.module
 
 actual val platformWatchModule: Module = module {
@@ -16,4 +19,5 @@ actual val platformWatchModule: Module = module {
     single<Platform> { Platform.Android }
     singleOf(::PebbleAndroidDelegate)
     single<LocationAccess> { AndroidLocationAccess(get(), get()) }
+    singleOf(::AndroidFirstSyncNotifier) bind FirstSyncNotifier::class
 }
