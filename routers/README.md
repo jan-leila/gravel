@@ -60,56 +60,48 @@ settings activity that shows `SettingsScreen` with its fields. Copy `slack`.
 
 ## Signing, trust and distribution
 
-The apps are signed with one key of their own, generated once and kept
-outside the tree (`*.jks` is ignored):
+The apps are signed with Gravel's release key, in the same workflow run that
+signs Gravel (`.github/workflows/release.yml`), so the whole release carries
+one certificate. Gravel's built-in trusted signers
+(`DEFAULT_TRUSTED_ROUTER_SIGNERS` in the Notebook module) hold that
+certificate's SHA-256, so the apps are listed as trusted routers without a
+prompt; a user who installs a build signed by another key trusts its
+certificate once in Gravel's Text Routing settings. A lost key would mean a
+new digest in Gravel and a reinstall of every app.
 
-```sh
-keytool -genkeypair -keystore routers.jks -alias gravel-routers -keyalg RSA -keysize 4096 -validity 10000
-apksigner verify --print-certs slack-release.apk | grep SHA-256   # the digest Gravel trusts
-```
-
-The build signs release only when the environment names the keystore
-(`ROUTER_KEYSTORE`, `ROUTER_KEYSTORE_PASSWORD`, `ROUTER_KEY_ALIAS`,
-`ROUTER_KEY_PASSWORD`), and packages release unsigned otherwise, so a fresh
-clone and CI build without it. `LOCAL_RELEASE_BUILD=true` in
-`local.properties` signs release with the debug key, as it does for Gravel.
-
-Once the key exists, its certificate's SHA-256 goes into Gravel's built-in
-trusted signers (`DEFAULT_TRUSTED_ROUTER_SIGNERS` in the Notebook module,
-with a comment naming these apps), so the apps are listed as trusted
-routers without a prompt; until then the user trusts the certificate once
-in Gravel's Text Routing settings. A lost key would mean a new digest in
-Gravel and a reinstall of every router app.
+The build signs a router app's release only when the environment names a
+keystore (`ROUTER_KEYSTORE`, `ROUTER_KEYSTORE_PASSWORD`, `ROUTER_KEY_ALIAS`,
+`ROUTER_KEY_PASSWORD`), and packages it unsigned otherwise, so a fresh clone
+and CI build without it; the release workflow builds them unsigned and signs
+them afterwards. `LOCAL_RELEASE_BUILD=true` in `local.properties` signs
+release with the debug key, as it does for Gravel.
 
 The trust runs the other way too: the apps' shared receiver takes a
 delivery only when the permission guarding it is defined by Gravel's
 package, at signature level, in an app signed by one of the keys in
 `GravelSigners.TRUSTED` (F-Droid's key for Gravel) or by the router app's
-own key. A Gravel signed with a new key needs its digest added there
-before the router apps take its deliveries.
+own key, which on a release is Gravel's own. A Gravel signed with another
+new key needs its digest added there before the router apps take its
+deliveries.
 
 The apps are **not** in F-Droid's main repository: F-Droid signs with its
-own per-app keys, which the built-in trust would not match. They are
-published as GitHub releases (Obtainium reads those) and through Gravel's
-own F-Droid repository, both signed with this key, by the
-`Router apps release` workflow (`.github/workflows/routers-release.yml`)
-when a `routers-v*` tag is pushed. The workflow needs the apps' keystore and
-the repository's own index-signing keystore as secrets (named at the top of
-the workflow file), and the `fdroid-repo` branch to exist (an empty branch
-with GitHub Pages serving it; `fdroid update --create-metadata` fills it).
-Users add `https://<owner>.github.io/<repository>/repo` to their F-Droid
-client, or the GitHub releases page to Obtainium.
+own per-app keys, which the built-in trust would not match. Each Gravel
+release carries all eight APKs as assets, named
+`gravel-router-<name>-<version>.apk` and listed in the release's
+`.sha256` file. Each app has its own application id,
+`com.jan_leila.apps.<name>` (`slack`, `homeassistant`, `vikunja`,
+`mastodon`, `osmnote`, `signal`, `actual`, `email`), so they install beside
+Gravel and each other. In Obtainium, add the repository's releases page once
+per app with an APK filter on the app's file name (for example
+`gravel-router-slack-`), so each app updates on its own.
 
 ## Releasing
 
-The eight apps share one version, in `routers/version.properties`, which
-every router build file reads. A release commit raises `versionCode` by
-one and sets `versionName` to the version the tag will name, and the tag
-is `routers-v<versionName>` on that commit. The workflow refuses a tag that
-does not match the file, an APK whose version differs from it, and a
-`versionCode` not above the one the F-Droid repository already indexes
-for that package: F-Droid clients offer an update by `versionCode` alone,
-so a release that re-shipped the last one would never reach them.
+The eight apps carry Gravel's version, from `androidApp/version.properties`
+(every router build file reads it), and are built, checked and published
+by the Gravel release (README, Releasing). The workflow refuses a release
+whose router APKs do not carry the version, the application id or the one
+signing certificate.
 
 ## Building
 

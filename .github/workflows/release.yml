@@ -15,6 +15,11 @@ name: Release
 # result verifies, i.e. only if the two builds are byte-identical outside the signature. The
 # unsigned listing (-Pgravel.unsigned=true) is F-Droid's alone and is not built here.
 #
+# The eight router apps (routers/README.md) are built in the same run, signed with the same key and
+# attached to the same release, each under its own application id (com.jan_leila.apps.<name>).
+# Obtainium follows each by an APK filter on its file name, gravel-router-<name>-<version>.apk.
+# F-Droid does not build them.
+#
 # The APK is built unsigned, exactly as F-Droid builds it (no keystore.jks in the checkout), and
 # signed afterwards with apksigner, so the signing
 # step adds the APK Signing Block and changes nothing else. See DESIGN_NOTES.md, F-Droid.
@@ -110,12 +115,21 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: 21
+      # The router apps (routers/README.md) ship with every release under the same version and
+      # key; their lint and tests run here because no other workflow builds them.
+      - name: Lint and test the router apps
+        if: steps.version.outputs.publish == 'true'
+        run: >-
+          ./gradlew --no-daemon --stacktrace :routers:common:lintDebug :routers:common:testDebugUnitTest
+          $(for a in slack homeassistant vikunja mastodon osmnote signal actual email; do printf ":routers:$a:lintDebug :routers:$a:testDebugUnitTest "; done)
       # No dependency cache: a release builds from a clean Gradle home, as F-Droid does. The build
       # stamps both numbers from version.properties; nothing in it depends on the tag, so this
       # untagged build and F-Droid's build of the tag produce the same APK.
-      - name: Build the unsigned release APK
+      - name: Build the unsigned release APKs
         if: steps.version.outputs.publish == 'true'
-        run: ./gradlew :androidApp:assembleRelease --no-daemon --stacktrace
+        run: >-
+          ./gradlew --no-daemon --stacktrace :androidApp:assembleRelease
+          $(for a in slack homeassistant vikunja mastodon osmnote signal actual email; do printf ":routers:$a:assembleRelease "; done)
       - name: Check the built APK against the release number
         if: steps.version.outputs.publish == 'true'
         run: |
@@ -125,6 +139,20 @@ jobs:
           test "$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")" = "$NAME"
           test "$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")" = "$CODE"
           test "$(printf '%s' "$badging" | sed -n "s/.*package: name='\([^']*\)'.*/\1/p")" = "com.anopticlabs.gravel.signed"
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+          CODE: ${{ steps.version.outputs.code }}
+      - name: Check the router APKs against the release number
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)"
+          for a in slack homeassistant vikunja mastodon osmnote signal actual email; do
+            badging="$("$aapt2" dump badging "routers/$a/build/outputs/apk/release/$a-release-unsigned.apk" | head -n 1)"
+            echo "$badging"
+            test "$(printf '%s' "$badging" | sed -n "s/.*package: name='\([^']*\)'.*/\1/p")" = "com.jan_leila.apps.$a"
+            test "$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")" = "$NAME"
+            test "$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")" = "$CODE"
+          done
         env:
           NAME: ${{ steps.version.outputs.name }}
           CODE: ${{ steps.version.outputs.code }}
@@ -143,6 +171,15 @@ jobs:
             --alignment-preserved true \
             --out "$RUNNER_TEMP/out/gravel-$NAME.apk" \
             androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk
+          # The router apps are signed with the same key: Gravel trusts a router by certificate, and a
+          # Gravel and router pair on one key is accepted without either app listing the other.
+          for a in slack homeassistant vikunja mastodon osmnote signal actual email; do
+            "$apksigner" sign \
+              --ks "$RUNNER_TEMP/release.jks" --ks-key-alias "$GRAVEL_KEY_ALIAS" \
+              --ks-pass env:GRAVEL_KEYSTORE_PASSWORD --key-pass env:GRAVEL_KEY_PASSWORD \
+              --out "$RUNNER_TEMP/out/gravel-router-$a-$NAME.apk" \
+              "routers/$a/build/outputs/apk/release/$a-release-unsigned.apk"
+          done
           rm -f "$RUNNER_TEMP/release.jks"
         env:
           NAME: ${{ steps.version.outputs.name }}
@@ -154,10 +191,11 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         run: |
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)"
-          certs="$("$apksigner" verify --print-certs "$RUNNER_TEMP/out/gravel-$NAME.apk")"
+          certs="$(for apk in "$RUNNER_TEMP"/out/*.apk; do "$apksigner" verify --print-certs "$apk"; done)"
           printf '%s\n' "$certs"
           # One line per signature scheme, labelled "Signer #1" or "V3.0 Signer" by apksigner
-          # version; every scheme must carry the same single certificate.
+          # version; every scheme of every APK (Gravel and the router apps) must carry the same
+          # single certificate.
           digest="$(printf '%s\n' "$certs" | sed -n 's/^.*Signer.* certificate SHA-256 digest: //p' | sort -u)"
           test "$(printf '%s\n' "$digest" | grep -c .)" = 1
           test -n "$GRAVEL_SIGNER_SHA256" && test "$digest" = "$GRAVEL_SIGNER_SHA256"
@@ -189,14 +227,14 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         run: |
           cd "$RUNNER_TEMP/out"
-          sha256sum "gravel-$NAME.apk" > "gravel-$NAME.apk.sha256"
+          sha256sum gravel-*.apk > "gravel-$NAME.apk.sha256"
           {
             cat "$GITHUB_WORKSPACE/fastlane/metadata/android/en-US/changelogs/$CODE.txt"
             printf '\nSigning certificate SHA-256: `%s`\n' "$GRAVEL_SIGNER_SHA256"
           } > notes.md
           gh release create "$NAME" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Gravel $NAME" --notes-file notes.md \
-            "gravel-$NAME.apk" "gravel-$NAME.apk.sha256"
+            gravel-*.apk "gravel-$NAME.apk.sha256"
         env:
           NAME: ${{ steps.version.outputs.name }}
           CODE: ${{ steps.version.outputs.code }}
