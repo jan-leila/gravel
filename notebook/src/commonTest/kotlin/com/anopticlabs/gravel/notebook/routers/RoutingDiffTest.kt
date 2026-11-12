@@ -18,6 +18,13 @@ class RoutingDiffTest {
     }
 
     @Test
+    fun aDescriptionChangeIsQuoted() {
+        val described = config.copy(routers = config.routers.map { if (it.ref == note.ref) note.copy(description = "Everything else") else it })
+        assertEquals(listOf("'Notebook' is described as \"Everything else\" now."), RoutingDiff.describe(config, described))
+        assertEquals(listOf("'Notebook' has no description now."), RoutingDiff.describe(described, config))
+    }
+
+    @Test
     fun addedRemovedRenamedAndRetypedRoutersAreNamed() {
         val after = config.copy(
             entry = g("notebook"),

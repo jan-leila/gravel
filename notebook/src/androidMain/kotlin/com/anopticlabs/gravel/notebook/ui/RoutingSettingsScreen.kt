@@ -1,6 +1,7 @@
 package com.anopticlabs.gravel.notebook.ui
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -16,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
@@ -31,15 +33,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
@@ -50,7 +54,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import com.anopticlabs.gravel.notebook.R
 import com.anopticlabs.gravel.notebook.routers.Grant
 import com.anopticlabs.gravel.notebook.routers.InstalledRouter
@@ -80,24 +83,31 @@ import org.koin.compose.viewmodel.koinViewModel
 /** Settings > Notebook > Text Routing: the routing graph, its routers' editors, the trusted certificates, the apps that declare routers, and export and import. */
 @Composable
 fun RoutingSettingsScreen(topBarParams: TopBarParams) {
-    val title = stringResource(R.string.notebook_routing_title)
-    LaunchedEffect(title) {
+    LaunchedEffect(Unit) {
         topBarParams.searchAvailable(null)
         topBarParams.actions {}
-        topBarParams.title(title)
     }
     val viewModel = koinViewModel<RoutingViewModel<Uri>>()
     LaunchedEffect(viewModel) { viewModel.load() }
     val ui by viewModel.ui.collectAsState()
-    NotebookSecureContent { RoutingContent(ui, viewModel) }
+    NotebookSecureContent { RoutingContent(ui, viewModel, topBarParams) }
+}
+
+/**
+ * A page of the screen beyond its main one, which lists the routers; the last of the stack is shown, and
+ * back returns to the one before it. A router page holds the router as it was when opened, or a new one
+ * the kind picker made that is not stored yet.
+ */
+private sealed interface RoutingPage {
+    data class Router(val router: RouterConfig) : RoutingPage
+
+    data object Apps : RoutingPage
 }
 
 private sealed interface RoutingDialog {
     data object PickEntry : RoutingDialog
 
     data object AddRouter : RoutingDialog
-
-    data class Edit(val router: RouterConfig) : RoutingDialog
 
     data class Delete(val router: RouterConfig) : RoutingDialog
 
@@ -119,8 +129,29 @@ private sealed interface RoutingDialog {
 }
 
 @Composable
-private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>) {
+private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>, topBarParams: TopBarParams) {
     var dialog by remember { mutableStateOf<RoutingDialog?>(null) }
+    var pages by remember { mutableStateOf(emptyList<RoutingPage>()) }
+    fun push(page: RoutingPage) {
+        pages = pages + page
+    }
+    fun pop() {
+        pages = pages.dropLast(1)
+    }
+    val page = pages.lastOrNull()
+    val mainTitle = stringResource(R.string.notebook_routing_title)
+    val appsTitle = stringResource(R.string.notebook_routing_apps_page)
+    val pageTitle = when (page) {
+        null -> mainTitle
+        RoutingPage.Apps -> appsTitle
+        is RoutingPage.Router -> page.router.name
+    }
+    LaunchedEffect(pageTitle) { topBarParams.title(pageTitle) }
+    // The router page takes back itself, as it may have changes to ask about.
+    BackHandler(enabled = page == RoutingPage.Apps) { pop() }
+    if (page == RoutingPage.Apps) {
+        LaunchedEffect(Unit) { topBarParams.overrideGoBack.collect { pop() } }
+    }
     val config = (ui.store as? RoutingStoreState.Loaded)?.config
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(RoutingExport.MIME_TYPE)) { it?.let(viewModel::export) }
     val import = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(viewModel::import) }
@@ -147,7 +178,33 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>) {
             confirmButton = { TextButton(onClick = viewModel::clearError) { Text(stringResource(R.string.notebook_routing_ok)) } },
         )
     }
-    Column(
+    when (page) {
+        null -> Unit
+        RoutingPage.Apps -> Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CertificatesSection(ui) { dialog = it }
+            HorizontalDivider()
+            AppsSection(ui, viewModel) { dialog = it }
+        }
+        is RoutingPage.Router -> config?.let { c ->
+            // The stored router when there is one, so a page come back to shows what its target pages saved.
+            val router = c.router(page.router.ref) ?: page.router
+            RouterPage(
+                router, c, ui.apps, topBarParams, locate = viewModel::currentLocation,
+                onSave = { saved ->
+                    viewModel.save(RoutingEdits.withRouter(c, saved, replacing = router.ref))
+                    pop()
+                },
+                onTrust = viewModel::trustApp,
+                onDelete = if (c.router(router.ref) != null) ({ dialog = RoutingDialog.Delete(router) }) else null,
+                onOpen = { ref -> c.router(ref)?.let { push(RoutingPage.Router(it)) } },
+                onDismiss = ::pop,
+            )
+        }
+    }
+    if (page == null) Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -163,15 +220,18 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>) {
                 Button(onClick = { dialog = RoutingDialog.ConfirmReset }) { Text(stringResource(R.string.notebook_routing_reset)) }
             }
             is RoutingStoreState.Loaded -> {
-                LoadedRouting(state.config, ui.busy) { dialog = it }
+                LoadedRouting(state.config, ui.busy, onOpen = { push(RoutingPage.Router(it)) }) { dialog = it }
                 OutlinedButton(onClick = { dialog = RoutingDialog.Describe }, enabled = !ui.busy) { Text(stringResource(R.string.notebook_routing_describe)) }
                 if (ui.busy) Text(stringResource(R.string.notebook_routing_describe_working), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         HorizontalDivider()
-        CertificatesSection(ui) { dialog = it }
-        HorizontalDivider()
-        AppsSection(ui, viewModel) { dialog = it }
+        ListItem(
+            modifier = Modifier.clickable { push(RoutingPage.Apps) },
+            headlineContent = { Text(appsTitle) },
+            supportingContent = { Text(stringResource(R.string.notebook_routing_apps_page_summary, ui.apps.size, ui.certificates.size)) },
+            trailingContent = { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null) },
+        )
         HorizontalDivider()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { dialog = RoutingDialog.ConfirmExport }, enabled = !ui.busy && config != null) { Text(stringResource(R.string.notebook_routing_export)) }
@@ -184,14 +244,19 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>) {
         RoutingDialog.PickEntry -> config?.let { c ->
             RouterPicker(stringResource(R.string.notebook_routing_entry), c.routers, c.entry, onPick = { viewModel.save(RoutingEdits.withEntry(c, it)) }, onDismiss = close)
         }
-        RoutingDialog.AddRouter -> config?.let { c -> KindPicker(c, onPick = { dialog = RoutingDialog.Edit(it) }, onDismiss = close) }
-        is RoutingDialog.Edit -> config?.let { c ->
-            RouterEditor(open.router, c, ui.apps, locate = viewModel::currentLocation, onSave = { router ->
-                viewModel.save(RoutingEdits.withRouter(c, router, replacing = open.router.ref))
+        RoutingDialog.AddRouter -> config?.let { c ->
+            KindPicker(c, onPick = {
                 close()
-            }, onTrust = viewModel::trustApp, onDismiss = close)
+                push(RoutingPage.Router(it))
+            }, onDismiss = close)
         }
-        is RoutingDialog.Delete -> config?.let { c -> DeleteQuestion(open.router, c, onConfirm = { viewModel.save(it) }, onDismiss = close) }
+        is RoutingDialog.Delete -> config?.let { c ->
+            DeleteQuestion(open.router, c, onConfirm = {
+                viewModel.save(it)
+                // Deleted from its own page, the page goes too.
+                if ((page as? RoutingPage.Router)?.router?.ref == open.router.ref) pop()
+            }, onDismiss = close)
+        }
         RoutingDialog.ConfirmReset -> Question(
             stringResource(R.string.notebook_routing_reset_title), stringResource(R.string.notebook_routing_reset_body), stringResource(R.string.notebook_routing_reset),
             onConfirm = { viewModel.reset() }, onDismiss = close,
@@ -262,22 +327,24 @@ private fun ProposalDialog(proposal: Proposal, onApply: () -> Unit, onDiscard: (
     )
 }
 
+/** The entry router and every router, each by its name and description, tapped to open its page ([onOpen]). */
 @Composable
-private fun LoadedRouting(config: RoutingConfig, busy: Boolean, open: (RoutingDialog) -> Unit) {
+private fun LoadedRouting(config: RoutingConfig, busy: Boolean, onOpen: (RouterConfig) -> Unit, open: (RoutingDialog) -> Unit) {
     val entry = config.router(config.entry)
     Text(stringResource(R.string.notebook_routing_entry), style = MaterialTheme.typography.titleMedium)
     ListItem(
+        modifier = Modifier.clickable(enabled = !busy && entry != null) { entry?.let(onOpen) },
         headlineContent = { Text(entry?.name ?: config.entry.id) },
-        supportingContent = { entry?.let { Text(RoutingEdits.summary(it, config)) } },
+        supportingContent = { entry?.let { Text(RoutingEdits.blurb(it, config)) } },
         trailingContent = { TextButton(onClick = { open(RoutingDialog.PickEntry) }, enabled = !busy) { Text(stringResource(R.string.notebook_routing_change)) } },
     )
     Text(stringResource(R.string.notebook_routing_routers), style = MaterialTheme.typography.titleMedium)
     config.routers.forEach { router ->
         ListItem(
-            modifier = Modifier.clickable(enabled = !busy) { open(RoutingDialog.Edit(router)) },
+            modifier = Modifier.clickable(enabled = !busy) { onOpen(router) },
             overlineContent = { Text(kindName(router)) },
             headlineContent = { Text(router.name) },
-            supportingContent = { Text(RoutingEdits.summary(router, config)) },
+            supportingContent = { Text(RoutingEdits.blurb(router, config)) },
             trailingContent = {
                 IconButton(onClick = { open(RoutingDialog.Delete(router)) }, enabled = !busy) {
                     Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.notebook_routing_delete))
@@ -456,21 +523,26 @@ private fun KindPicker(config: RoutingConfig, onPick: (RouterConfig) -> Unit, on
 }
 
 /**
- * Edits one router. Save validates the whole routing with this router in it, so a target that does not exist
+ * One router's page. Save validates the whole routing with this router in it, so a target that does not exist
  * or a pattern that does not compile is refused here with its reason, and nothing is stored. Picking an
- * app's router that is not trusted yet asks for the trust first, with the signer shown.
+ * app's router that is not trusted yet asks for the trust first, with the signer shown. Leaving the page,
+ * by back or by opening a target ([onOpen]), asks first while there are changes not saved.
  */
 @Composable
-private fun RouterEditor(
+private fun RouterPage(
     router: RouterConfig,
     config: RoutingConfig,
     apps: List<RouterApp>,
+    topBarParams: TopBarParams,
     locate: suspend () -> RoutedLocation?,
     onSave: (RouterConfig) -> Unit,
     onTrust: (RouterApp) -> Unit,
+    onDelete: (() -> Unit)?,
+    onOpen: (RouterRef) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by remember(router.ref) { mutableStateOf(router.name) }
+    var description by remember(router.ref) { mutableStateOf(router.description.orEmpty()) }
     var rules by remember(router.ref) { mutableStateOf((router as? RouterConfig.Switch)?.rules.orEmpty()) }
     var otherwise by remember(router.ref) { mutableStateOf((router as? RouterConfig.Switch)?.otherwise) }
     var timeRules by remember(router.ref) { mutableStateOf((router as? RouterConfig.Time)?.rules.orEmpty()) }
@@ -487,20 +559,34 @@ private fun RouterEditor(
     var shares by remember(router.ref) { mutableStateOf(router.shares ?: Shares()) }
     var confirm by remember(router.ref) { mutableStateOf(router.confirm) }
     var problem by remember(router.ref) { mutableStateOf<String?>(null) }
+    // Set while the user is asked whether to drop the changes: where to go once they agree.
+    var leaving by remember(router.ref) { mutableStateOf<Leaving?>(null) }
     val others = config.routers.filter { it.ref != router.ref }
     val appKindName = stringResource(R.string.notebook_routing_kind_app)
     val pickOne = stringResource(R.string.notebook_routing_pick_one)
     fun built(): RouterConfig {
         val trimmed = name.trim()
+        val about = description.filterNot { it.isISOControl() }.trim().ifEmpty { null }
         return when (router) {
-            is RouterConfig.Note -> RouterConfig.Note(router.id, trimmed, confirm = confirm)
-            is RouterConfig.Reminder -> RouterConfig.Reminder(router.id, trimmed, confirm = confirm)
-            is RouterConfig.Switch -> RouterConfig.Switch(router.id, trimmed, rules, otherwise)
-            is RouterConfig.Time -> RouterConfig.Time(router.id, trimmed, timeRules, timeOtherwise)
-            is RouterConfig.Place -> RouterConfig.Place(router.id, trimmed, placeRules, placeOtherwise, placeUnknown)
-            is RouterConfig.App -> picked?.let { RouterConfig.App(it.id, trimmed, it.packageName, it.receiverClass, it.namespace, it.needs, shares, confirm) } ?: router.copy(name = trimmed, shares = shares, confirm = confirm)
-            is RouterConfig.Network -> RouterConfig.Network(router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares, confirm = confirm)
+            is RouterConfig.Note -> RouterConfig.Note(router.id, trimmed, confirm = confirm, description = about)
+            is RouterConfig.Reminder -> RouterConfig.Reminder(router.id, trimmed, confirm = confirm, description = about)
+            is RouterConfig.Switch -> RouterConfig.Switch(router.id, trimmed, rules, otherwise, description = about)
+            is RouterConfig.Time -> RouterConfig.Time(router.id, trimmed, timeRules, timeOtherwise, description = about)
+            is RouterConfig.Place -> RouterConfig.Place(router.id, trimmed, placeRules, placeOtherwise, placeUnknown, description = about)
+            is RouterConfig.App -> picked?.let { RouterConfig.App(it.id, trimmed, it.packageName, it.receiverClass, it.namespace, it.needs, shares, confirm, description = about) }
+                ?: router.copy(name = trimmed, shares = shares, confirm = confirm, description = about)
+            is RouterConfig.Network -> RouterConfig.Network(router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares, confirm = confirm, description = about)
         }
+    }
+    val dirty = built() != router
+    fun leave(to: RouterRef?) {
+        if (dirty) leaving = Leaving(to) else if (to == null) onDismiss() else onOpen(to)
+    }
+    BackHandler { leave(null) }
+    val dirtyNow = rememberUpdatedState(dirty)
+    val dismiss = rememberUpdatedState(onDismiss)
+    LaunchedEffect(router.ref) {
+        topBarParams.overrideGoBack.collect { if (dirtyNow.value) leaving = Leaving(null) else dismiss.value() }
     }
     fun take(choice: InstalledRouter) {
         picked = choice
@@ -513,67 +599,91 @@ private fun RouterEditor(
             take(choice)
         }, onDismiss = { askTrust = null })
     }
-    Dialog(onDismissRequest = onDismiss, properties = notebookDialogProperties()) {
-        Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp) {
-            NoKeyboardLearning {
-                Column(Modifier.imePadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(kindName(router), style = MaterialTheme.typography.headlineSmall)
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = { Text(stringResource(R.string.notebook_routing_field_name)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+    leaving?.let { (to) ->
+        Question(
+            stringResource(R.string.notebook_routing_discard_title), stringResource(R.string.notebook_routing_discard_body, router.name),
+            stringResource(R.string.notebook_routing_discard),
+            onConfirm = { if (to == null) onDismiss() else onOpen(to) }, onDismiss = { leaving = null },
+        )
+    }
+    NoKeyboardLearning {
+        CompositionLocalProvider(LocalOpenRouter provides { ref -> leave(ref) }) {
+            Column(
+                Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(kindName(router), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(R.string.notebook_routing_field_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it.take(RoutingConfig.MAX_DESCRIPTION_CHARS) },
+                    label = { Text(stringResource(R.string.notebook_routing_field_description)) },
+                    supportingText = { Text(stringResource(R.string.notebook_routing_description_hint)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                when (router) {
+                    is RouterConfig.Note, is RouterConfig.Reminder -> Unit
+                    is RouterConfig.Switch -> SwitchFields(rules, otherwise, others, onRules = { rules = it }, onOtherwise = { otherwise = it })
+                    is RouterConfig.Time -> TimeRulesFields(timeRules, timeOtherwise, others, onRules = { timeRules = it }, onOtherwise = { timeOtherwise = it })
+                    is RouterConfig.Place -> PlaceRulesFields(
+                        placeRules, placeOtherwise, placeUnknown, others, locate,
+                        onRules = { placeRules = it }, onOtherwise = { placeOtherwise = it }, onUnknown = { placeUnknown = it },
                     )
-                    when (router) {
-                        is RouterConfig.Note, is RouterConfig.Reminder -> Unit
-                        is RouterConfig.Switch -> SwitchFields(rules, otherwise, others, onRules = { rules = it }, onOtherwise = { otherwise = it })
-                        is RouterConfig.Time -> TimeRulesFields(timeRules, timeOtherwise, others, onRules = { timeRules = it }, onOtherwise = { timeOtherwise = it })
-                        is RouterConfig.Place -> PlaceRulesFields(
-                            placeRules, placeOtherwise, placeUnknown, others, locate,
-                            onRules = { placeRules = it }, onOtherwise = { placeOtherwise = it }, onUnknown = { placeUnknown = it },
-                        )
-                        is RouterConfig.App -> {
-                            if (picked == null && router.packageName.isNotEmpty()) Text(stringResource(R.string.notebook_routing_app_gone), color = MaterialTheme.colorScheme.error)
-                            AppFields(apps, picked, onPick = { app, choice -> if (app.trusted) take(choice) else askTrust = app to choice })
-                            SharesFields(needed = picked?.needs ?: router.needs, shares, onShares = { shares = it })
-                        }
-                        is RouterConfig.Network -> {
-                            NetworkFields(url, token, onUrl = { url = it }, onToken = { token = it })
-                            SharesFields(needed = Need.entries.toSet(), shares, onShares = { shares = it })
-                        }
+                    is RouterConfig.App -> {
+                        if (picked == null && router.packageName.isNotEmpty()) Text(stringResource(R.string.notebook_routing_app_gone), color = MaterialTheme.colorScheme.error)
+                        AppFields(apps, picked, onPick = { app, choice -> if (app.trusted) take(choice) else askTrust = app to choice })
+                        SharesFields(needed = picked?.needs ?: router.needs, shares, onShares = { shares = it })
                     }
-                    if (!router.forwardsText) {
-                        Row(Modifier.fillMaxWidth().clickable { confirm = !confirm }, verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = confirm, onCheckedChange = { confirm = it })
-                            Column(Modifier.padding(start = 4.dp)) {
-                                Text(stringResource(R.string.notebook_routing_confirm))
-                                Text(stringResource(R.string.notebook_routing_confirm_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                    is RouterConfig.Network -> {
+                        NetworkFields(url, token, onUrl = { url = it }, onToken = { token = it })
+                        SharesFields(needed = Need.entries.toSet(), shares, onShares = { shares = it })
+                    }
+                }
+                if (!router.forwardsText) {
+                    Row(Modifier.fillMaxWidth().clickable { confirm = !confirm }, verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = confirm, onCheckedChange = { confirm = it })
+                        Column(Modifier.padding(start = 4.dp)) {
+                            Text(stringResource(R.string.notebook_routing_confirm))
+                            Text(stringResource(R.string.notebook_routing_confirm_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = onDismiss) { Text(stringResource(R.string.notebook_cancel)) }
-                        TextButton(onClick = {
-                            val candidate = built()
-                            if (candidate is RouterConfig.App && candidate.packageName.isEmpty()) {
-                                problem = pickOne
-                                return@TextButton
-                            }
-                            try {
-                                RoutingEdits.withRouter(config, candidate, replacing = router.ref).requireWellFormed()
-                                onSave(candidate)
-                            } catch (e: IllegalArgumentException) {
-                                problem = e.message
-                            }
-                        }) { Text(stringResource(R.string.notebook_save)) }
-                    }
+                }
+                problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    onDelete?.let { delete -> TextButton(onClick = delete) { Text(stringResource(R.string.notebook_routing_delete)) } }
+                    Box(Modifier.weight(1f))
+                    TextButton(onClick = { leave(null) }) { Text(stringResource(R.string.notebook_cancel)) }
+                    Button(onClick = {
+                        val candidate = built()
+                        if (candidate is RouterConfig.App && candidate.packageName.isEmpty()) {
+                            problem = pickOne
+                            return@Button
+                        }
+                        try {
+                            RoutingEdits.withRouter(config, candidate, replacing = router.ref).requireWellFormed()
+                            onSave(candidate)
+                        } catch (e: IllegalArgumentException) {
+                            problem = e.message
+                        }
+                    }) { Text(stringResource(R.string.notebook_save)) }
                 }
             }
         }
     }
 }
+
+/** Where [RouterPage] goes once the user agreed to drop the changes: back, or to the page of [to]. */
+private data class Leaving(val to: RouterRef?)
+
+/** Opens a router's page from a target picker; provided by [RouterPage], so a picker elsewhere offers no way in. */
+private val LocalOpenRouter = staticCompositionLocalOf<((RouterRef) -> Unit)?> { null }
 
 @Composable
 private fun SwitchFields(
@@ -827,28 +937,48 @@ private fun fieldName(field: TimeField): String = stringResource(
 private val DAY_NAMES = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 private val MONTH_NAMES = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
 
-/** A button showing the current target's name, with a menu of the routers; [allowNone] adds a choice that flags the recording. */
+/**
+ * A button showing the current target's name, with a menu of the routers, each with its description;
+ * [allowNone] adds a choice that flags the recording. On a router's page the current target can be opened.
+ */
 @Composable
 private fun TargetPicker(label: String, current: RouterRef?, targets: List<RouterConfig>, allowNone: Boolean, onPick: (RouterRef?) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val shown = targets.firstOrNull { it.ref == current }?.name ?: current?.id?.takeIf { it.isNotEmpty() } ?: stringResource(R.string.notebook_routing_none)
-    Box {
-        OutlinedButton(onClick = { open = true }) {
-            Text("$label: $shown")
-            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            if (allowNone) {
-                DropdownMenuItem(text = { Text(stringResource(R.string.notebook_routing_none)) }, onClick = {
-                    onPick(null)
-                    open = false
-                })
+    val target = targets.firstOrNull { it.ref == current }
+    val shown = target?.name ?: current?.id?.takeIf { it.isNotEmpty() } ?: stringResource(R.string.notebook_routing_none)
+    val openRouter = LocalOpenRouter.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box {
+            OutlinedButton(onClick = { open = true }) {
+                Text("$label: $shown")
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
             }
-            targets.forEach { target ->
-                DropdownMenuItem(text = { Text(target.name) }, onClick = {
-                    onPick(target.ref)
-                    open = false
-                })
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                if (allowNone) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.notebook_routing_none)) }, onClick = {
+                        onPick(null)
+                        open = false
+                    })
+                }
+                targets.forEach { choice ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(choice.name)
+                                choice.description?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            }
+                        },
+                        onClick = {
+                            onPick(choice.ref)
+                            open = false
+                        },
+                    )
+                }
+            }
+        }
+        if (target != null && openRouter != null) {
+            IconButton(onClick = { openRouter(target.ref) }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = stringResource(R.string.notebook_routing_open, target.name))
             }
         }
     }

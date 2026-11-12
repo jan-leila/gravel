@@ -166,8 +166,9 @@ Gravel's own router apps do this in their shared receiver
 
 Gravel forwards text only to apps signed by a trusted certificate. The
 trusted list starts as Gravel's built-in list and is the user's to edit
-under Settings > Notebook > Text Routing: picking one of your routers, or
-the Trust button under Apps with routers, shows your certificate SHA-256
+under Settings > Notebook > Text Routing: picking one of your routers on
+an App router's page, or the Trust button beside your app under Apps and
+trust, shows your certificate SHA-256
 (your namespace) and asks for the trust; a certificate can also be typed
 in by its digest, and any one, built-in ones included, removed. Trust is
 for the certificate, so every app you sign with that key is trusted at
