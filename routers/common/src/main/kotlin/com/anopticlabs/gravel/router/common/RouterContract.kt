@@ -7,6 +7,18 @@ package com.anopticlabs.gravel.router.common
  */
 object RouterContract {
     const val API_VERSION = 1
+
+    /** The version of a delivery to a listed router, which names it in [EXTRA_ROUTER_ID]. */
+    const val API_VERSION_LISTED = 2
+    const val EXTRA_ROUTER_ID = "router_id"
+
+    /** The receiver's meta-data naming the authority of the app's [RouterListProvider], and the provider's one path and columns. */
+    const val META_LIST = "com.anopticlabs.gravel.notebook.router.list"
+    const val LIST_PATH = "routers"
+    const val COLUMN_ID = "id"
+    const val COLUMN_LABEL = "label"
+    const val COLUMN_DESCRIPTION = "description"
+    const val COLUMN_NEEDS = "needs"
     const val ACTION_ROUTE_TEXT = "com.anopticlabs.gravel.notebook.action.ROUTE_TEXT"
     const val PERMISSION_ROUTE_TEXT = "com.anopticlabs.gravel.permission.ROUTE_NOTEBOOK_TEXT"
 

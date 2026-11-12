@@ -19,6 +19,22 @@ manifest, a settings screen and one sender.
 | `actual` | `transaction` | a transaction in Actual Budget, through an actual-http-api relay the user runs | the recording time, for the date |
 | `email` | `mail` | an email through an SMTP server the user sets up (a Proton Bridge, for Proton) | the recording time, for the subject and date |
 
+Six of the apps also **list** routers (`ROUTER_API.md`, Listing routers),
+each one more destination the user can route to on its own:
+
+| App | Lists a router for | From | Shown to Gravel |
+| --- | --- | --- | --- |
+| `vikunja` | every project | the Vikunja API, on Refresh | until unticked |
+| `actual` | every open account of the budget | the relay, on Refresh | until unticked |
+| `slack` | every channel the app's bot was added to, posted to with a bot token | the Slack API, on Refresh | until unticked |
+| `signal` | every contact of the relay's account | the relay, on Refresh | only once ticked |
+| `email` | every contact the user adds in the app | the app's settings | always |
+| `homeassistant` | every device action the user adds in the app: one action, its entities, and the data field the words go in, if any | the app's settings | always |
+
+The declared router of each of these keeps sending to the default set in
+the app (project, account, webhook, recipients, address); its setting is
+optional now, and a delivery to it is refused while it is empty.
+
 ## How an app works
 
 `:routers:common` holds what every app shares:
@@ -49,6 +65,13 @@ manifest, a settings screen and one sender.
   address (a LAN name or a name with no dot, a private, shared (100.64/10)
   or link-local range), and only when the app allows it: the self-hosted
   relays often have no TLS on a LAN. Everything else is https.
+- `RouterList` keeps the app's listed routers, each with what its sender
+  needs (the service's id for the project, an address) in values Gravel
+  never sees, and `RouterListProvider` lists the shared ones to Gravel,
+  answering only under Gravel's own permission, as the receiver does. A
+  delivery names its listed router, and the receiver refuses one for a
+  router no longer shared. An app gives its listed routers ids of its own
+  prefix (`LISTED_PREFIX`), as all the apps share one namespace.
 - `Settings` keeps the app's few values in its preferences, secrets sealed
   with a key the Android Keystore holds for the app (`Secrets`);
   `SettingsScreen` is the one screen each app has, with a test send.
@@ -58,6 +81,11 @@ receiver, guarded by Gravel's permission, with the `id`, `label`,
 `description` and `needs` meta-data), an `Application` that is a
 `RouterApp`, a `Sender` built from a pure request builder (tested), and a
 settings activity that shows `SettingsScreen` with its fields. Copy `slack`.
+An app that lists routers adds the list meta-data and the provider to its
+manifest, a `RouterList`, and a `RouterListSource` for its screen: fetched
+from the service (`vikunja`) or declared by the user (`email`). The email
+app resolves every router's recipient in `emailRecipient`, the place a
+router that picks the recipient from the words would join.
 
 ## Signing, trust and distribution
 

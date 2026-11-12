@@ -10,13 +10,16 @@ data class Location(val latitude: Double, val longitude: Double, val accuracyMet
 /**
  * One delivery from Gravel: the text and the capture id always, the recording time and the
  * location only when this router declared the need and the user granted it (`ROUTER_API.md`).
- * [captureId] repeats when Gravel delivers the same recording again, so it is the outbox's key.
+ * [routerId] names the listed router ([RouterList]) the delivery is for, and is null for the
+ * router the app's manifest declares. [captureId] repeats when Gravel delivers the same recording
+ * again, so with [routerId] it is the outbox's key.
  */
 data class Delivery(
     val captureId: String,
     val text: String,
     val recordedAt: String?,
     val location: Location?,
+    val routerId: String? = null,
 ) {
     /** The delivery as the outbox stores it; [read] turns it back. */
     fun write(out: OutputStream) {
@@ -24,6 +27,7 @@ data class Delivery(
         properties.setProperty(KEY_CAPTURE_ID, captureId)
         properties.setProperty(KEY_TEXT, text)
         recordedAt?.let { properties.setProperty(KEY_RECORDED_AT, it) }
+        routerId?.let { properties.setProperty(KEY_ROUTER_ID, it) }
         location?.let {
             properties.setProperty(KEY_LATITUDE, it.latitude.toString())
             properties.setProperty(KEY_LONGITUDE, it.longitude.toString())
@@ -36,17 +40,23 @@ data class Delivery(
         private const val KEY_CAPTURE_ID = "capture_id"
         private const val KEY_TEXT = "text"
         private const val KEY_RECORDED_AT = "recorded_at"
+        private const val KEY_ROUTER_ID = "router_id"
         private const val KEY_LATITUDE = "latitude"
         private const val KEY_LONGITUDE = "longitude"
         private const val KEY_ACCURACY = "accuracy_m"
 
         /**
          * The delivery the broadcast's extras carry, or null for one this version does not
-         * understand: another API version, a missing id or text, or a location with one
-         * coordinate missing. The extras come as a map so the reading is testable without Android.
+         * understand: another API version, a missing id or text, a version 2 delivery without a
+         * router id of the id grammar, or a location with one coordinate missing. The extras come
+         * as a map so the reading is testable without Android.
          */
         fun from(extras: Map<String, Any?>): Delivery? {
-            if (extras[RouterContract.EXTRA_API_VERSION] != RouterContract.API_VERSION) return null
+            val routerId = when (extras[RouterContract.EXTRA_API_VERSION]) {
+                RouterContract.API_VERSION -> null
+                RouterContract.API_VERSION_LISTED -> (extras[RouterContract.EXTRA_ROUTER_ID] as? String)?.takeIf { RouterIds.isRouterId(it) } ?: return null
+                else -> return null
+            }
             val captureId = extras[RouterContract.EXTRA_CAPTURE_ID] as? String ?: return null
             val text = extras[RouterContract.EXTRA_TEXT] as? String ?: return null
             if (captureId.isEmpty()) return null
@@ -58,7 +68,7 @@ data class Delivery(
                 latitude == null || longitude == null -> return null
                 else -> Location(latitude, longitude, extras[RouterContract.EXTRA_LOCATION_ACCURACY_METERS] as? Float)
             }
-            return Delivery(captureId, text, recordedAt, location)
+            return Delivery(captureId, text, recordedAt, location, routerId)
         }
 
         /** A delivery [write] stored, or null for a file that is not one. */
@@ -70,7 +80,7 @@ data class Delivery(
             val latitude = properties.getProperty(KEY_LATITUDE)?.toDoubleOrNull()
             val longitude = properties.getProperty(KEY_LONGITUDE)?.toDoubleOrNull()
             val location = if (latitude != null && longitude != null) Location(latitude, longitude, properties.getProperty(KEY_ACCURACY)?.toFloatOrNull()) else null
-            return Delivery(captureId, text, properties.getProperty(KEY_RECORDED_AT), location)
+            return Delivery(captureId, text, properties.getProperty(KEY_RECORDED_AT), location, properties.getProperty(KEY_ROUTER_ID))
         }
     }
 }

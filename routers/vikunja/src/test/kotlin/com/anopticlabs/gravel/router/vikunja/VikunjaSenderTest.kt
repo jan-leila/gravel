@@ -2,9 +2,18 @@ package com.anopticlabs.gravel.router.vikunja
 
 import com.anopticlabs.gravel.router.common.Delivery
 import com.anopticlabs.gravel.router.common.HttpAnswer
+import com.anopticlabs.gravel.router.common.ListedRouter
+import com.anopticlabs.gravel.router.common.RouterIds
+import com.anopticlabs.gravel.router.common.RouterList
+import com.anopticlabs.gravel.router.common.RouterReceiver
 import com.anopticlabs.gravel.router.common.SendResult
+import com.anopticlabs.gravel.router.common.SettingValues
+import java.io.File
+import java.io.IOException
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class VikunjaSenderTest {
 
@@ -17,6 +26,47 @@ class VikunjaSenderTest {
         assertEquals("""{"title":"buy milk","description":"Recorded 2026-09-22T17:00:00+02:00"}""", timed.body!!.decodeToString())
         val bare = vikunjaRequest("https://tasks.example.net", "tok", "7", Delivery("c1", "buy milk", null, null))
         assertEquals("""{"title":"buy milk"}""", bare.body!!.decodeToString())
+    }
+
+    /** A project is a router of its own, its id stable for the project; a saved filter and an archived project are not. */
+    @Test
+    fun theProjectsAreReadPageByPage() {
+        val pages = mutableListOf<String>()
+        val first = (1..50).joinToString(",", "[", "]") { """{"id":$it,"title":"P$it"}""" }
+        val second = """[{"id":51,"title":"Groceries"},{"id":-2,"title":"Filter"},{"id":52,"title":"Old","is_archived":true},{"id":53}]"""
+        val routers = vikunjaProjects("https://tasks.example.net/", "tok") { request ->
+            pages += request.url
+            assertEquals(mapOf("Authorization" to "Bearer tok"), request.headers)
+            HttpAnswer(200, if (request.url.contains("page=1&")) first else second)
+        }
+        assertEquals(listOf("https://tasks.example.net/api/v1/projects?page=1&per_page=50", "https://tasks.example.net/api/v1/projects?page=2&per_page=50"), pages)
+        assertEquals(52, routers.size)
+        val groceries = routers[50]
+        assertEquals("Vikunja: Groceries", groceries.label)
+        assertEquals(mapOf("project" to "51"), groceries.values)
+        assertEquals("recorded_at", groceries.needs)
+        assertEquals(RouterIds.of("vikunja", "51"), groceries.id)
+        assertEquals("Vikunja: Project 53", routers[51].label)
+        assertEquals("Vikunja answered HTTP 401", assertFailsWith<IOException> { vikunjaProjects("https://tasks.example.net", "bad") { HttpAnswer(401, "") } }.message)
+        assertFailsWith<IOException> { vikunjaProjects("http://tasks.example.net", "tok") { HttpAnswer(200, "[]") } }
+    }
+
+    @Test
+    fun aListedRouterSendsToItsProjectAndAGoneOneIsRefused() {
+        val dir = Files.createTempDirectory("vikunja").toFile()
+        try {
+            val list = RouterList(File(dir, "list.json"))
+            list.replace(listOf(ListedRouter("vikunja-1", "Vikunja: Groceries", values = mapOf("project" to "51"))))
+            val settings = SettingValues { mapOf("url" to "https://tasks.example.net", "token" to "tok")[it] }
+            val sent = mutableListOf<String>()
+            val sender = VikunjaSender(settings, list) { sent += it.url; HttpAnswer(201, "{}") }
+            assertEquals(SendResult.Sent, sender.send(Delivery("c1", "milk", null, null, "vikunja-1")))
+            assertEquals(listOf("https://tasks.example.net/api/v1/projects/51/tasks"), sent)
+            assertEquals(SendResult.Refused(RouterReceiver.NOT_LISTED), sender.send(Delivery("c1", "milk", null, null, "vikunja-2")))
+            assertEquals(SendResult.Refused(VikunjaApp.NO_DEFAULT), sender.send(Delivery("c1", "milk", null, null)))
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     @Test

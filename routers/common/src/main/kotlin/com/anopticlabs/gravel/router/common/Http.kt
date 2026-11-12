@@ -7,16 +7,17 @@ import java.net.URI
 import java.net.URISyntaxException
 import java.net.URL
 
-/** One request to make: the builders of each integration produce it, the tests read it, [Http] sends it. */
+/** One request to make: the builders of each integration produce it, the tests read it, [Http] sends it, reading up to [answerLimit] bytes of the answer. */
 data class HttpRequest(
     val method: String,
     val url: String,
     val headers: Map<String, String> = emptyMap(),
     val body: ByteArray? = null,
     val contentType: String? = null,
+    val answerLimit: Int = Http.MAX_BODY_BYTES,
 )
 
-/** What the server answered: the status and up to a few kilobytes of its body, for a reason to show. */
+/** What the server answered: the status and the start of its body, a few kilobytes for a reason to show or a list fetch's whole answer. */
 data class HttpAnswer(val status: Int, val body: String) {
     val ok: Boolean get() = status in 200..299
 
@@ -59,7 +60,7 @@ class Http(private val allowPrivateCleartext: Boolean = false) {
             }
             val status = connection.responseCode
             val stream = if (status >= 400) connection.errorStream else connection.inputStream
-            val body = stream?.use { readUpTo(it, MAX_BODY_BYTES) }?.decodeToString().orEmpty()
+            val body = stream?.use { readUpTo(it, request.answerLimit) }?.decodeToString().orEmpty()
             return HttpAnswer(status, body)
         } finally {
             connection.disconnect()
@@ -82,6 +83,9 @@ class Http(private val allowPrivateCleartext: Boolean = false) {
         const val CONNECT_TIMEOUT_MILLIS = 15_000
         const val READ_TIMEOUT_MILLIS = 60_000
         const val MAX_BODY_BYTES = 4 * 1024
+
+        /** For a list fetch, which reads the answer as JSON; a list longer than this is a fetch that fails. */
+        const val LIST_BODY_BYTES = 1024 * 1024
 
         /** The rule on its own, for tests: https anywhere; http only to a private host, and only when allowed. */
         fun allowed(url: String, allowPrivateCleartext: Boolean): Boolean {

@@ -21,7 +21,7 @@ class AppRouterDeliveryTest {
         val routers = mutableListOf<InstalledRouter>()
         val lineage = mutableMapOf<String, Set<String>>()
         override fun discover() = routers.toList()
-        override fun resolve(packageName: String, receiverClass: String) = routers.firstOrNull { it.packageName == packageName && it.receiverClass == receiverClass }
+        override fun resolve(packageName: String, receiverClass: String, id: String) = routers.firstOrNull { it.packageName == packageName && it.receiverClass == receiverClass && it.id == id }
         override fun signedBy(packageName: String, sha256: String) = sha256 in lineage[packageName].orEmpty()
     }
 
@@ -30,7 +30,9 @@ class AppRouterDeliveryTest {
         val shared = mutableListOf<Set<Need>>()
         var answer = BroadcastAnswer(RouterApi.RESULT_ACKNOWLEDGED)
         var answerAfterMillis = 0L
-        override suspend fun send(packageName: String, receiverClass: String, text: RoutedText, share: Set<Need>): BroadcastAnswer {
+        val listedIds = mutableListOf<String?>()
+        override suspend fun send(packageName: String, receiverClass: String, listedId: String?, text: RoutedText, share: Set<Need>): BroadcastAnswer {
+            listedIds += listedId
             sent += Triple(packageName, receiverClass, text)
             shared += share
             delay(answerAfterMillis)
@@ -79,7 +81,7 @@ class AppRouterDeliveryTest {
     @Test
     fun aReceiverThatDeclaresAnotherIdOrIsSignedByAnotherKeyIsFlaggedWithoutASend() {
         installTasks(id = "archive")
-        assertTrue(unavailable { delivery.deliver(tasks, text, emptySet()) }.message!!.contains("different router"))
+        assertTrue(unavailable { delivery.deliver(tasks, text, emptySet()) }.message!!.contains("no longer declares that router"))
         installed.routers.clear()
         installTasks(namespace = "d".repeat(64))
         trusted = setOf("d".repeat(64))
@@ -125,6 +127,17 @@ class AppRouterDeliveryTest {
         sender.answer = BroadcastAnswer(RouterApi.RESULT_REFUSED, "line\nbreak " + "x".repeat(300))
         val long = failed { delivery.deliver(tasks, text, emptySet()) }.message!!
         assertEquals("Tasks refused it: linebreak " + "x".repeat(RouterApi.MAX_REFUSAL_CHARS - "linebreak ".length), long)
+    }
+
+    /** A listed router is delivered to its app's receiver with its id; the receiver's declared router goes without one. */
+    @Test
+    fun aListedRouterIsSentWithItsIdAndADeclaredOneWithout() = runBlocking<Unit> {
+        installTasks()
+        installed.routers += InstalledRouter("com.example.tasks", "com.example.tasks.Router", "list-7", a, "Groceries", null, "Tasks app", listed = true)
+        delivery.deliver(tasks.copy(id = "list-7"), text, emptySet())
+        delivery.deliver(tasks, text, emptySet())
+        assertEquals(listOf("list-7", null), sender.listedIds)
+        assertTrue(unavailable { delivery.deliver(tasks.copy(id = "list-8"), text, emptySet()) }.message!!.contains("no longer declares that router"))
     }
 
     @Test

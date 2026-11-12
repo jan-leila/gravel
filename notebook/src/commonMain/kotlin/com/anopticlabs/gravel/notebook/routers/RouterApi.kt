@@ -35,6 +35,31 @@ object RouterApi {
     const val NEED_LOCATION = "location"
     const val NEED_RECORDED_AT = "recorded_at"
 
+    /**
+     * `<meta-data>` on the receiver: the authority of a content provider in the same app that lists
+     * further routers delivered to this receiver, one row each under [LIST_PATH] with the
+     * [COLUMN_ID], [COLUMN_LABEL], [COLUMN_DESCRIPTION] and [COLUMN_NEEDS] columns. The provider
+     * has to be exported and guarded by [PERMISSION_ROUTE_TEXT], as the receiver is.
+     */
+    const val META_LIST = "com.anopticlabs.gravel.notebook.router.list"
+    const val LIST_PATH = "routers"
+    const val COLUMN_ID = "id"
+    const val COLUMN_LABEL = "label"
+    const val COLUMN_DESCRIPTION = "description"
+    const val COLUMN_NEEDS = "needs"
+
+    /** Rows past this many are not read, so one app cannot flood the settings screen. */
+    const val MAX_LISTED = 200
+
+    /** How long a list query may take before the app's listed routers count as absent; the provider runs in another app. */
+    const val LIST_WAIT_MILLIS = 5_000L
+
+    /** The [EXTRA_API_VERSION] of a delivery to a listed router, which also carries [EXTRA_ROUTER_ID]; a declared router's deliveries stay [VERSION]. */
+    const val VERSION_LISTED = 2
+
+    /** The id of the listed router a delivery is for. */
+    const val EXTRA_ROUTER_ID = "router_id"
+
     const val EXTRA_API_VERSION = "api_version"
     const val EXTRA_CAPTURE_ID = "capture_id"
     const val EXTRA_TEXT = "text"
@@ -72,4 +97,28 @@ object RouterApi {
             else -> null
         }
     }
+}
+
+/** One row of an app's router list as the provider returned it; every column is text another app wrote. */
+data class ListedRow(val id: String?, val label: String?, val description: String?, val needs: String?)
+
+/** A listed router once its row passed [ListedRows.read]. */
+data class ListedEntry(val id: String, val label: String, val description: String?, val needs: Set<Need>)
+
+object ListedRows {
+    /**
+     * The rows that name a router: an id of the router id grammar not taken by an earlier row or
+     * by one of [declared] (the receiver's own id wins), a label that is not empty once cleaned;
+     * the first [RouterApi.MAX_LISTED] of them, labels and descriptions bounded and on one line.
+     */
+    fun read(rows: List<ListedRow>, declared: Set<String>): List<ListedEntry> {
+        val taken = declared.toMutableSet()
+        return rows.asSequence().mapNotNull { row ->
+            val label = clean(row.label, RouterApi.MAX_LABEL_CHARS) ?: return@mapNotNull null
+            val id = row.id?.takeIf { RoutingConfig.isRouterId(it) && taken.add(it) } ?: return@mapNotNull null
+            ListedEntry(id, label, clean(row.description, RouterApi.MAX_DESCRIPTION_CHARS), RouterApi.parseNeeds(row.needs))
+        }.take(RouterApi.MAX_LISTED).toList()
+    }
+
+    fun clean(value: String?, max: Int): String? = value?.filterNot { it.isISOControl() }?.trim()?.take(max)?.ifEmpty { null }
 }

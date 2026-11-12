@@ -14,10 +14,12 @@ class SignalSettingsActivity : ComponentActivity() {
             MaterialTheme {
                 SettingsScreen(
                     title = getString(R.string.app_name),
-                    intro = "Pick this router in Gravel under Settings > Notebook > Text Routing, and what you say is sent as a Signal message through the signal-cli-rest-api relay you run; Signal's own app offers no way in.",
+                    intro = "Pick one of this app's routers in Gravel under Settings > Notebook > Text Routing, and what you say is sent as a Signal message through the signal-cli-rest-api relay you run, to the recipients below or to one of the contacts you tick; Signal's own app offers no way in.",
                     fields = SignalApp.FIELDS,
                     settings = app.settings,
                     sender = app.sender,
+                    routers = app.routers,
+                    routerList = app.routerList,
                 )
             }
         }

@@ -479,7 +479,7 @@ private fun RouterEditor(
     var placeOtherwise by remember(router.ref) { mutableStateOf((router as? RouterConfig.Place)?.otherwise) }
     var placeUnknown by remember(router.ref) { mutableStateOf((router as? RouterConfig.Place)?.unknown) }
     var picked by remember(router.ref) {
-        mutableStateOf((router as? RouterConfig.App)?.let { app -> apps.flatMap { it.routers }.firstOrNull { it.packageName == app.packageName && it.receiverClass == app.receiverClass } })
+        mutableStateOf((router as? RouterConfig.App)?.let { app -> apps.flatMap { it.routers }.firstOrNull { it.packageName == app.packageName && it.receiverClass == app.receiverClass && it.id == app.id } })
     }
     var askTrust by remember(router.ref) { mutableStateOf<Pair<RouterApp, InstalledRouter>?>(null) }
     var url by remember(router.ref) { mutableStateOf((router as? RouterConfig.Network)?.url ?: "https://") }

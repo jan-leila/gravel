@@ -28,4 +28,15 @@ class RouterIdsTest {
         assertEquals(ids.size, ids.toSet().size, "ids are shared: $declared")
         ids.forEach { assertTrue(Regex("[a-z0-9-]{1,32}").matches(it), it) }
     }
+
+    /** A listed router's id is its app's prefix and a dash; a prefix another app shares would let two apps' routers collide. */
+    @Test
+    fun everyAppThatListsRoutersHasItsOwnPrefix() {
+        val prefix = Regex("const val LISTED_PREFIX = \"([^\"]*)\"")
+        val prefixes = routers.listFiles()!!
+            .flatMap { app -> app.resolve("src/main").walkTopDown().filter { it.extension == "kt" }.mapNotNull { prefix.find(it.readText())?.groupValues?.get(1) }.toList() }
+        assertEquals(6, prefixes.size, "the apps that list routers: $prefixes")
+        assertEquals(prefixes.size, prefixes.toSet().size, "prefixes are shared: $prefixes")
+        prefixes.forEach { RouterIds.of(it, "key") }
+    }
 }
