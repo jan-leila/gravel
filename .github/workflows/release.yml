@@ -6,6 +6,11 @@ name: Release
 # Otherwise it builds the pushed commit, signs it, and creates the GitHub release, which creates
 # the tag (the versionName) on that commit. Tags are never pushed by hand.
 #
+# After a release is published, the next-version job commits the following version to main: the
+# patch versionName and the versionCode each up by one, and a placeholder changelog for that code.
+# A release whose changelog still holds the placeholder stops before building. That commit is
+# pushed with the workflow token, so Build does not run on it either.
+#
 # The tag is created with the workflow token, and GitHub starts no workflow for a ref that token
 # creates, so Build does not run on it; the checks below are the tag's CI.
 #
@@ -14,6 +19,11 @@ name: Release
 # itself, copies this APK's signature onto its own unsigned build, and ships this APK only if the
 # result verifies, i.e. only if the two builds are byte-identical outside the signature. The
 # unsigned listing (-Pgravel.unsigned=true) is F-Droid's alone and is not built here.
+#
+# The eight router apps (routers/README.md) are built in the same run, signed with the same key and
+# attached to the same release, each under its own application id (com.jan_leila.apps.<name>).
+# Obtainium follows each by an APK filter on its file name, gravel-router-<name>-<version>.apk.
+# F-Droid does not build them.
 #
 # The APK is built unsigned, exactly as F-Droid builds it (no keystore.jks in the checkout), and
 # signed afterwards with apksigner, so the signing
@@ -38,9 +48,17 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+env:
+  # Written by next-version, refused by the number check; any edit that removes it counts as notes.
+  CHANGELOG_PLACEHOLDER: 'RELEASE NOTES PENDING: replace this file with the release notes before merging main into release.'
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.version.outputs.publish }}
+      name: ${{ steps.version.outputs.name }}
+      code: ${{ steps.version.outputs.code }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -99,7 +117,12 @@ jobs:
             echo "versionCode at $previous: $before"
             test "$CODE" -gt "$before"
           fi
-          test -f "fastlane/metadata/android/en-US/changelogs/$CODE.txt"
+          changelog="fastlane/metadata/android/en-US/changelogs/$CODE.txt"
+          test -f "$changelog"
+          if grep -qF "$CHANGELOG_PLACEHOLDER" "$changelog"; then
+            echo "$changelog still holds the placeholder; write the release notes on main first"
+            exit 1
+          fi
         env:
           NAME: ${{ steps.version.outputs.name }}
           CODE: ${{ steps.version.outputs.code }}
@@ -110,12 +133,21 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: 21
+      # The router apps (routers/README.md) ship with every release under the same version and
+      # key; their lint and tests run here because no other workflow builds them.
+      - name: Lint and test the router apps
+        if: steps.version.outputs.publish == 'true'
+        run: >-
+          ./gradlew --no-daemon --stacktrace :routers:common:lintDebug :routers:common:testDebugUnitTest
+          $(for a in slack homeassistant vikunja mastodon osmnote signal actual email; do printf ":routers:$a:lintDebug :routers:$a:testDebugUnitTest "; done)
       # No dependency cache: a release builds from a clean Gradle home, as F-Droid does. The build
       # stamps both numbers from version.properties; nothing in it depends on the tag, so this
       # untagged build and F-Droid's build of the tag produce the same APK.
-      - name: Build the unsigned release APK
+      - name: Build the unsigned release APKs
         if: steps.version.outputs.publish == 'true'
-        run: ./gradlew :androidApp:assembleRelease --no-daemon --stacktrace
+        run: >-
+          ./gradlew --no-daemon --stacktrace :androidApp:assembleRelease
+          $(for a in slack homeassistant vikunja mastodon osmnote signal actual email; do printf ":routers:$a:assembleRelease "; done)
       - name: Check the built APK against the release number
         if: steps.version.outputs.publish == 'true'
         run: |
@@ -125,6 +157,20 @@ jobs:
           test "$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")" = "$NAME"
           test "$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")" = "$CODE"
           test "$(printf '%s' "$badging" | sed -n "s/.*package: name='\([^']*\)'.*/\1/p")" = "com.anopticlabs.gravel.signed"
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+          CODE: ${{ steps.version.outputs.code }}
+      - name: Check the router APKs against the release number
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)"
+          for a in slack homeassistant vikunja mastodon osmnote signal actual email; do
+            badging="$("$aapt2" dump badging "routers/$a/build/outputs/apk/release/$a-release-unsigned.apk" | head -n 1)"
+            echo "$badging"
+            test "$(printf '%s' "$badging" | sed -n "s/.*package: name='\([^']*\)'.*/\1/p")" = "com.jan_leila.apps.$a"
+            test "$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")" = "$NAME"
+            test "$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")" = "$CODE"
+          done
         env:
           NAME: ${{ steps.version.outputs.name }}
           CODE: ${{ steps.version.outputs.code }}
@@ -143,6 +189,15 @@ jobs:
             --alignment-preserved true \
             --out "$RUNNER_TEMP/out/gravel-$NAME.apk" \
             androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk
+          # The router apps are signed with the same key: Gravel trusts a router by certificate, and a
+          # Gravel and router pair on one key is accepted without either app listing the other.
+          for a in slack homeassistant vikunja mastodon osmnote signal actual email; do
+            "$apksigner" sign \
+              --ks "$RUNNER_TEMP/release.jks" --ks-key-alias "$GRAVEL_KEY_ALIAS" \
+              --ks-pass env:GRAVEL_KEYSTORE_PASSWORD --key-pass env:GRAVEL_KEY_PASSWORD \
+              --out "$RUNNER_TEMP/out/gravel-router-$a-$NAME.apk" \
+              "routers/$a/build/outputs/apk/release/$a-release-unsigned.apk"
+          done
           rm -f "$RUNNER_TEMP/release.jks"
         env:
           NAME: ${{ steps.version.outputs.name }}
@@ -154,10 +209,11 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         run: |
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)"
-          certs="$("$apksigner" verify --print-certs "$RUNNER_TEMP/out/gravel-$NAME.apk")"
+          certs="$(for apk in "$RUNNER_TEMP"/out/*.apk; do "$apksigner" verify --print-certs "$apk"; done)"
           printf '%s\n' "$certs"
           # One line per signature scheme, labelled "Signer #1" or "V3.0 Signer" by apksigner
-          # version; every scheme must carry the same single certificate.
+          # version; every scheme of every APK (Gravel and the router apps) must carry the same
+          # single certificate.
           digest="$(printf '%s\n' "$certs" | sed -n 's/^.*Signer.* certificate SHA-256 digest: //p' | sort -u)"
           test "$(printf '%s\n' "$digest" | grep -c .)" = 1
           test -n "$GRAVEL_SIGNER_SHA256" && test "$digest" = "$GRAVEL_SIGNER_SHA256"
@@ -189,16 +245,65 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         run: |
           cd "$RUNNER_TEMP/out"
-          sha256sum "gravel-$NAME.apk" > "gravel-$NAME.apk.sha256"
+          sha256sum gravel-*.apk > "gravel-$NAME.apk.sha256"
           {
             cat "$GITHUB_WORKSPACE/fastlane/metadata/android/en-US/changelogs/$CODE.txt"
             printf '\nSigning certificate SHA-256: `%s`\n' "$GRAVEL_SIGNER_SHA256"
           } > notes.md
           gh release create "$NAME" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Gravel $NAME" --notes-file notes.md \
-            "gravel-$NAME.apk" "gravel-$NAME.apk.sha256"
+            gravel-*.apk "gravel-$NAME.apk.sha256"
         env:
           NAME: ${{ steps.version.outputs.name }}
           CODE: ${{ steps.version.outputs.code }}
           GH_TOKEN: ${{ github.token }}
           GRAVEL_SIGNER_SHA256: ${{ vars.GRAVEL_SIGNER_SHA256 }}
+
+  # Runs only once the release above is published, and never sees its build. If main already
+  # declares something other than the released version (someone bumped it by hand), it is left as
+  # it is.
+  next-version:
+    needs: release
+    if: needs.release.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: main
+      - name: Commit the next version to main
+        run: |
+          file=androidApp/version.properties
+          code="$(sed -n 's/^versionCode=\([0-9][0-9]*\)$/\1/p' "$file")"
+          name="$(sed -n 's/^versionName=\([0-9][0-9.]*\)$/\1/p' "$file")"
+          if [ "$code" != "$CODE" ] || [ "$name" != "$NAME" ]; then
+            echo "main declares versionCode=$code versionName=$name, not the released $CODE $NAME; leaving it"
+            exit 0
+          fi
+          next_code=$((CODE + 1))
+          next_name="${NAME%.*}.$((${NAME##*.} + 1))"
+          changelog="fastlane/metadata/android/en-US/changelogs/$next_code.txt"
+          test ! -e "$changelog"
+          sed -i -e "s/^versionCode=$CODE\$/versionCode=$next_code/" -e "s/^versionName=$NAME\$/versionName=$next_name/" "$file"
+          printf '%s\n' "$CHANGELOG_PLACEHOLDER" > "$changelog"
+          git add "$file" "$changelog"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -q -F - <<MSG
+          Start $next_name: record versionCode $next_code and a placeholder changelog
+
+          $NAME is released, so main now declares the next patch version. The release
+          commit replaces the placeholder notes (and raises versionName further for a
+          minor or major release).
+          MSG
+          git show --stat HEAD
+          # The only command that gives git the token. A rejected push (main moved meanwhile)
+          # fails the job; re-running it checks out the new main.
+          auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" push origin HEAD:main
+        env:
+          NAME: ${{ needs.release.outputs.name }}
+          CODE: ${{ needs.release.outputs.code }}
+          TOKEN: ${{ github.token }}

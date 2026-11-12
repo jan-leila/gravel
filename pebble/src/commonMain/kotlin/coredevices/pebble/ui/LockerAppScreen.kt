@@ -100,6 +100,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
@@ -110,6 +111,7 @@ import kotlinx.datetime.format.Padding
 import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.koinInject
+import com.anopticlabs.gravel.gitsource.GitSourceUpdater
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
@@ -218,6 +220,9 @@ fun LockerAppScreen(topBarParams: TopBarParams, uuid: Uuid?, navBarNav: NavBarNa
         val platform: Platform = koinInject()
         val urlLauncher = LocalUriHandler.current
         val nativeLockerAddUtil: NativeLockerAddUtil = koinInject()
+        // Gravel: an app followed from a git repo names it, linking to the Git Sources screen.
+        val gitSourceUpdater: GitSourceUpdater = koinInject()
+        val gitSource by remember(uuid) { uuid?.let { gitSourceUpdater.source(it) } ?: flowOf(null) }.collectAsState(null)
 
         fun reloadFromStore(useCache: Boolean) {
             if (storeId != null && storeSource != null) {
@@ -724,6 +729,15 @@ fun LockerAppScreen(topBarParams: TopBarParams, uuid: Uuid?, navBarNav: NavBarNa
                             name = "VERSION",
                             nameModifier = propertyNameModifier,
                             value = "$version$sideloadedText$updatedDateText"
+                        )
+                    }
+                    gitSource?.let { source ->
+                        PropertyRow(
+                            name = "GIT SOURCE",
+                            nameModifier = propertyNameModifier,
+                            value = source.repo.displayName,
+                            onClick = { navBarNav.navigateTo(PebbleNavBarRoutes.GitSourcesRoute) },
+                            onClickIcon = Icons.AutoMirrored.Default.ArrowForward,
                         )
                     }
                     (viewModel.selectedStoreEntry?.sourceLink ?: entry.sourceLink)?.let { sourceLink ->

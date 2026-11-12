@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Source
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -349,6 +350,12 @@ fun LockerScreen(
         val showDebugOptions = settings.showDebugOptions()
         LaunchedEffect(showDebugOptions) {
             topBarParams.actions {
+                // Gravel: watch apps and faces followed from git releases.
+                TopBarIconButtonWithToolTip(
+                    onClick = { navBarNav.navigateTo(PebbleNavBarRoutes.GitSourcesRoute) },
+                    icon = Icons.Filled.Source,
+                    description = "Git Sources",
+                )
                 if (showDebugOptions) {
                     TopBarIconButtonWithToolTip(
                         onClick = openInstallAppDialog,

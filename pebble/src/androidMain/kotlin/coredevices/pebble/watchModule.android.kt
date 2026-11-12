@@ -3,6 +3,7 @@ package coredevices.pebble
 import android.content.Context
 import com.anopticlabs.gravel.watchsync.AndroidFirstSyncNotifier
 import com.anopticlabs.gravel.watchsync.FirstSyncNotifier
+import com.anopticlabs.gravel.gitsource.GitSourceNotifier
 import com.anopticlabs.gravel.weather.AndroidLocationAccess
 import com.anopticlabs.gravel.weather.LocationAccess
 import io.rebble.libpebblecommon.connection.AppContext
@@ -20,4 +21,5 @@ actual val platformWatchModule: Module = module {
     singleOf(::PebbleAndroidDelegate)
     single<LocationAccess> { AndroidLocationAccess(get(), get()) }
     singleOf(::AndroidFirstSyncNotifier) bind FirstSyncNotifier::class
+    single<GitSourceNotifier> { AndroidGitSourceNotifier(get()) }
 }

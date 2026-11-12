@@ -2,6 +2,7 @@ package coredevices.pebble.ui
 
 import CoreNav
 import CoreRoute
+import com.anopticlabs.gravel.gitsource.GitSourcesScreen
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -108,6 +109,10 @@ object PebbleNavBarRoutes {
     // Fork: Settings > Apps > Watch App Permissions (global defaults + per-app list).
     @Serializable
     data object WatchappPermissionsRoute : NavBarRoute
+
+    // Gravel: watch apps and faces followed from git releases.
+    @Serializable
+    data object GitSourcesRoute : NavBarRoute
 
     @Serializable
     data object CalendarsRoute : NavBarRoute
@@ -245,6 +250,9 @@ fun NavGraphBuilder.addNavBarRoutes(
     }
     composableWithAnimations<PebbleNavBarRoutes.WatchappPermissionsRoute>(viewModel) {
         WatchappPermissionsScreen(nav, topBarParams)
+    }
+    composableWithAnimations<PebbleNavBarRoutes.GitSourcesRoute>(viewModel) {
+        GitSourcesScreen(topBarParams)
     }
     composableWithAnimations<PebbleNavBarRoutes.AppNotificationViewerRoute>(viewModel) {
         val route: PebbleNavBarRoutes.AppNotificationViewerRoute = it.toRoute()
