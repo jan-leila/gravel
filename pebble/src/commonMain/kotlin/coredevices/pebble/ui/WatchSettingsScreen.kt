@@ -846,6 +846,14 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                     section = Section.Apps,
                     action = { nav.navigateTo(PebbleNavBarRoutes.AppstoreSettingsRoute()) },
                 ) },
+                navBarNav?.let { nav -> basicSettingsActionItem(
+                    title = "Git Sources",
+                    description = "Install watchfaces and apps from GitHub, Codeberg, Forgejo or Gitea releases and keep them updated",
+                    topLevelType = TopLevelType.Phone,
+                    section = Section.Apps,
+                    keywords = "github codeberg forgejo gitea repository release pbw sideload update",
+                    action = { nav.navigateTo(PebbleNavBarRoutes.GitSourcesRoute) },
+                ) },
                 // Fork: entry point to the watchapp/watchface phone-side permission
                 // controls (internet + location, global defaults and per-app), the
                 // PebbleKit companion toggles and the switch for Network-denied code.

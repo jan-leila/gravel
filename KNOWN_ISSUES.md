@@ -91,14 +91,52 @@ watch runs the end-to-end pass.
 
 **Status: accepted; the limit is GitHub's and counts per public IP address.**
 
-Core watch update checks and the build picker read GitHub anonymously. GitHub
+Core watch update checks, the build picker and checks of GitHub repositories
+followed under Git Sources read GitHub anonymously. GitHub
 allows 60 anonymous API requests per hour for each originating IP address
 (GitHub docs, "Rate limits for the REST API"), so every device behind one
 public address shares that budget. A check makes two or three requests, and a
 failed check is not cached, so it is repeated on the next connection. Past the
 limit, checks and the picker report that they are rate limited until GitHub's
-limit resets. This entry leaves the file if checks move to a source without a
-per-address limit.
+limit resets. A Git Sources check is one request per followed repository, at
+most every six hours in the background unless the last one failed transiently
+(a rate limit included), in which case it runs again at the next sync. This
+entry leaves the file if checks move to a source without a per-address limit.
+
+## Git source updates trust the repository after the first install
+
+**Status: accepted; it is the model Obtainium uses for APKs, narrowed.**
+
+A repository followed under Git Sources is trusted on first use: whoever can
+publish its releases can ship any later version of the same watch app. Gravel
+narrows that, but does not remove it:
+
+- A release is installed only if its PBW declares the UUID of the first
+  install.
+- A release that declares capabilities the installed one did not, or adds
+  phone-side JavaScript, waits until the user approves exactly those, even
+  with automatic updates on.
+- Location and internet access stay under Watch App Permissions in any case.
+- Automatic updates are off unless chosen per repository.
+
+PBWs carry no signature that would let Gravel tell the developer's build from
+another one. A repository taken over, or a developer turned hostile, can
+therefore push a release with the same UUID and capabilities, and with
+automatic updates on it installs without a question. This entry leaves the
+file if PBWs gain a signature format.
+
+## Forgejo and Gitea release files are checked by size only
+
+**Status: accepted; the host's API lists no checksum.**
+
+GitHub's releases API lists a SHA-256 digest for each release file, and Git
+Sources refuses a GitHub download that does not match it. Forgejo's and
+Gitea's releases API lists a size but no digest. A download from those hosts
+is checked against the listed size and the HTTPS connection only, and the
+install dialog says so. The same holds for GitHub files uploaded before GitHub
+began listing digests. Either way, a release file reaches the locker only as a
+PBW that declares the UUID the source is bound to. This entry leaves the file
+if Forgejo's API lists release file digests.
 
 ## A link from another app can start a firmware update check
 

@@ -378,6 +378,7 @@ fun WatchHomeScreen(
                     val tab = when (it.route) {
                         is PebbleNavBarRoutes.LockerAppRoute -> WatchHomeNavTab.WatchFaces
                         is PebbleNavBarRoutes.AppstoreSettingsRoute -> WatchHomeNavTab.WatchFaces
+                        is PebbleNavBarRoutes.GitSourcesRoute -> WatchHomeNavTab.WatchFaces
                         is PebbleNavBarRoutes.IndexRoute -> WatchHomeNavTab.Index
                         is PebbleNavBarRoutes.NotebookRoute -> WatchHomeNavTab.Notebook
                         is PebbleNavBarRoutes.WatchesRoute -> WatchHomeNavTab.Watches

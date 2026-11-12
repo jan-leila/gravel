@@ -49,9 +49,11 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   screen is a server-rendered page fed by that relay, so it has no data
   source in Gravel and its entry points are disabled; usable battery
   analytics would need a local, on-device reimplementation. The hosts the
-  app talks to are fixed in the app, with two exceptions you control: an
+  app talks to are fixed in the app, with three exceptions you control: an
   app store source you add yourself is fetched from the host you entered,
-  with no account token attached and no store search sent to it, and a
+  with no account token attached and no store search sent to it, a git
+  repository you follow under Git Sources is read anonymously from its
+  host (for GitHub, its API at api.github.com), and a
   transcription server you configure receives your dictation audio and,
   in the server modes, your Notebook recordings (nothing is sent unless
   you set one up). Problem reports are a manual
@@ -314,6 +316,20 @@ certificates (Caddy's internal CA renews every 12 hours by default):
 each rotation would ask you to confirm again. The bearer token belongs
 to the server it was saved with: a URL edited to another host or port is
 tested and saved without it unless you type one.
+
+## Installing watch apps from git releases
+
+Settings > Apps > Git Sources (also the source icon at the top of the Apps
+tab) follows a public GitHub, Codeberg, Forgejo or Gitea repository
+that publishes `.pbw` files as releases, the way Obtainium follows APKs:
+Gravel installs the newest release and checks for newer ones during its
+periodic sync, at most every six hours. Before the first install it shows
+the app's ID and what it declares (location, a settings page, code that
+runs on the phone); later releases install only if they have the same app
+ID, and one that declares more waits for you. Each repository is either
+notify-only (the default) or set to update automatically. Removing a
+followed app from the locker, or replacing it by hand, pauses its updates
+until you act on it in Git Sources.
 
 ## Building
 
