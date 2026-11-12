@@ -1,6 +1,8 @@
 package com.anopticlabs.gravel.router.email
 
 import com.anopticlabs.gravel.router.common.Delivery
+import com.anopticlabs.gravel.router.common.RouterList
+import com.anopticlabs.gravel.router.common.RouterReceiver
 import com.anopticlabs.gravel.router.common.SendResult
 import com.anopticlabs.gravel.router.common.Sender
 import com.anopticlabs.gravel.router.common.SettingValues
@@ -18,7 +20,6 @@ data class SmtpAccount(
     val username: String,
     val password: String,
     val from: String,
-    val to: String,
     val subject: String,
     val pinnedSha256: String?,
 )
@@ -44,25 +45,37 @@ fun normalizePin(typed: String?): String? {
     return cleaned.takeIf { it.length == 64 }
 }
 
+/**
+ * The address a delivery goes to, or the reason it has none: the declared router's default
+ * recipient, or the address of the listed contact. Every router of this app is a case here, so a
+ * router that picks the recipient from the words is added here too.
+ */
+fun emailRecipient(delivery: Delivery, defaultTo: String?, list: RouterList?): Result<String> = when (val id = delivery.routerId) {
+    null -> defaultTo?.let { Result.success(it) } ?: Result.failure(IllegalStateException(EmailApp.NO_DEFAULT))
+    else -> list?.find(id)?.values?.get(EmailApp.VALUE_ADDRESS)?.let { Result.success(it) } ?: Result.failure(IllegalStateException(RouterReceiver.NOT_LISTED))
+}
+
 class EmailSender(
     private val settings: SettingValues,
     private val now: () -> ZonedDateTime = { ZonedDateTime.now(ZoneId.systemDefault()) },
     private val client: (SmtpAccount) -> SmtpClient = { SmtpClient(it.host, it.port, it.security, it.pinnedSha256) },
+    private val list: RouterList? = null,
 ) : Sender {
     override fun send(delivery: Delivery): SendResult {
         val account = account() ?: return SendResult.Refused("The email router is not set up")
+        val to = emailRecipient(delivery, settings[EmailApp.KEY_TO], list).getOrElse { return SendResult.Refused(it.message.orEmpty()) }
         val pinTyped = settings[EmailApp.KEY_PIN]
         if (!pinTyped.isNullOrBlank() && account.pinnedSha256 == null) return SendResult.Refused("The server certificate SHA-256 is not a 64-digit hex digest")
         val message = MailMessage.build(
             from = account.from,
-            to = account.to,
+            to = to,
             subject = emailSubject(account.subject, delivery.recordedAt),
             body = delivery.text,
             messageId = delivery.captureId,
             date = emailDate(delivery.recordedAt, now()),
         )
         return try {
-            client(account).send(account.username, account.password, account.from, account.to, message)
+            client(account).send(account.username, account.password, account.from, to, message)
             SendResult.Sent
         } catch (e: SmtpRefusedException) {
             SendResult.Refused("The mail server refused it: ${e.message}")
@@ -83,7 +96,6 @@ class EmailSender(
             username = settings[EmailApp.KEY_USERNAME] ?: return null,
             password = settings[EmailApp.KEY_PASSWORD] ?: return null,
             from = settings[EmailApp.KEY_FROM] ?: return null,
-            to = settings[EmailApp.KEY_TO] ?: return null,
             subject = settings[EmailApp.KEY_SUBJECT].orEmpty(),
             pinnedSha256 = normalizePin(settings[EmailApp.KEY_PIN]),
         )

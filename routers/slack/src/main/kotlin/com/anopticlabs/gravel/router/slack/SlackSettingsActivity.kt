@@ -14,10 +14,12 @@ class SlackSettingsActivity : ComponentActivity() {
             MaterialTheme {
                 SettingsScreen(
                     title = getString(R.string.app_name),
-                    intro = "Pick this router in Gravel under Settings > Notebook > Text Routing, and what you say is posted to the Slack channel the webhook belongs to.",
+                    intro = "Pick one of this app's routers in Gravel under Settings > Notebook > Text Routing, and what you say is posted to Slack: to the channel the webhook belongs to, or, with a bot token, to one of the channels below.",
                     fields = SlackApp.FIELDS,
                     settings = app.settings,
                     sender = app.sender,
+                    routers = app.routers,
+                    routerList = app.routerList,
                 )
             }
         }

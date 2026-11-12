@@ -49,12 +49,61 @@ guarded by Gravel's permission:
   not know is ignored. See "What a delivery carries" below: declaring a
   need does not get it, the user does.
 - One app may declare several routers, one receiver each, with distinct
-  ids.
+  ids, or list any number through one receiver (below).
 - Gravel lists a receiver only when it is exported **and** guarded by exactly
   this permission. A receiver without the guard is not a router: any app on
   the phone could broadcast to it in Gravel's name. A receiver guarded by a
   different permission is skipped by the system without a word, which Gravel
   could not tell from "it ran and did not answer".
+
+## Listing routers
+
+A router per project, channel, account or contact is not something a
+manifest can declare: the app learns them at run time. Such an app lists
+them instead, through a content provider, and Gravel delivers to all of
+them through one receiver. Name the provider's authority on the receiver:
+
+```xml
+<receiver
+    android:name=".NotebookRouter"
+    android:exported="true"
+    android:permission="com.anopticlabs.gravel.permission.ROUTE_NOTEBOOK_TEXT">
+    <intent-filter>
+        <action android:name="com.anopticlabs.gravel.notebook.action.ROUTE_TEXT" />
+    </intent-filter>
+    <meta-data android:name="com.anopticlabs.gravel.notebook.router.list" android:value="com.example.tasks.routers" />
+</receiver>
+<provider
+    android:name=".NotebookRouterList"
+    android:authorities="com.example.tasks.routers"
+    android:exported="true"
+    android:permission="com.anopticlabs.gravel.permission.ROUTE_NOTEBOOK_TEXT" />
+```
+
+- `com.anopticlabs.gravel.notebook.router.list` names the authority. The
+  provider has to be in the receiver's own app, exported, and guarded by
+  Gravel's permission as its read permission, or Gravel ignores it. Like the
+  receiver, it never defines the permission. The receiver may also declare a
+  router of its own with `id`; it may list routers without one.
+- Gravel queries the path `routers`, `content://<authority>/routers`, and reads four string
+  columns per row: `id`, `label`, `description` and `needs`, with the meaning
+  and limits they have as meta-data above. `description` and `needs` may be
+  null. A row whose `id` breaks the grammar, repeats an earlier row's or the
+  receiver's own `id`, or has no label, is skipped, and Gravel lists the
+  first 200 routers. A query that throws or takes longer than 5 seconds counts as an
+  empty list.
+- Listed ids share the app's namespace with every other router signed by
+  the same key, declared or listed. Derive them from something stable, the
+  service's id for the project for example, since the user's routing refers
+  to them: a router that leaves the list is no longer the router the user
+  picked, and a recording routed to it is flagged.
+- Gravel reads the list when its settings show the routers and again at
+  every delivery. List only what the user wants Gravel to see: the labels are
+  shown in Gravel's settings and end up in its routing export.
+- The provider is guarded by name, like the receiver. While Gravel is absent
+  another app could define the permission and read the list, so check who
+  defined it before answering (see "The permission" below). Gravel's own
+  router apps answer such a query with an empty list.
 
 ## Namespaces
 
@@ -149,7 +198,8 @@ foreground flag set, carrying these extras and nothing else:
 
 | Extra | Type | Meaning |
 | --- | --- | --- |
-| `api_version` | int | `1` for this document. |
+| `api_version` | int | `1` for a delivery to a router the receiver declares; `2` for a delivery to a listed router, which also carries `router_id`. |
+| `router_id` | String | Only with `api_version` `2`: the `id` of the listed router the delivery is for. |
 | `capture_id` | String | Identifies the recording. The same recording can be delivered more than once (below); treat a repeated id as the same text. |
 | `text` | String | The complete transcript, exactly as transcribed. |
 | `recorded_at` | String | Only with the `recorded_at` need granted. When the recording started, as ISO-8601 with the offset of the zone it was recorded in, to the second: `2026-10-29T14:03:11-04:00`. This is the moment the user pressed record, not when Gravel processed the recording. |
@@ -171,6 +221,10 @@ in the text) **refuses** it instead: result code `Activity.RESULT_FIRST_USER`
 text. Gravel flags the recording with that reason for the user to see and
 never delivers it again. Refuse only for a reason that will not change;
 anything transient is a missing acknowledgement, which is retried.
+
+A receiver that lists routers reads `router_id` to know which one the
+delivery is for, and refuses one for a router it no longer lists. A version
+it does not know gets no answer, so Gravel tries again later.
 
 ```kotlin
 class NotebookRouter : BroadcastReceiver() {

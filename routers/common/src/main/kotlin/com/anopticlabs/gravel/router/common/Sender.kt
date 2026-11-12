@@ -16,9 +16,12 @@ fun interface Sender {
     fun send(delivery: Delivery): SendResult
 }
 
-/** The app of a router: what the outbox worker and the settings screen need from it. */
+/** The app of a router: what the receiver, the outbox worker, the list provider and the settings screen need from it. */
 interface RouterApp {
     val sender: Sender
+
+    /** The routers the app lists beside its declared one; null for an app that lists none. */
+    val routerList: RouterList? get() = null
 
     /** The reason a delivery cannot be taken as the app is set up now, or null; checked before anything is stored. */
     fun refusal(delivery: Delivery): String? = null

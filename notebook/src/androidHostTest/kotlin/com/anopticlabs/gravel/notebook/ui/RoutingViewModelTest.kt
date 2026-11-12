@@ -53,7 +53,7 @@ class RoutingViewModelTest {
     private class FakeInstalled : InstalledRouters {
         val routers = mutableListOf<InstalledRouter>()
         override fun discover() = routers.toList()
-        override fun resolve(packageName: String, receiverClass: String) = routers.firstOrNull { it.packageName == packageName && it.receiverClass == receiverClass }
+        override fun resolve(packageName: String, receiverClass: String, id: String) = routers.firstOrNull { it.packageName == packageName && it.receiverClass == receiverClass && it.id == id }
         override fun signedBy(packageName: String, sha256: String) = false
     }
 
@@ -247,7 +247,7 @@ class RoutingViewModelEditTest {
     private val trust = RouterTrustStore(File(root, "nobackup"), { 1L }, defaults = emptySet())
     private val installed = object : InstalledRouters {
         override fun discover() = emptyList<InstalledRouter>()
-        override fun resolve(packageName: String, receiverClass: String) = null
+        override fun resolve(packageName: String, receiverClass: String, id: String) = null
         override fun signedBy(packageName: String, sha256: String) = false
     }
     private val documents = object : BackupDocumentOps<String> {

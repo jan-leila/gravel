@@ -18,7 +18,14 @@
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.label" android:value="Send as email" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.description" android:value="Sends what you said as an email through an SMTP server you set up, a Proton Bridge for example" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.needs" android:value="recorded_at" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.list" android:value="${applicationId}.routers" />
         </receiver>
+        <!-- The receiver's listed routers (ROUTER_API.md, Listing routers), guarded like the receiver. -->
+        <provider
+            android:name="com.anopticlabs.gravel.router.common.RouterListProvider"
+            android:authorities="${applicationId}.routers"
+            android:exported="true"
+            android:permission="com.anopticlabs.gravel.permission.ROUTE_NOTEBOOK_TEXT" />
         <activity android:name=".EmailSettingsActivity" android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

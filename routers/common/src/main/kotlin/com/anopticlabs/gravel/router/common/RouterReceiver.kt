@@ -27,7 +27,8 @@ open class RouterReceiver : BroadcastReceiver() {
             Log.w(TAG, "a delivery this version cannot read was left for Gravel to try again")
             return
         }
-        (context.applicationContext as? RouterApp)?.refusal(delivery)?.let { reason ->
+        val app = context.applicationContext as? RouterApp
+        (listedRefusal(app, delivery) ?: app?.refusal(delivery))?.let { reason ->
             resultCode = RouterContract.RESULT_REFUSED
             resultData = reason.take(RouterContract.MAX_REFUSAL_CHARS)
             return
@@ -42,7 +43,14 @@ open class RouterReceiver : BroadcastReceiver() {
         resultCode = Activity.RESULT_OK
     }
 
-    private companion object {
-        const val TAG = "RouterReceiver"
+    companion object {
+        private const val TAG = "RouterReceiver"
+        const val NOT_LISTED = "This router is no longer listed in the app; refresh or pick another in Gravel"
+
+        /** A delivery for a listed router the app no longer shares with Gravel is refused: Gravel saw an older list. */
+        fun listedRefusal(app: RouterApp?, delivery: Delivery): String? {
+            val id = delivery.routerId ?: return null
+            return if (app?.routerList?.find(id)?.shared == true) null else NOT_LISTED
+        }
     }
 }

@@ -17,7 +17,14 @@
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.id" android:value="assist" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.label" android:value="Tell Home Assistant" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.description" android:value="Hands what you said to Home Assistant's Assist, as if you had typed it" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.list" android:value="${applicationId}.routers" />
         </receiver>
+        <!-- The receiver's listed routers (ROUTER_API.md, Listing routers), guarded like the receiver. -->
+        <provider
+            android:name="com.anopticlabs.gravel.router.common.RouterListProvider"
+            android:authorities="${applicationId}.routers"
+            android:exported="true"
+            android:permission="com.anopticlabs.gravel.permission.ROUTE_NOTEBOOK_TEXT" />
         <activity android:name=".HomeAssistantSettingsActivity" android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

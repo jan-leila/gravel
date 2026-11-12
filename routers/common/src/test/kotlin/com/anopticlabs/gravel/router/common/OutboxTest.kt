@@ -42,6 +42,16 @@ class OutboxTest {
     }
 
     @Test
+    fun oneRecordingForTwoListedRoutersIsTwoDeliveries() {
+        outbox.add(Delivery("c1", "one", null, null))
+        outbox.add(Delivery("c1", "one", null, null, "slack-a"))
+        outbox.add(Delivery("c1", "one", null, null, "slack-b"))
+        outbox.add(Delivery("c1", "one again", null, null, "slack-a"))
+        assertEquals(listOf(null, "slack-a", "slack-b"), outbox.list().map { it.second.routerId }.sortedBy { it.orEmpty() })
+        assertEquals("one again", outbox.list().first { it.second.routerId == "slack-a" }.second.text)
+    }
+
+    @Test
     fun aDeliverySetAsideLeavesTheLineWithItsReasonUntilItIsTriedAgainOrDiscarded() {
         outbox.add(Delivery("c1", "one", null, null))
         outbox.add(Delivery("c2", "two", null, null))
