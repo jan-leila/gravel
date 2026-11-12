@@ -1,6 +1,7 @@
 package coredevices.pebble
 
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.gitsource.GitSourceUpdater
 import com.russhwolf.settings.Settings
 import coredevices.analytics.CoreAnalytics
 import coredevices.analytics.heartbeatWatchConnectGoalName
@@ -38,6 +39,7 @@ import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
+import com.anopticlabs.gravel.watchsync.KeptAppRecovery
 import kotlin.time.Clock
 
 class PebbleAppDelegate(
@@ -57,12 +59,15 @@ class PebbleAppDelegate(
     private val pebbleWebServices: PebbleWebServices,
     private val batteryChargedNotifier: BatteryChargedNotifier,
     private val weatherFetcher: WeatherFetcher,
+    private val gitSourceUpdater: GitSourceUpdater,
+    private val keptAppRecovery: KeptAppRecovery,
 ) {
     private val logger = Logger.withTag("PebbleAppDelegate")
 
     fun init() {
         logger.d { "init()" }
         analyticsHeartbeatQueue.startProcessing(GlobalScope)
+        keptAppRecovery.init(GlobalScope)
         permissionsRequester.init()
         if (platform == Platform.Android) {
             // We need to init on android synchronously, so that koin graph is ready when e.g.
@@ -218,6 +223,10 @@ class PebbleAppDelegate(
             },
             scope.launch {
                 analyticsHeartbeatQueue.uploadPendingFromDb()
+            },
+            // Gravel: watch apps and faces followed from git releases.
+            scope.launch {
+                gitSourceUpdater.backgroundCheck()
             },
         )
         jobs.joinAll()

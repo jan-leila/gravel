@@ -114,6 +114,7 @@ import com.anopticlabs.gravel.ui.PhoneCalendarFirstStep
 import com.anopticlabs.gravel.ui.phoneCalendarFirstStep
 import com.anopticlabs.gravel.ui.phoneCalendarRefusalText
 import com.anopticlabs.gravel.ui.rememberNotebookTab
+import com.anopticlabs.gravel.ui.rememberAppSettingsBackup
 import com.anopticlabs.gravel.ui.rememberTextModels
 import com.anopticlabs.gravel.ui.textModelsSummary
 import com.anopticlabs.gravel.weather.WeatherConsentDialog
@@ -620,6 +621,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
     val healthPlatformSyncEnabled by healthSyncTracker.enabled.collectAsState()
     val healthIsSyncing by platformHealthSync.syncing.collectAsState()
     val notebookTab = rememberNotebookTab()
+    val appBackup = rememberAppSettingsBackup()
     val notebookShown = notebookTab?.shown?.collectAsState()?.value == true
     val deepLinks = koinInject<PebbleDeepLinkHandler>()
     val notebookGuideDone = notebookTab?.takeIf { it.supported }?.setupGuide?.collectAsState()?.value?.done == true
@@ -846,6 +848,14 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                     section = Section.Apps,
                     action = { nav.navigateTo(PebbleNavBarRoutes.AppstoreSettingsRoute()) },
                 ) },
+                navBarNav?.let { nav -> basicSettingsActionItem(
+                    title = "Git Sources",
+                    description = "Install watchfaces and apps from GitHub, Codeberg, Forgejo or Gitea releases and keep them updated",
+                    topLevelType = TopLevelType.Phone,
+                    section = Section.Apps,
+                    keywords = "github codeberg forgejo gitea repository release pbw sideload update",
+                    action = { nav.navigateTo(PebbleNavBarRoutes.GitSourcesRoute) },
+                ) },
                 // Fork: entry point to the watchapp/watchface phone-side permission
                 // controls (internet + location, global defaults and per-app), the
                 // PebbleKit companion toggles and the switch for Network-denied code.
@@ -886,6 +896,26 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                         }
                     },
                 ),
+                appBackup?.let {
+                    basicSettingsActionItem(
+                        title = "Back Up Gravel",
+                        description = "Save all settings, the app list with sideloaded apps, health history and the Notebook to one password-protected file",
+                        topLevelType = TopLevelType.Phone,
+                        section = Section.General,
+                        keywords = "backup export settings reinstall transfer phone",
+                        action = { it.startExport() },
+                    )
+                },
+                appBackup?.let {
+                    basicSettingsActionItem(
+                        title = "Restore Gravel Backup",
+                        description = "Bring back the settings, apps and data in a backup file; the app restarts afterwards",
+                        topLevelType = TopLevelType.Phone,
+                        section = Section.General,
+                        keywords = "backup import restore settings reinstall transfer phone",
+                        action = { it.startImport() },
+                    )
+                },
                 basicSettingsActionItem(
                     title = "Restore System app positions",
                     description = "Restore system apps to their usual position at the top of the menu",

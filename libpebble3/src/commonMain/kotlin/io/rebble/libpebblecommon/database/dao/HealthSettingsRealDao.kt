@@ -116,7 +116,7 @@ interface HealthSettingsEntryRealDao : HealthSettingsEntryDao {
         }
 
         val existing = getEntry(key)
-        if (existing != null && writeTimestamp.instant <= existing.timestamp.instant) {
+        if (!params.watchWins && existing != null && writeTimestamp.instant <= existing.timestamp.instant) {
             logger.d {
                 "Health settings handleWrite stale: $key write=${writeTimestamp.instant} " +
                         "existing=${existing.timestamp.instant}"

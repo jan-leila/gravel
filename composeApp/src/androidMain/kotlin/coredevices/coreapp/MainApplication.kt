@@ -33,6 +33,7 @@ import com.anopticlabs.gravel.socketfilter.UdpSocketFilter
 import coredevices.ExperimentalDevices
 import com.anopticlabs.gravel.app.notebookEnginesModule
 import com.anopticlabs.gravel.app.notebookTabModule
+import com.anopticlabs.gravel.backup.appBackupModule
 import com.anopticlabs.gravel.app.notebookWatchAppModule
 import com.anopticlabs.gravel.app.ringClientModule
 import com.anopticlabs.gravel.app.textModelsModule
@@ -123,6 +124,7 @@ class MainApplication : Application(), SingletonImageLoader.Factory, Configurati
                 notebookWatchAppModule,
                 ringClientModule,
                 textModelsModule,
+                appBackupModule,
             )
         }
         // Gravel: registered before any activity starts, so the Notebook's notification gates count every one.

@@ -141,17 +141,20 @@ Firebase stubs, the unplugged Ring module) lives in `DESIGN_NOTES.md`.
   `buildSrc/src/shared`, is shared by the build and
   `FdroidGuardrailsTest`), and the build stamps both into
   every variant (set lazily in `androidComponents.onVariants`); upstream
-  derives them from git tags. Between releases the file names the last
-  release, so dev builds report it too. F-Droid's update checker reads a
+  derives them from git tags. Between releases the file names the next
+  release, so dev builds report it too: once a release is published, the
+  Release workflow's next-version job commits the next patch version and a
+  placeholder changelog to main, and refuses to release that placeholder. F-Droid's update checker reads a
   tag's versionCode from the same file, and on a checkout of a
   release-shaped tag the versionName must be that tag, which Gradle's
   `preBuild` (`VerifyReleaseVersionFile`), `FdroidGuardrailsTest`, and CI
   each check. The test also requires
   `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` to exist
   for the value the file names, on every commit.
-- **A release is cut by bumping the file on master and merging master into
-  `release`; tags are never pushed by hand.** The release commit raises
-  both numbers and adds the changelog for the new versionCode (the steps
+- **A release is cut by writing the notes on main and merging main into
+  `release`; tags are never pushed by hand.** The release commit replaces
+  the placeholder changelog main already carries, raising versionName
+  further for a minor or major release (the steps
   are in `README.md`, Releasing). `.github/workflows/release.yml` runs on
   every push to `release`: it stops early if the declared versionName
   already has a GitHub release, and otherwise checks the pushed tree is a

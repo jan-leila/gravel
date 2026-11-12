@@ -28,6 +28,11 @@ import coredevices.pebble.firmware.FirmwareArtifactExpectations
 import coredevices.pebble.firmware.FirmwareUpdateCheck
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
 import coredevices.pebble.firmware.GithubReleases
+import com.anopticlabs.gravel.gitsource.GitReleaseClient
+import com.anopticlabs.gravel.gitsource.GitSourceLocker
+import com.anopticlabs.gravel.gitsource.GitSourceUpdater
+import com.anopticlabs.gravel.gitsource.GitSourcesViewModel
+import com.anopticlabs.gravel.gitsource.LibPebbleGitSourceLocker
 import coredevices.pebble.firmware.RealBatteryChargedNotifier
 import coredevices.pebble.firmware.RealFirmwareUpdateUiTracker
 import coredevices.pebble.firmware.VerifiedFirmwareInstaller
@@ -86,6 +91,7 @@ import io.rebble.libpebblecommon.connection.ConnectedPebbleDevice
 import io.rebble.libpebblecommon.connection.HealthDataApi
 import io.rebble.libpebblecommon.connection.LibPebble
 import io.rebble.libpebblecommon.connection.LibPebble3
+import io.rebble.libpebblecommon.util.getTempFilePath
 import io.rebble.libpebblecommon.connection.NotificationApps
 import io.rebble.libpebblecommon.connection.TokenProvider
 import io.rebble.libpebblecommon.connection.WebServices
@@ -110,6 +116,9 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.bind
 import org.koin.dsl.binds
 import org.koin.dsl.module
+import com.anopticlabs.gravel.watchsync.FirstSyncPrompt
+import com.anopticlabs.gravel.watchsync.KeptAppRecovery
+import com.anopticlabs.gravel.watchsync.KeptWatches
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.uuid.Uuid
@@ -131,6 +140,8 @@ val watchModule = module {
             networkDenyEnforcement = getOrNull() ?: UnreportedNetworkDenyEnforcement,
             // Gravel: the Notebook watch app, where the platform's app module binds it.
             watchAppCaptures = getOrNull(),
+            // Gravel: asks the user before a first sync wipes a watch.
+            firstSyncDecider = get<FirstSyncPrompt>(),
         )
     } binds arrayOf(LibPebble3::class, NotificationApps::class, SystemGeolocation::class)
 
@@ -142,6 +153,9 @@ val watchModule = module {
         }
     } } bind PebbleAccountProvider::class
     singleOf(::PebbleAppDelegate)
+    singleOf(::KeptWatches)
+    singleOf(::FirstSyncPrompt)
+    singleOf(::KeptAppRecovery)
     singleOf(::RealFirmwareUpdateUiTracker) bind FirmwareUpdateUiTracker::class
     single<BatteryChargedNotifier> {
         val appContext: AppContext = get()
@@ -216,6 +230,21 @@ val watchModule = module {
     singleOf(::FirmwareArtifactExpectations)
     singleOf(::PebbleOsChangelogListSource)
     singleOf(::GithubReleases)
+    // Gravel: watch apps and faces followed from git releases.
+    singleOf(::GitReleaseClient)
+    single<GitSourceLocker> { LibPebbleGitSourceLocker(get<LibPebble3>()) }
+    single {
+        GitSourceUpdater(
+            dao = get(),
+            client = get(),
+            httpClient = get(),
+            locker = get(),
+            notifier = get(),
+            stagingDir = getTempFilePath(get<AppContext>(), "git_sources"),
+            clock = get(),
+        )
+    }
+    viewModelOf(::GitSourcesViewModel)
     single {
         // Fork: download+verify+sideload pipeline for firmware installs. Reuses
         // upstream's firmware cache directory (unique per-install filenames);

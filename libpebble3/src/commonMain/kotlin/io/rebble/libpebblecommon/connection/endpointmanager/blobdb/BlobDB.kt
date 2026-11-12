@@ -5,6 +5,10 @@ import com.russhwolf.settings.ExperimentalSettingsApi
 import com.russhwolf.settings.Settings
 import com.russhwolf.settings.serialization.decodeValue
 import com.russhwolf.settings.serialization.encodeValue
+import com.anopticlabs.gravel.watchsync.FirstSyncChoice
+import com.anopticlabs.gravel.watchsync.FirstSyncRequest
+import com.anopticlabs.gravel.watchsync.InjectedFirstSyncDecider
+import com.anopticlabs.gravel.watchsync.databasesToClear
 import coredev.BlobDatabase
 import io.rebble.libpebblecommon.LibPebbleConfigFlow
 import io.rebble.libpebblecommon.NotificationConfigFlow
@@ -38,6 +42,8 @@ import io.rebble.libpebblecommon.services.blobdb.BlobDBService
 import io.rebble.libpebblecommon.services.blobdb.DbWrite
 import io.rebble.libpebblecommon.services.blobdb.WriteType
 import io.rebble.libpebblecommon.web.withTimeoutOr
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.conflate
@@ -150,6 +156,7 @@ class BlobDB(
     private val notificationConfigFlow: NotificationConfigFlow,
     private val settings: Settings,
     private val libPebbleConfigFlow: LibPebbleConfigFlow,
+    private val firstSyncDecider: InjectedFirstSyncDecider,
 ) {
     protected val watchIdentifier: String = identifier.asString
 
@@ -208,12 +215,18 @@ class BlobDB(
         }
     }
 
+    private val _firstSync = CompletableDeferred<FirstSyncChoice?>()
+
+    /** Gravel: what this connection's first sync chose, or null when it was not a first sync. */
+    val firstSync: Deferred<FirstSyncChoice?> get() = _firstSync
+
     fun init(
         watchType: WatchType,
         unfaithful: Boolean,
         previouslyConnected: Boolean,
         capabilities: Set<ProtocolCapsFlag>,
         firmwareVersion: FirmwareVersion,
+        serial: String,
     ) {
         val params = ValueParams(
             platform = watchType,
@@ -244,7 +257,19 @@ class BlobDB(
             }
             logger.d { "BlobDb version: $blobDbVersion" }
 
-            if (unfaithful || !previouslyConnected) {
+            // Gravel: the embedder may keep what the watch holds instead of wiping it. Asked
+            // before anything below touches the watch's databases or takes in its writes.
+            val choice = if (unfaithful || !previouslyConnected) {
+                firstSyncDecider.decider?.decide(
+                    FirstSyncRequest(identifier, serial, usedWithAnotherPhone = unfaithful && previouslyConnected),
+                ) ?: FirstSyncChoice.ReplaceWatch
+            } else {
+                null
+            }
+            logger.d { "first sync choice: $choice" }
+            _firstSync.complete(choice)
+
+            if (choice != null) {
                 // Mark all of our local DBs not synched (before handling any writes from the watch)
                 blobDatabases.get().forEach { db ->
                     db.markAllDeletedFromWatch(identifier.asString)
@@ -282,10 +307,13 @@ class BlobDB(
                     }
                     val effectiveDatabase = effectiveDatabaseFor(message)
                     val dao = blobDatabases.get().find { it.databaseId() == effectiveDatabase }
+                    // Gravel: the watch's values win until its requested WatchPrefs sync is done.
+                    val watchWins = choice == FirstSyncChoice.KeepWatch &&
+                        BlobDatabase.WatchPrefs in databasesWhichWillSync.value
                     val result = dao?.handleWrite(
                         write = message,
                         transport = identifier.asString,
-                        params,
+                        params.copy(watchWins = watchWins),
                     ) ?: run {
                         logger.v { "unhandled write: $message (key=${message.key.joinToString()} value=${message.value.joinToString()}" }
                         BlobResponse.BlobStatus.Success
@@ -319,18 +347,16 @@ class BlobDB(
                 })
             }
 
-            if (unfaithful || !previouslyConnected) {
-                logger.d("unfaithful: wiping DBs on watch")
-                // Clear all DBs on watch (whether we have local DBs for them or not)
-                BlobDatabase.entries.forEach { db ->
-                    if (db.sendClear) {
-                        sendWithTimeout(
-                            BlobCommand.ClearCommand(
-                                token = generateToken(),
-                                database = db,
-                            )
+            if (choice != null) {
+                logger.d("unfaithful: clearing DBs on watch for $choice")
+                // Clear DBs on watch (whether we have local DBs for them or not)
+                databasesToClear(choice).forEach { db ->
+                    sendWithTimeout(
+                        BlobCommand.ClearCommand(
+                            token = generateToken(),
+                            database = db,
                         )
-                    }
+                    )
                 }
             }
 

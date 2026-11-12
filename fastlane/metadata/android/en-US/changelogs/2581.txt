@@ -1,0 +1,7 @@
+Git sources: install watch apps straight from GitHub or Forgejo releases and keep them updated in the background.
+
+App backup: back up and restore the whole app, settings included, to one password-protected file.
+
+A watch's first sync now asks before wiping it, and can keep the apps it already holds.
+
+The router apps now ship alongside every Gravel release.

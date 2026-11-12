@@ -52,6 +52,9 @@ data class ValueParams(
     val vibePatternDao: VibePatternDao? = null,
     val notificationRuleDao: NotificationRuleDao? = null,
     val libPebbleConfigFlow: LibPebbleConfigFlow,
+    // Gravel: set while a first sync that keeps the watch takes in the watch's values, so they
+    // replace the phone's whatever their timestamps (a fresh install seeds some rows as new).
+    val watchWins: Boolean = false,
 )
 
 interface BlobDbItem {

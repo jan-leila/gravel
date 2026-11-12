@@ -1,11 +1,7 @@
 package com.anopticlabs.gravel.app
 
-import com.anopticlabs.gravel.network.readBody
+import com.anopticlabs.gravel.network.downloadAtMost
 import io.ktor.client.HttpClient
-import io.ktor.client.request.prepareGet
-import io.ktor.http.isSuccess
-import io.ktor.utils.io.readAvailable
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -49,7 +45,7 @@ class WatchAppInstaller(
     suspend fun install(release: WatchAppRelease): WatchAppInstallResult = oneAtATime.withLock {
         if (!release.isWellFormed()) return WatchAppInstallResult.CHECK_FAILED
         val bytes = try {
-            withTimeoutOrNull(downloadLimit) { download(release) }
+            withTimeoutOrNull(downloadLimit) { httpClient.downloadAtMost(release.url, release.sizeBytes) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -69,22 +65,6 @@ class WatchAppInstaller(
             }
         }
     }
-
-    /** The body, read until it ends or is longer than the release; null when the answer is not a success. */
-    private suspend fun download(release: WatchAppRelease): ByteArray? =
-        httpClient.prepareGet(release.url).execute { response ->
-            if (!response.status.isSuccess()) return@execute null
-            response.readBody { channel ->
-                val body = ByteArrayOutputStream()
-                val buffer = ByteArray(16 * 1024)
-                while (body.size() <= release.sizeBytes) {
-                    val read = channel.readAvailable(buffer, 0, buffer.size)
-                    if (read == -1) break
-                    body.write(buffer, 0, read)
-                }
-                body.toByteArray()
-            }
-        }
 
     private fun sha256Hex(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }

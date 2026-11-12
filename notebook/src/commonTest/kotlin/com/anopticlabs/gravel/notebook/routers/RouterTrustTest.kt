@@ -3,6 +3,7 @@ package com.anopticlabs.gravel.notebook.routers
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -25,9 +26,9 @@ class RouterTrustTest {
     }
 
     @Test
-    fun nothingIsTrustedWithoutAnEntryAndTheDefaultListIsEmptyAsShipped() {
-        assertTrue(DEFAULT_TRUSTED_ROUTER_SIGNERS.isEmpty())
-        assertTrue(RouterTrust.certificates(TrustEntries.EMPTY).isEmpty())
+    fun nothingIsTrustedWithoutAnEntryBeyondTheBuiltInSigners() {
+        for (digest in DEFAULT_TRUSTED_ROUTER_SIGNERS) assertNotNull(RouterTrust.normalizeDigest(digest), digest)
+        assertTrue(RouterTrust.certificates(TrustEntries.EMPTY, emptySet()).isEmpty())
         assertFalse(RouterTrust.isTrusted(a, emptySet(), never))
     }
 

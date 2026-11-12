@@ -49,9 +49,11 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   screen is a server-rendered page fed by that relay, so it has no data
   source in Gravel and its entry points are disabled; usable battery
   analytics would need a local, on-device reimplementation. The hosts the
-  app talks to are fixed in the app, with two exceptions you control: an
+  app talks to are fixed in the app, with three exceptions you control: an
   app store source you add yourself is fetched from the host you entered,
-  with no account token attached and no store search sent to it, and a
+  with no account token attached and no store search sent to it, a git
+  repository you follow under Git Sources is read anonymously from its
+  host (for GitHub, its API at api.github.com), and a
   transcription server you configure receives your dictation audio and,
   in the server modes, your Notebook recordings (nothing is sent unless
   you set one up). Problem reports are a manual
@@ -173,6 +175,14 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   key. The text models are downloads you start
   yourself, checked against a pinned SHA-256; recordings wait until one
   is installed.
+- **Reinstalling without starting over.** Settings > General backs up the
+  whole app to one password-sealed file: settings, the app list with
+  sideloaded apps, watchapps' own settings, health history and the
+  Notebook. Sign-ins and keys held in the phone's keystore are not in
+  it. When a watch this phone has not set up connects, Gravel asks
+  before wiping it. Keeping it leaves its apps and settings in place,
+  takes in the settings the watch reports, and adds its store apps to
+  the phone's list as they are used.
 - **Distribution through F-Droid.** Gravel is in F-Droid's main
   repository, as
   [`com.anopticlabs.gravel.signed`](https://f-droid.org/packages/com.anopticlabs.gravel.signed/),
@@ -315,6 +325,20 @@ each rotation would ask you to confirm again. The bearer token belongs
 to the server it was saved with: a URL edited to another host or port is
 tested and saved without it unless you type one.
 
+## Installing watch apps from git releases
+
+Settings > Apps > Git Sources (also the source icon at the top of the Apps
+tab) follows a public GitHub, Codeberg, Forgejo or Gitea repository
+that publishes `.pbw` files as releases, the way Obtainium follows APKs:
+Gravel installs the newest release and checks for newer ones during its
+periodic sync, at most every six hours. Before the first install it shows
+the app's ID and what it declares (location, a settings page, code that
+runs on the phone); later releases install only if they have the same app
+ID, and one that declares more waits for you. Each repository is either
+notify-only (the default) or set to update automatically. Removing a
+followed app from the locker, or replacing it by hand, pauses its updates
+until you act on it in Git Sources.
+
 ## Building
 
 - Clone with `--recursive` (or run `git submodule update --init`): the
@@ -333,7 +357,8 @@ tested and saved without it unless you type one.
 - Both version numbers come from `androidApp/version.properties`
   (one `versionCode=` line and one `versionName=` line, in any order;
   no other line may mention either key, comments included). Between
-  releases it names the last release.
+  releases it names the next one: the Release workflow commits the next
+  patch version to main as soon as a release is published.
 
 ## Releasing
 
@@ -345,6 +370,15 @@ Otherwise it builds the pushed commit unsigned (the way F-Droid builds it),
 signs it, and creates the GitHub release together with its tag. Obtainium
 and F-Droid both pick the release up from there. Don't push release tags
 by hand.
+
+Once the release is published, the same workflow commits the next version
+to main: `versionName`'s patch number and `versionCode` each go up by one,
+and `changelogs/<new versionCode>.txt` is added holding a `RELEASE NOTES
+PENDING` placeholder. The workflow refuses to release a changelog that
+still holds it. If main already declares a different version by then, it
+is left alone. The commit is pushed with the workflow token, so a branch
+rule on main that requires pull requests has to let GitHub Actions bypass
+it.
 
 ### One-time setup
 
@@ -404,31 +438,32 @@ use them.
 
 ### Cutting a release
 
-1. On a branch off master, edit `androidApp/version.properties`:
-   - raise `versionName` (`major.minor.patch`), and
-   - raise `versionCode` above the previous release's (adding one is
-     enough).
-
-   Also add `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`
-   with the release notes. That file becomes the GitHub release notes and
-   F-Droid's "What's New", and it has to stay under 500 characters.
+1. On a branch off main, replace the placeholder in
+   `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` (the
+   versionCode main already declares) with the release notes. That file
+   becomes the GitHub release notes and F-Droid's "What's New", and it has
+   to stay under 500 characters. For a minor or major release, also raise
+   `versionName` in `androidApp/version.properties`; the versionCode main
+   declares is already one above the last release's.
 2. Check the tree passes the F-Droid guardrails:
    `./gradlew :androidApp:testDebugUnitTest --tests '*FdroidGuardrailsTest*' --rerun`
-   (the test reads tracked files, so `git add` the new changelog first).
-   Open a pull request into master and merge it.
-3. Open a pull request from `master` into `release` and merge it. The
-   workflow only publishes a tree that is exactly some commit on master,
-   so merge master unchanged and don't commit to `release` directly.
+   (the test reads tracked files, so `git add` the changelog first).
+   Open a pull request into main and merge it.
+3. Open a pull request from `main` into `release` and merge it. The
+   workflow only publishes a tree that is exactly some commit on main,
+   so merge main unchanged and don't commit to `release` directly.
 4. Watch the Release run in the Actions tab. When it finishes, the GitHub
    release `<versionName>` exists with `gravel-<versionName>.apk` and its
-   `.sha256`, and the tag sits on the commit it built. F-Droid builds that
-   tag on its own schedule.
+   `.sha256`, and the tag sits on the commit it built, and main has a new
+   commit declaring the next version. F-Droid builds that tag on its own
+   schedule.
 
 If the run fails, nothing has been published yet: no tag and no release
-are created until every check passes. Fix the cause on master and merge
-master into `release` again, or re-run the job if the failure was
-transient. Merging into `release` without bumping the version is
-harmless: the run finds that version already released and stops.
+are created until every check passes. Fix the cause on main and merge
+main into `release` again, or re-run the job if the failure was
+transient. Merging into `release` before the release notes are written is
+harmless: the run stops at the placeholder changelog. If only the
+next-version job fails (main moved while it ran), re-run that job.
 
 ## Architecture
 

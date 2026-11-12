@@ -1,0 +1,501 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 10,
+    "identityHash": "ddf249bc5cacabdc4fc45945ea876c57",
+    "entities": [
+      {
+        "tableName": "HeartbeatStateEntity",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `state` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "AppstoreSource",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `url` TEXT NOT NULL, `title` TEXT NOT NULL, `algoliaAppId` TEXT DEFAULT null, `algoliaApiKey` TEXT DEFAULT null, `algoliaIndexName` TEXT DEFAULT null, `enabled` INTEGER NOT NULL DEFAULT 1)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "url",
+            "columnName": "url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "algoliaAppId",
+            "columnName": "algoliaAppId",
+            "affinity": "TEXT",
+            "defaultValue": "null"
+          },
+          {
+            "fieldPath": "algoliaApiKey",
+            "columnName": "algoliaApiKey",
+            "affinity": "TEXT",
+            "defaultValue": "null"
+          },
+          {
+            "fieldPath": "algoliaIndexName",
+            "columnName": "algoliaIndexName",
+            "affinity": "TEXT",
+            "defaultValue": "null"
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "AppstoreCollection",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sourceId` INTEGER NOT NULL, `title` TEXT NOT NULL, `type` TEXT NOT NULL, `slug` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `synthetic` INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(`sourceId`) REFERENCES `AppstoreSource`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceId",
+            "columnName": "sourceId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "slug",
+            "columnName": "slug",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "synthetic",
+            "columnName": "synthetic",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_AppstoreCollection_sourceId_slug_type",
+            "unique": true,
+            "columnNames": [
+              "sourceId",
+              "slug",
+              "type"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_AppstoreCollection_sourceId_slug_type` ON `${TABLE_NAME}` (`sourceId`, `slug`, `type`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "AppstoreSource",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sourceId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "WeatherLocationEntity",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `orderIndex` INTEGER NOT NULL, `name` TEXT NOT NULL, `latitude` REAL, `longitude` REAL, `currentLocation` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orderIndex",
+            "columnName": "orderIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "currentLocation",
+            "columnName": "currentLocation",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        }
+      },
+      {
+        "tableName": "HeartEntity",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sourceId` INTEGER NOT NULL, `appId` TEXT NOT NULL, PRIMARY KEY(`sourceId`, `appId`), FOREIGN KEY(`sourceId`) REFERENCES `AppstoreSource`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "sourceId",
+            "columnName": "sourceId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "appId",
+            "columnName": "appId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sourceId",
+            "appId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "AppstoreSource",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sourceId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "memfault_chunks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `serial` TEXT NOT NULL, `chunkData` BLOB NOT NULL, `createdAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serial",
+            "columnName": "serial",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chunkData",
+            "columnName": "chunkData",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "analytics_heartbeats",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `serial` TEXT NOT NULL, `fwVersion` TEXT, `tzOffsetMinutes` INTEGER NOT NULL, `payload` BLOB NOT NULL, `createdAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serial",
+            "columnName": "serial",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fwVersion",
+            "columnName": "fwVersion",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "tzOffsetMinutes",
+            "columnName": "tzOffsetMinutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payload",
+            "columnName": "payload",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "GitSourceEntity",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uuid` TEXT NOT NULL, `host` TEXT NOT NULL, `baseUrl` TEXT NOT NULL, `owner` TEXT NOT NULL, `repo` TEXT NOT NULL, `appTitle` TEXT NOT NULL, `assetPattern` TEXT, `includePrereleases` INTEGER NOT NULL, `autoUpdate` INTEGER NOT NULL, `installedTag` TEXT NOT NULL, `installedPublishedAt` INTEGER NOT NULL, `installedSha256` TEXT NOT NULL, `installedCapabilities` TEXT NOT NULL, `availableTag` TEXT, `availablePublishedAt` INTEGER, `availableAssetName` TEXT, `availableAssetUrl` TEXT, `availableAssetSize` INTEGER, `availableAssetSha256` TEXT, `availableNotes` TEXT, `pendingCapabilities` TEXT, `lastCheckedAt` INTEGER, `lastError` TEXT, `etag` TEXT, `notifiedTag` TEXT, PRIMARY KEY(`uuid`))",
+        "fields": [
+          {
+            "fieldPath": "uuid",
+            "columnName": "uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "host",
+            "columnName": "host",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "baseUrl",
+            "columnName": "baseUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "owner",
+            "columnName": "owner",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "repo",
+            "columnName": "repo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "appTitle",
+            "columnName": "appTitle",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assetPattern",
+            "columnName": "assetPattern",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "includePrereleases",
+            "columnName": "includePrereleases",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoUpdate",
+            "columnName": "autoUpdate",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "installedTag",
+            "columnName": "installedTag",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "installedPublishedAt",
+            "columnName": "installedPublishedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "installedSha256",
+            "columnName": "installedSha256",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "installedCapabilities",
+            "columnName": "installedCapabilities",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "availableTag",
+            "columnName": "availableTag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "availablePublishedAt",
+            "columnName": "availablePublishedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "availableAssetName",
+            "columnName": "availableAssetName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "availableAssetUrl",
+            "columnName": "availableAssetUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "availableAssetSize",
+            "columnName": "availableAssetSize",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "availableAssetSha256",
+            "columnName": "availableAssetSha256",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "availableNotes",
+            "columnName": "availableNotes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pendingCapabilities",
+            "columnName": "pendingCapabilities",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastCheckedAt",
+            "columnName": "lastCheckedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "etag",
+            "columnName": "etag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "notifiedTag",
+            "columnName": "notifiedTag",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "uuid"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ddf249bc5cacabdc4fc45945ea876c57')"
+    ]
+  }
+}

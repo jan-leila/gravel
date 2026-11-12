@@ -7,6 +7,9 @@ import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.pkjs.UnreportedNetworkDenyEnforcement
 import com.anopticlabs.gravel.pkjs.NetworkDenyEnforcement
 import com.anopticlabs.gravel.watchapp.InjectedWatchAppCaptures
+import com.anopticlabs.gravel.backup.TableRows
+import com.anopticlabs.gravel.watchsync.FirstSyncDecider
+import com.anopticlabs.gravel.watchsync.InjectedFirstSyncDecider
 import com.anopticlabs.gravel.watchapp.WatchAppCaptures
 import io.rebble.libpebblecommon.ErrorTracker
 import io.rebble.libpebblecommon.Housekeeping
@@ -322,6 +325,9 @@ interface LockerApi {
      */
     suspend fun cachedPbwSha256(id: Uuid): String?
 
+    /** Gravel: the PBW cached on the phone for [id]'s locker entry, or null when none is cached. Never fetches. */
+    suspend fun cachedPbwPath(id: Uuid): Path?
+
     /**
      * Gravel: stores the PBW at [pbwPath] as a sideloaded app like [sideloadApp], without opening it on a watch,
      * when it is the app [id].
@@ -430,6 +436,8 @@ class LibPebble3(
     private val watchPreferences: WatchPrefs,
     private val weatherManager: WeatherManager,
     private val watchappPermissions: WatchappPermissions,
+    /** Gravel: the rows of this library's database, for the app's settings backup. */
+    val backupRows: TableRows,
 ) : LibPebble, Scanning by scanning, RequestSync by webSyncManager, LockerApi by locker,
     NotificationApps by notificationApi, WatchappPermissions by watchappPermissions,
     Calendar by phoneCalendarSyncer,
@@ -548,10 +556,13 @@ class LibPebble3(
             // Gravel: an embedder that reports nothing gets no PebbleKit JS for network-denied apps.
             networkDenyEnforcement: NetworkDenyEnforcement = UnreportedNetworkDenyEnforcement,
             watchAppCaptures: WatchAppCaptures? = null,
+            // Gravel: none keeps upstream's wipe of a watch this phone has not set up.
+            firstSyncDecider: FirstSyncDecider? = null,
         ): LibPebble {
             koin = initKoin(
                 defaultConfig, webServices, appContext, tokenProvider, proxyTokenProvider, transcriptionProvider,
                 injectedPKJSHttpInterceptors, networkDenyEnforcement, InjectedWatchAppCaptures(watchAppCaptures),
+                InjectedFirstSyncDecider(firstSyncDecider),
             )
             // Reads the persisted config (not defaultConfig), but must still precede anything that
             // touches Kable's shared central manager. Every Koin single here is lazy, and Kable is

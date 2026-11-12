@@ -1969,7 +1969,7 @@ in the app's device suite:
     A receiver declares its id in meta-data, and an app signed by several
     certificates has no namespace, so its receivers are not routers.
     Trust (`RouterTrust`) is per certificate: the list in force is the
-    built-in list (`DEFAULT_TRUSTED_ROUTER_SIGNERS`, empty as shipped)
+    built-in list (`DEFAULT_TRUSTED_ROUTER_SIGNERS`, Gravel's release key as shipped)
     less the built-in ones the user removed, plus the ones the user added
     by digest or by trusting an app; the user's changes (`TrustEntries`)
     are kept apart from the built-in list in a no-backup file
@@ -2861,15 +2861,17 @@ routing (`ROUTER_API.md`), one small Android app per integration on the
 shared `:routers:common` library, and the worked examples of the API
 (`routers/README.md` has the user-facing side). What the tree decides:
 
-- **A separate key, and no F-Droid main listing.** Gravel trusts routers by
-  signing certificate, and F-Droid's main repository signs each app with a
-  key of its own, so a router app built there could never match a
-  built-in trusted signer. The apps are signed with one key kept outside
-  the tree (the build signs release only when the environment names it,
-  and packages release unsigned otherwise, like `:androidApp`), its
-  certificate's SHA-256 is Gravel's built-in trusted signer
-  (`DEFAULT_TRUSTED_ROUTER_SIGNERS`), and the APKs go out as GitHub
-  releases and through Gravel's own F-Droid repository. The modules are
+- **Gravel's release key, and no F-Droid main listing.** Gravel trusts
+  routers by signing certificate, and F-Droid's main repository signs each
+  app with a key of its own, so a router app built there could never match
+  a built-in trusted signer. The Gravel release workflow builds the apps
+  unsigned (the build signs release only when the environment names a
+  keystore, like `:androidApp`) and signs them with Gravel's release key,
+  whose certificate's SHA-256 is Gravel's built-in trusted signer
+  (`DEFAULT_TRUSTED_ROUTER_SIGNERS`). The APKs are assets of the same
+  GitHub release, each under its own application id
+  (`com.jan_leila.apps.<name>`; Android ids allow no hyphen), which
+  Obtainium follows with a file-name filter per app. The modules are
   still tracked in this tree, so `FdroidGuardrailsTest` scans them with
   everything else: their build files keep to the catalog and to allowed
   repositories, although F-Droid's recipe builds `:androidApp` alone.
@@ -2901,10 +2903,10 @@ shared `:routers:common` library, and the worked examples of the API
   Gravel) or by the router app's own key, so a locally built pair works
   on one debug key. Nothing else on API 26 identifies a broadcast's
   sender to its receiver.
-- **One version for all eight.** `routers/version.properties` is what
-  every router build file reads, and the release workflow checks it
-  against the tag, the built APKs and the F-Droid repository's index, so
-  a tag cannot re-ship a `versionCode` the clients already have.
+- **Gravel's version for all eight.** Every router build file reads
+  `androidApp/version.properties`, and the release workflow checks each
+  built APK's package, `versionName` and `versionCode` against it, so the
+  apps update with every Gravel release.
 - **No dependencies beyond the platform and androidx.** HTTP is
   `HttpsURLConnection` (`Http`), JSON is built by hand (`jsonString`), the
   outbox format is `java.util.Properties`, so the apps stay tiny and the
@@ -2916,6 +2918,52 @@ shared `:routers:common` library, and the worked examples of the API
   AES-GCM key the Android Keystore holds for the app (`Secrets`); a value
   that cannot be opened reads as missing. The same approach as `:util`'s
   `SecretCipher`, in a copy, since an app cannot share Gravel's runtime.
+
+## Reinstalling: the app backup and the first sync
+
+Upstream wipes a watch on its first sync with a phone that has not set
+it up: every BlobDB database the watch has is cleared and refilled from
+the phone (`BlobDB.init`, when the watch reports itself unfaithful or has
+no `lastConnected`). A reinstall counts, so it costs the watch every app
+and setting. Gravel asks first. `LibPebble3.create` takes a
+`FirstSyncDecider` (`com.anopticlabs.gravel.watchsync` in `:libpebble3`),
+asked before the first sync touches the watch; without one, upstream's
+wipe stays. Gravel's is `FirstSyncPrompt` (`:pebble`), which holds the
+sync until the user answers `FirstSyncDialog`, shown above every screen,
+with an ongoing notification while the app is in the background.
+
+- Replace is upstream's wipe.
+- Keep clears only what the phone regenerates in full: notifications,
+  pins, reminders and weather (`databasesToClear`). Pin ids are random
+  per phone, so the old ones would show twice. One clear has to succeed
+  anyway: the firmware marks itself faithful again only after a
+  successful BlobDB clear (pebble-firmware `blob_db/endpoint.c`,
+  `prv_handle_database_clear`). A Test database clear fails (it has no
+  flush), and without a successful one every connection would ask again.
+  Until the requested WatchPrefs sync is done, the watch's system prefs,
+  health settings and notification mutes replace the phone's whatever
+  their timestamps (`ValueParams.watchWins`), since a fresh install seeds
+  some rows as new. `AppOrderManager` keeps the watch's app order.
+- The phone has no way to list a watch's apps. For a watch the user
+  kept, recorded in `KeptWatches`, `KeptAppRecovery` adds each store app
+  the watch reports running (its watchface on connect, then each app
+  opened) by UUID from the enabled appstore sources. Sideloaded apps stay
+  unknown to the phone.
+
+The app backup (`com.anopticlabs.gravel.backup`, `:composeApp`, from
+Settings > General) is how the phone's side moves. It is one file sealed
+like the Notebook archive (`SealedFile`, under the magic `GBAK`) around
+a zip: allowlisted preferences (`AppBackupFormat`), each watchapp's
+PebbleKit JS storage, sideloaded PBWs, table rows, the Notebook archive
+sealed with the same password, and the text routing. Table rows go
+through `TableRows` (`:libpebble3`): rows keyed by column name, written
+back only into columns the current schema has, upserted and never
+deleted, because a synced table's deletes reach a watch only through its
+DAO. Import stages the file, reads it to the sealed stream's
+authenticated end before applying anything, restores in dependency order
+(PBWs before the locker rows, parent tables before children), then
+restarts the app, since the config holders cache the preferences it
+wrote. Sign-in tokens and Keystore-held keys stay behind.
 
 ## F-Droid
 
@@ -3001,7 +3049,8 @@ What the tree guarantees, and how it is pinned:
   and a `versionName=<major>.<minor>.<patch>` line, in any order, and
   `androidApp/build.gradle.kts` stamps both into the APK, so the built
   numbers are a function of the committed file alone and nothing in the
-  build reads a tag. Between releases the file names the last release.
+  build reads a tag. Between releases the file names the next release,
+  which the Release workflow commits to main after each release.
   The Release workflow creates each release tag from the file's
   versionName on the commit it built, so a tag checkout's file always
   names its own tag; F-Droid's update checker reads the versionCode from
