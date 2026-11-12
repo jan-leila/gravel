@@ -131,6 +131,14 @@
     <string name="notebook_routing_field_token">Bearer token (optional)</string>
     <string name="notebook_routing_token_hint">Sent as Authorization: Bearer; stored encrypted</string>
     <string name="notebook_routing_apps">Apps with routers</string>
+    <string name="notebook_routing_apps_page">Apps and trust</string>
+    <string name="notebook_routing_apps_page_summary">Apps with routers: %1$d. Trusted certificates: %2$d.</string>
+    <string name="notebook_routing_field_description">Description</string>
+    <string name="notebook_routing_description_hint">Shown under the name wherever this router is listed; empty shows what it does</string>
+    <string name="notebook_routing_open">Open %1$s</string>
+    <string name="notebook_routing_discard_title">Discard changes?</string>
+    <string name="notebook_routing_discard_body">The changes to %1$s are not saved.</string>
+    <string name="notebook_routing_discard">Discard</string>
     <string name="notebook_routing_apps_intro">An installed app can declare routers you can forward to. Gravel sends only to apps you trust, by their signing certificate, which is also the namespace their routers are in.</string>
     <string name="notebook_routing_no_apps">No installed app declares a router.</string>
     <string name="notebook_routing_refresh">Refresh</string>

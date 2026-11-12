@@ -39,6 +39,23 @@ class RouterConfigTest {
         assertEquals(RouterConfig.Note("notebook", "Notebook"), RoutingConfig.DEFAULT.router(g(RoutingConfig.NOTEBOOK_ROUTER_ID)))
     }
 
+    /** The description is the user's line for a router: optional, absent from the stored JSON when unset, one bounded line when set. */
+    @Test
+    fun aDescriptionIsOptionalAndOneBoundedLine() {
+        val described = switch.copy(description = "Sorts what I say into tasks and notes")
+        val config = full.copy(routers = full.routers.map { if (it.ref == switch.ref) described else it })
+        config.requireWellFormed()
+        assertEquals(config, NotebookJson.decodeFromString(RoutingConfig.serializer(), NotebookJson.encodeToString(config)))
+        assertFalse(NotebookJson.encodeToString(RouterConfig.serializer(), note).contains("description"))
+        assertEquals(RouterConfig.Note("n", "N", description = "Mine"), NotebookJson.decodeFromString(RouterConfig.serializer(), """{"type":"note","id":"n","name":"N","description":"Mine"}"""))
+        for (bad in listOf(" ", " padded", "two\nlines", "x".repeat(RoutingConfig.MAX_DESCRIPTION_CHARS + 1))) {
+            assertTrue(refused(one(note.copy(description = bad))).contains("description"), bad)
+        }
+        one(note.copy(description = "x".repeat(RoutingConfig.MAX_DESCRIPTION_CHARS))).requireWellFormed()
+        assertEquals("Mine", RoutingEdits.blurb(note.copy(description = "Mine"), full))
+        assertEquals(RoutingEdits.summary(note, full), RoutingEdits.blurb(note, full))
+    }
+
     @Test
     fun everyKindRoundTripsThroughJsonUnderItsTypeTagWithOnlyAnAppsNamespaceWritten() {
         full.requireWellFormed()

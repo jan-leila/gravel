@@ -57,6 +57,7 @@ The JSON is a routing graph: "entry" names the router every recording goes to fi
 - "place": forwards by where the recording was made. Fields: id, name, "rules" (list of {"spot": {"label", "latitude", "longitude", "radiusMeters"}, "within": true or false, "router"}), optional "otherwise", optional "unknown" (where a recording without a location goes).
 - "network": posts the text to an https address. Fields: id, name, "url", optional "bearerToken", optional "shares", optional confirm.
 - "app": sends the text to another app. Fields: id, name, namespace, packageName, receiverClass, needs, shares, optional confirm. Never invent, add or change an "app" router or any "namespace": only the user can pick those.
+Any router may also have an optional "description": one line saying what it is for, shown under its name.
 "confirm": true makes the router ask the user before it gets a recording. "shares" is {"location": grant, "recordedAt": grant} with grant one of "ask", "always", "never".
 Secrets are placeholders like SECRET_1: keep them exactly as they are, never invent new ones. A place's latitude and longitude are placeholders too (latitude 0, longitude a small whole number): keep them exactly as they are, and never give a place latitude 0 and longitude 0. Keep every router the user did not ask you to change. Every reference must name a router in the list, and a switch, time or place router must not lead back to itself."""
 
