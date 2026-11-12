@@ -175,6 +175,14 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   key. The text models are downloads you start
   yourself, checked against a pinned SHA-256; recordings wait until one
   is installed.
+- **Reinstalling without starting over.** Settings > General backs up the
+  whole app to one password-sealed file: settings, the app list with
+  sideloaded apps, watchapps' own settings, health history and the
+  Notebook. Sign-ins and keys held in the phone's keystore are not in
+  it. When a watch this phone has not set up connects, Gravel asks
+  before wiping it. Keeping it leaves its apps and settings in place,
+  takes in the settings the watch reports, and adds its store apps to
+  the phone's list as they are used.
 - **Distribution through F-Droid.** Gravel is in F-Droid's main
   repository, as
   [`com.anopticlabs.gravel.signed`](https://f-droid.org/packages/com.anopticlabs.gravel.signed/),

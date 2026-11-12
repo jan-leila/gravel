@@ -223,6 +223,11 @@ class Locker(
     }
 
     // Gravel
+    override suspend fun cachedPbwPath(id: Uuid): Path? = withContext(Dispatchers.IO) {
+        getApp(id)?.let { lockerPBWCache.cachedPbwFile(id, it.version) }
+    }
+
+    // Gravel
     override suspend fun sideloadAppWithoutLaunch(pbwPath: Path, id: Uuid): Boolean =
         try {
             val pbwApp = PbwApp(pbwPath)

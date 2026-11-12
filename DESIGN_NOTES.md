@@ -2919,92 +2919,51 @@ shared `:routers:common` library, and the worked examples of the API
   that cannot be opened reads as missing. The same approach as `:util`'s
   `SecretCipher`, in a copy, since an app cannot share Gravel's runtime.
 
-## Git sources
+## Reinstalling: the app backup and the first sync
 
-Git Sources installs watch apps and faces from a repository's releases and
-keeps them updated, as Obtainium does for APKs. The code is in `:pebble`
-under `com.anopticlabs.gravel.gitsource`; the table is in `:util`.
+Upstream wipes a watch on its first sync with a phone that has not set
+it up: every BlobDB database the watch has is cleared and refilled from
+the phone (`BlobDB.init`, when the watch reports itself unfaithful or has
+no `lastConnected`). A reinstall counts, so it costs the watch every app
+and setting. Gravel asks first. `LibPebble3.create` takes a
+`FirstSyncDecider` (`com.anopticlabs.gravel.watchsync` in `:libpebble3`),
+asked before the first sync touches the watch; without one, upstream's
+wipe stays. Gravel's is `FirstSyncPrompt` (`:pebble`), which holds the
+sync until the user answers `FirstSyncDialog`, shown above every screen,
+with an ongoing notification while the app is in the background.
 
-**Storage and the locker**
+- Replace is upstream's wipe.
+- Keep clears only what the phone regenerates in full: notifications,
+  pins, reminders and weather (`databasesToClear`). Pin ids are random
+  per phone, so the old ones would show twice. One clear has to succeed
+  anyway: the firmware marks itself faithful again only after a
+  successful BlobDB clear (pebble-firmware `blob_db/endpoint.c`,
+  `prv_handle_database_clear`). A Test database clear fails (it has no
+  flush), and without a successful one every connection would ask again.
+  Until the requested WatchPrefs sync is done, the watch's system prefs,
+  health settings and notification mutes replace the phone's whatever
+  their timestamps (`ValueParams.watchWins`), since a fresh install seeds
+  some rows as new. `AppOrderManager` keeps the watch's app order.
+- The phone has no way to list a watch's apps. For a watch the user
+  kept, recorded in `KeptWatches`, `KeptAppRecovery` adds each store app
+  the watch reports running (its watchface on connect, then each app
+  opened) by UUID from the enabled appstore sources. Sideloaded apps stay
+  unknown to the phone.
 
-- A followed repository is a `GitSourceEntity` row in `CoreDatabase`
-  (version 10), keyed by the app's UUID.
-- The app itself is an ordinary sideload, stored through
-  `LockerApi.sideloadAppWithoutLaunch`, the route the Notebook watch app
-  uses. `LockerEntry` and the libpebble database are upstream's, and
-  `Locker.update()` never removes sideloaded entries.
-
-**Hosts**
-
-- `GitReleaseClient` reads GitHub's REST API, or a Forgejo or Gitea
-  instance's `/api/v1`. Their release objects share the fields read.
-- Requests are anonymous and go only to the followed repository's host
-  (for GitHub, `api.github.com`, with downloads from `github.com` and its
-  redirects).
-- No request is made until the user adds a repository.
-- `parseGitRepoUrl` takes the first two path segments as owner and repo,
-  so instances served under a subpath are not supported. A host other
-  than github.com counts as a forge only if `/api/v1/version` answers.
-
-**Choosing a release**
-
-- `selectRelease` takes the newest release by publish time, pre-releases
-  only when asked.
-- It picks the one `.pbw` asset, or with a saved name pattern the one
-  that matches it. Several matches are reported, never guessed.
-- Assets off the repository's origin, empty, or over
-  `MAX_GIT_PBW_BYTES` (2 MiB) are not candidates.
-- `isUpdate` offers only another tag published later, so deleting the
-  newest release does not offer a downgrade.
-- The pattern the add dialog saves is the chosen file's name taken
-  literally, except that each run of digits matches any run of digits
-  (`assetPatternFor`).
-
-**Trust (`GitSourceUpdater`)**
-
-- The UUID the first install declared is the key. A release whose PBW
-  declares another UUID is refused (`WRONG_APP`), and
-  `sideloadAppWithoutLaunch` checks the UUID again.
-- Capabilities are `appinfo.json`'s list plus `pkjs` when the PBW carries
-  phone-side JavaScript (`PKJS_CAPABILITY`). A release that adds any is
-  installed only once the user approves exactly those.
-- Nothing parses a download until its length matches the API's size, and
-  its SHA-256 matches GitHub's digest when one is listed. The body is read
-  through `downloadAtMost`, which stops past the expected size.
-- What is left open is in `KNOWN_ISSUES.md`.
-
-**Background**
-
-- `PebbleAppDelegate.performBackgroundWork` runs `backgroundCheck`.
-- Each source is checked at most every `BACKGROUND_CHECK_INTERVAL` (six
-  hours), sooner after a transient error, and the list request sends the
-  last ETag.
-- Sources set to auto-update are installed. The others get one
-  notification per release (`notifiedTag`), through
-  `AndroidGitSourceNotifier`, which opens the screen through
-  `pebble://git-sources`; that deep link only navigates.
-- A source is never installed in the background when:
-  - its locker copy's digest is not the one it installed (`REPLACED`: a
-    hand sideload or a store install);
-  - its app is no longer in the locker;
-  - the last install of the same release failed for a deterministic
-    reason. That error, and a capability question, stay until the repo
-    publishes another release.
-
-**Tests**
-
-Host tests cover:
-
-- the address parsing;
-- the client against a mock engine (both hosts, ETag, rate limits);
-- selection and the pattern;
-- the updater with a fake locker and DAO (trust on first use, checks of
-  the download, the capability gate, background throttling, auto-update,
-  notify-once, replaced and removed copies);
-- the add dialog's steps in `GitSourcesViewModel`.
-
-Not host-tested, and checked on a device: `LibPebbleGitSourceLocker`
-(`PbwApp` parsing), the Koin wiring, the notification and the screens.
+The app backup (`com.anopticlabs.gravel.backup`, `:composeApp`, from
+Settings > General) is how the phone's side moves. It is one file sealed
+like the Notebook archive (`SealedFile`, under the magic `GBAK`) around
+a zip: allowlisted preferences (`AppBackupFormat`), each watchapp's
+PebbleKit JS storage, sideloaded PBWs, table rows, the Notebook archive
+sealed with the same password, and the text routing. Table rows go
+through `TableRows` (`:libpebble3`): rows keyed by column name, written
+back only into columns the current schema has, upserted and never
+deleted, because a synced table's deletes reach a watch only through its
+DAO. Import stages the file, reads it to the sealed stream's
+authenticated end before applying anything, restores in dependency order
+(PBWs before the locker rows, parent tables before children), then
+restarts the app, since the config holders cache the preferences it
+wrote. Sign-in tokens and Keystore-held keys stay behind.
 
 ## F-Droid
 

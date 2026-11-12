@@ -116,6 +116,9 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.bind
 import org.koin.dsl.binds
 import org.koin.dsl.module
+import com.anopticlabs.gravel.watchsync.FirstSyncPrompt
+import com.anopticlabs.gravel.watchsync.KeptAppRecovery
+import com.anopticlabs.gravel.watchsync.KeptWatches
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.uuid.Uuid
@@ -137,6 +140,8 @@ val watchModule = module {
             networkDenyEnforcement = getOrNull() ?: UnreportedNetworkDenyEnforcement,
             // Gravel: the Notebook watch app, where the platform's app module binds it.
             watchAppCaptures = getOrNull(),
+            // Gravel: asks the user before a first sync wipes a watch.
+            firstSyncDecider = get<FirstSyncPrompt>(),
         )
     } binds arrayOf(LibPebble3::class, NotificationApps::class, SystemGeolocation::class)
 
@@ -148,6 +153,9 @@ val watchModule = module {
         }
     } } bind PebbleAccountProvider::class
     singleOf(::PebbleAppDelegate)
+    singleOf(::KeptWatches)
+    singleOf(::FirstSyncPrompt)
+    singleOf(::KeptAppRecovery)
     singleOf(::RealFirmwareUpdateUiTracker) bind FirmwareUpdateUiTracker::class
     single<BatteryChargedNotifier> {
         val appContext: AppContext = get()

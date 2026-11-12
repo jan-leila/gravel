@@ -240,19 +240,24 @@ class ArchiveReader private constructor(private val headerBytes: ByteArray, priv
 
         private fun wrongSecret() = InvalidBackupException(BackupProblem.WRONG_PASSWORD_OR_DAMAGED, "wrong password or damaged backup")
 
-        private fun open(input: InputStream, header: ByteArray, key: ArchiveKey): ArchiveReader {
+        private fun open(input: InputStream, header: ByteArray, key: ArchiveKey): ArchiveReader =
+            ArchiveReader(header, openSegments(input, header, key))
+
+        internal fun openSegments(input: InputStream, header: ByteArray, key: ArchiveKey): SegmentOpener {
             if (!saltOf(header).contentEquals(key.salt)) throw damaged("its salt is not the one its key was derived for")
-            return ArchiveReader(header, SegmentOpener(input, key.spec(), header, header.copyOfRange(7 + SALT_LEN, HEADER_LEN)))
+            return SegmentOpener(input, key.spec(), header, header.copyOfRange(7 + SALT_LEN, HEADER_LEN))
         }
 
         private fun saltOf(header: ByteArray) = header.copyOfRange(7, 7 + SALT_LEN)
 
         /** Reads the header from [input] and checks everything in it that needs no key; returns it. */
         @Throws(IOException::class)
-        fun readHeader(input: InputStream): ByteArray {
+        fun readHeader(input: InputStream): ByteArray = readHeader(input, ArchiveFormat.MAGIC)
+
+        internal fun readHeader(input: InputStream, magic: ByteArray): ByteArray {
             val header = ByteArray(HEADER_LEN)
             val got = input.readUpTo(header, 0, HEADER_LEN)
-            if (got < 6 || !header.copyOf(4).contentEquals(ArchiveFormat.MAGIC)) {
+            if (got < 6 || !header.copyOf(4).contentEquals(magic)) {
                 throw InvalidBackupException(BackupProblem.NOT_A_BACKUP, "not a backup file")
             }
             val version = ((header[4].toInt() and 0xff) shl 8) or (header[5].toInt() and 0xff)
@@ -270,10 +275,11 @@ class ArchiveReader private constructor(private val headerBytes: ByteArray, priv
 internal object ArchiveCrypto {
     const val TRANSFORMATION = "AES/GCM/NoPadding"
 
-    fun header(salt: ByteArray, prefix: ByteArray, kdf: Int = ArchiveFormat.KDF_PBKDF2_SHA256): ByteArray {
+    fun header(salt: ByteArray, prefix: ByteArray, kdf: Int = ArchiveFormat.KDF_PBKDF2_SHA256, magic: ByteArray = ArchiveFormat.MAGIC): ByteArray {
         require(salt.size == SALT_LEN && prefix.size == NONCE_PREFIX_LEN) { "salt or nonce prefix of the wrong length" }
+        require(magic.size == 4) { "magic of the wrong length" }
         val v = ArchiveFormat.VERSION
-        return ArchiveFormat.MAGIC + byteArrayOf((v shr 8).toByte(), v.toByte(), kdf.toByte()) + salt + prefix
+        return magic + byteArrayOf((v shr 8).toByte(), v.toByte(), kdf.toByte()) + salt + prefix
     }
 
     fun nonce(prefix: ByteArray, index: Long, last: Boolean): ByteArray {

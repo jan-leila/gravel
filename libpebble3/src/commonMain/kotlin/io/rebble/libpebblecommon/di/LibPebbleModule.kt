@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.link.WatchLinkPace
 import com.anopticlabs.gravel.pkjs.NetworkDenyEnforcement
 import com.anopticlabs.gravel.watchapp.InjectedWatchAppCaptures
+import com.anopticlabs.gravel.watchsync.InjectedFirstSyncDecider
 import com.russhwolf.settings.Settings
 import io.ktor.client.HttpClient
 import io.rebble.libpebblecommon.BleConfigFlow
@@ -26,6 +27,7 @@ import io.rebble.libpebblecommon.connection.CreatePlatformIdentifier
 import io.rebble.libpebblecommon.connection.LegacyBtClassicMigrator
 import io.rebble.libpebblecommon.connection.LibPebble
 import io.rebble.libpebblecommon.connection.LibPebble3
+import com.anopticlabs.gravel.backup.TableRows
 import io.rebble.libpebblecommon.connection.Negotiator
 import io.rebble.libpebblecommon.connection.NotificationApps
 import io.rebble.libpebblecommon.connection.PebbleBleIdentifier
@@ -327,6 +329,7 @@ fun initKoin(
     injectedPKJSHttpInterceptors: InjectedPKJSHttpInterceptors,
     networkDenyEnforcement: NetworkDenyEnforcement,
     watchAppCaptures: InjectedWatchAppCaptures,
+    firstSyncDecider: InjectedFirstSyncDecider,
 ): Koin {
     val koin = LibPebbleKoinContext.koin
     val libPebbleScope = LibPebbleCoroutineScope(CoroutineName("libpebble3"))
@@ -349,6 +352,7 @@ fun initKoin(
                 single { injectedPKJSHttpInterceptors }
                 single { networkDenyEnforcement }
                 single { watchAppCaptures }
+                single { firstSyncDecider }
                 single { getRoomDatabase(get()) }
                 singleOf(::StaticLockerPBWCache) bind LockerPBWCache::class
                 singleOf(::PebbleDeviceFactory)
@@ -425,6 +429,8 @@ fun initKoin(
                         get(),
                         // watchappPermissions
                         get(),
+                        // Gravel: backupRows
+                        TableRows(get<Database>()),
                     )
                 } bind LibPebble::class
                 single { RealConnectionScopeFactory(koin) } bind ConnectionScopeFactory::class

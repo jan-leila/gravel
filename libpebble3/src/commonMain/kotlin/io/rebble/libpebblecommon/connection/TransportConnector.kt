@@ -276,6 +276,7 @@ class RealPebbleConnector(
             previouslyConnected = previouslyConnected,
             capabilities = watchInfo.capabilities,
             firmwareVersion = watchInfo.runningFwVersion,
+            serial = watchInfo.serial,
         )
         appFetchService.init()
         timelineActionManager.init()
@@ -288,7 +289,7 @@ class RealPebbleConnector(
         imagingService.init()
         voiceSessionManager.init()
         dataLoggingService.realInit(watchInfo)
-        appOrderManager.init(forceResend = watchInfo.isUnfaithful || !previouslyConnected)
+        appOrderManager.init(firstSync = blobDB.firstSync)
 
         _state.value = Connected.ConnectedNotInPrf(
             identifier = identifier,

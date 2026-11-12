@@ -11,6 +11,8 @@ import io.rebble.libpebblecommon.di.ConnectionCoroutineScope
 import io.rebble.libpebblecommon.locker.AppType
 import io.rebble.libpebblecommon.packets.AppReorderRequest
 import io.rebble.libpebblecommon.services.AppReorderService
+import com.anopticlabs.gravel.watchsync.FirstSyncChoice
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -39,12 +41,16 @@ class AppOrderManager(
     } ?: AppOrder(emptyList(), emptyList())
 
     /**
-     * @param forceResend true when the watch was wiped (unfaithful / first connection).
+     * @param firstSync the connection's first sync choice, null when it was not a first sync. A
+     * wiped watch gets the phone's order again; a kept one keeps its own, so the phone's current
+     * order is recorded as sent and only later changes to it are sent.
      */
-    fun init(forceResend: Boolean) {
+    fun init(firstSync: Deferred<FirstSyncChoice?>) {
         connectionScope.launch {
-            if (forceResend) {
-                resendOrderAfterWatchRepopulated()
+            when (firstSync.await()) {
+                FirstSyncChoice.ReplaceWatch -> resendOrderAfterWatchRepopulated()
+                FirstSyncChoice.KeepWatch -> stored = currentOrder()
+                null -> Unit
             }
             watchOrderChanges()
         }
@@ -64,13 +70,17 @@ class AppOrderManager(
         } catch (e: TimeoutCancellationException) {
             logger.w { "Timed out waiting for locker re-sync; re-sending app order anyway" }
         }
+        stored = currentOrder()
+        logger.d { "Re-sending app order after watch wipe" }
+        updateOrder()
+    }
+
+    private suspend fun currentOrder(): AppOrder {
         val limit = watchConfigFlow.value.lockerSyncLimitV2
-        stored = AppOrder(
+        return AppOrder(
             watchfaces = lockerDao.getAppOrderFlow(AppType.Watchface.code, limit).first(),
             watchapps = lockerDao.getAppOrderFlow(AppType.Watchapp.code, limit).first(),
         )
-        logger.d { "Re-sending app order after watch wipe" }
-        updateOrder()
     }
 
     private fun watchOrderChanges() {
