@@ -43,6 +43,14 @@ class SettingsSectionsTest {
     }
 
     @Test
+    fun recordingLocationIsListedUnderNotebookNotAtTheTopLevel() {
+        val shown = topLevelSections(setOf(Section.Notebook, Section.NotebookLocation))
+
+        assertEquals(Section.Notebook, Section.NotebookLocation.parent())
+        assertEquals(listOf(Section.Notebook, Section.Battery), shown)
+    }
+
+    @Test
     fun aSectionWithNoVisibleItemStaysHidden() {
         assertFalse(Section.AI in topLevelSections(setOf(Section.Speech)))
     }

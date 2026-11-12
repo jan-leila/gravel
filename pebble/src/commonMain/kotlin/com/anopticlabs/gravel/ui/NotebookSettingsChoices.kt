@@ -30,6 +30,17 @@ object NotebookSettingsChoices {
         else -> minutesText(seconds / 60)
     }
 
+    /** The Recording Location row's line in Settings > Notebook: the access the phone gives, and how long a ring recording may wait to be placed. */
+    fun locationSummary(locationAccess: Boolean, backgroundLocationAccess: Boolean, ringSeconds: Int?): String {
+        val access = when {
+            !locationAccess -> "Location not allowed"
+            !backgroundLocationAccess -> "Location allowed while Gravel is open"
+            else -> "Location allowed"
+        }
+        val ring = if (ringSeconds == null) "ring recordings not placed" else "ring recordings placed within ${ringLocationText(ringSeconds)}"
+        return "$access; $ring"
+    }
+
     fun daysText(days: Int): String = when (days) {
         0 -> "Forever"
         365 -> "1 year"

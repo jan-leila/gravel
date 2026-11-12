@@ -44,4 +44,11 @@ class NotebookSettingsChoicesTest {
         assertEquals("10 minutes", NotebookSettingsChoices.ringLocationText(600))
         assertEquals("1 hour", NotebookSettingsChoices.ringLocationText(3_600))
     }
+
+    @Test
+    fun theRecordingLocationRowSaysWhatIsAllowedAndHowLongTheRingWaits() {
+        assertEquals("Location not allowed; ring recordings not placed", NotebookSettingsChoices.locationSummary(false, false, null))
+        assertEquals("Location allowed while Gravel is open; ring recordings placed within 10 minutes", NotebookSettingsChoices.locationSummary(true, false, 600))
+        assertEquals("Location allowed; ring recordings placed within 30 seconds", NotebookSettingsChoices.locationSummary(true, true, 30))
+    }
 }
