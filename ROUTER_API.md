@@ -103,7 +103,9 @@ define a permission of that name, hold it, and reach your receiver in
 Gravel's place. If your receiver acts on a delivery in a way that matters
 (sends it somewhere, say), check in `onReceive` who defined the permission
 before taking it: `PackageManager.getPermissionInfo` names the defining
-package, which must be `com.anopticlabs.gravel` at signature level, and
+package, which must be `com.anopticlabs.gravel` (the F-Droid listing) or
+`com.anopticlabs.gravel.signed` (the listing signed by Gravel's own key) at
+signature level, and
 `hasSigningCertificate` tells whether that package is signed by a
 certificate you trust for Gravel. Gravel's F-Droid builds are signed by
 F-Droid's key for it, SHA-256

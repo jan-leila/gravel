@@ -25,7 +25,8 @@ manifest, a settings screen and one sender.
 
 - `RouterReceiver` takes Gravel's broadcast, checks that the permission
   guarding it is Gravel's own (`GravelSigners`: defined by
-  `com.anopticlabs.gravel` at signature level, in an app signed by a key
+  `com.anopticlabs.gravel` or `com.anopticlabs.gravel.signed`, Gravel's two
+  listings, at signature level, in an app signed by a key
   Gravel ships under, or by the router app's own key for local builds;
   the system checks the permission by name alone, which an app could
   define itself while Gravel is absent), writes the delivery to the app's

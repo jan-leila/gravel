@@ -13,15 +13,17 @@ class GravelSignersTest {
 
     @Test
     fun thePermissionCountsOnlyWhenGravelDefinesItAtSignatureLevelUnderAKnownKey() {
-        assertTrue(GravelSigners.accepts(GravelSigners.GRAVEL_PACKAGE, PermissionInfo.PROTECTION_SIGNATURE, setOf(fdroid), self))
-        assertTrue(GravelSigners.accepts(GravelSigners.GRAVEL_PACKAGE, PermissionInfo.PROTECTION_SIGNATURE, self, self), "a Gravel on this app's own key")
-        assertFalse(GravelSigners.accepts(GravelSigners.GRAVEL_PACKAGE, PermissionInfo.PROTECTION_SIGNATURE, other, self), "another key under Gravel's name")
+        assertTrue(GravelSigners.accepts("com.anopticlabs.gravel", PermissionInfo.PROTECTION_SIGNATURE, setOf(fdroid), self))
+        assertTrue(GravelSigners.accepts("com.anopticlabs.gravel", PermissionInfo.PROTECTION_SIGNATURE, self, self), "a Gravel on this app's own key")
+        assertTrue(GravelSigners.accepts("com.anopticlabs.gravel.signed", PermissionInfo.PROTECTION_SIGNATURE, self, self), "the listing signed with the router apps' key")
+        assertFalse(GravelSigners.accepts("com.anopticlabs.gravel.signed", PermissionInfo.PROTECTION_SIGNATURE, other, self), "the signed listing's name under another key")
+        assertFalse(GravelSigners.accepts("com.anopticlabs.gravel", PermissionInfo.PROTECTION_SIGNATURE, other, self), "another key under Gravel's name")
         assertFalse(GravelSigners.accepts("com.example.impostor", PermissionInfo.PROTECTION_SIGNATURE, setOf(fdroid), self), "another package")
-        assertFalse(GravelSigners.accepts(GravelSigners.GRAVEL_PACKAGE, PermissionInfo.PROTECTION_NORMAL, setOf(fdroid), self), "a definition any app could hold")
-        assertFalse(GravelSigners.accepts(GravelSigners.GRAVEL_PACKAGE, PermissionInfo.PROTECTION_SIGNATURE, setOf(fdroid, "cc".repeat(32)), self), "several signers have no one namespace")
-        assertFalse(GravelSigners.accepts(GravelSigners.GRAVEL_PACKAGE, PermissionInfo.PROTECTION_SIGNATURE, null, self), "the definer is not installed")
+        assertFalse(GravelSigners.accepts("com.anopticlabs.gravel", PermissionInfo.PROTECTION_NORMAL, setOf(fdroid), self), "a definition any app could hold")
+        assertFalse(GravelSigners.accepts("com.anopticlabs.gravel", PermissionInfo.PROTECTION_SIGNATURE, setOf(fdroid, "cc".repeat(32)), self), "several signers have no one namespace")
+        assertFalse(GravelSigners.accepts("com.anopticlabs.gravel", PermissionInfo.PROTECTION_SIGNATURE, null, self), "the definer is not installed")
         assertFalse(GravelSigners.accepts(null, PermissionInfo.PROTECTION_SIGNATURE, setOf(fdroid), self), "no definition at all")
-        assertFalse(GravelSigners.accepts(GravelSigners.GRAVEL_PACKAGE, PermissionInfo.PROTECTION_SIGNATURE, other, null), "this app's own signer unknown")
+        assertFalse(GravelSigners.accepts("com.anopticlabs.gravel", PermissionInfo.PROTECTION_SIGNATURE, other, null), "this app's own signer unknown")
     }
 
     @Test
