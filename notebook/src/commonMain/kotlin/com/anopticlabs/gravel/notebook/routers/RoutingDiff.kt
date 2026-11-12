@@ -25,6 +25,7 @@ object RoutingDiff {
     private fun changes(was: RouterConfig, now: RouterConfig, after: RoutingConfig): List<String> {
         val lines = mutableListOf<String>()
         val name = now.name
+        if (was.description != now.description) lines += if (now.description == null) "'$name' has no description now." else "'$name' is described as \"${now.description}\" now."
         if (was.confirm != now.confirm) lines += if (now.confirm) "'$name' now asks you first." else "'$name' no longer asks you first."
         val sharesWas = was.shares
         val sharesNow = now.shares

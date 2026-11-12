@@ -67,6 +67,9 @@ sealed interface RouterConfig {
 
     val ref: RouterRef get() = RouterRef(namespace, id)
 
+    /** What the user says the router is for, shown under its name wherever the router is listed; null shows what it does instead. */
+    val description: String?
+
     /** Whether a recording routed here waits for the user to confirm it first; only a router that consumes the text can ask. */
     val confirm: Boolean get() = false
 
@@ -78,6 +81,7 @@ sealed interface RouterConfig {
         override val name: String,
         override val namespace: String? = null,
         override val confirm: Boolean = false,
+        override val description: String? = null,
     ) : RouterConfig
 
     /** Sets a reminder: the message from the text model, the time read from the words. */
@@ -88,6 +92,7 @@ sealed interface RouterConfig {
         override val name: String,
         override val namespace: String? = null,
         override val confirm: Boolean = false,
+        override val description: String? = null,
     ) : RouterConfig
 
     /** Forwards to the router of the first rule whose pattern matches, else to [otherwise]. */
@@ -99,6 +104,7 @@ sealed interface RouterConfig {
         val rules: List<SwitchRule> = emptyList(),
         val otherwise: RouterRef? = null,
         override val namespace: String? = null,
+        override val description: String? = null,
     ) : RouterConfig
 
     /**
@@ -114,6 +120,7 @@ sealed interface RouterConfig {
         val rules: List<TimeRule> = emptyList(),
         val otherwise: RouterRef? = null,
         override val namespace: String? = null,
+        override val description: String? = null,
     ) : RouterConfig
 
     /**
@@ -130,6 +137,7 @@ sealed interface RouterConfig {
         val otherwise: RouterRef? = null,
         val unknown: RouterRef? = null,
         override val namespace: String? = null,
+        override val description: String? = null,
     ) : RouterConfig
 
     /**
@@ -149,6 +157,7 @@ sealed interface RouterConfig {
         val needs: Set<Need> = emptySet(),
         val shares: Shares = Shares(),
         override val confirm: Boolean = false,
+        override val description: String? = null,
     ) : RouterConfig
 
     /**
@@ -166,6 +175,7 @@ sealed interface RouterConfig {
         override val namespace: String? = null,
         val shares: Shares = Shares(),
         override val confirm: Boolean = false,
+        override val description: String? = null,
     ) : RouterConfig
 }
 
@@ -279,6 +289,11 @@ data class RoutingConfig(
             require(isRouterId(router.id)) { "A router id has to be 1 to $MAX_ID_CHARS lowercase letters, digits or dashes." }
             require(router.name.isNotBlank() && router.name.length <= MAX_NAME_CHARS && router.name.trim() == router.name) {
                 "A router needs a name of up to $MAX_NAME_CHARS characters."
+            }
+            router.description?.let {
+                require(it.isNotBlank() && it.length <= MAX_DESCRIPTION_CHARS && it.trim() == it && it.none(Char::isISOControl)) {
+                    "The description of ${router.name} has to be one line of up to $MAX_DESCRIPTION_CHARS characters."
+                }
             }
             when (router) {
                 is RouterConfig.App -> require(RouterTrust.normalizeDigest(router.namespace) == router.namespace) {
@@ -417,6 +432,7 @@ data class RoutingConfig(
         const val MAX_ROUTERS = 64
         const val MAX_ID_CHARS = 32
         const val MAX_NAME_CHARS = 64
+        const val MAX_DESCRIPTION_CHARS = 200
         const val MAX_RULES = 32
         const val MAX_CONDITIONS = 4
         const val MAX_PATTERN_CHARS = 256

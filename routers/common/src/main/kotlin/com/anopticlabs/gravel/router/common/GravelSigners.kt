@@ -9,12 +9,13 @@ import java.security.MessageDigest
  * Whether the permission guarding a router's receiver is Gravel's own. The system checks a
  * caller's permission by name alone, so while Gravel is absent any app could define a permission
  * of that name, hold it, and deliver in Gravel's name: the receiver therefore asks who defined
- * it. Gravel's definition is signature-level, in the package [GRAVEL_PACKAGE], in an app signed
+ * it. Gravel's definition is signature-level, in one of [GRAVEL_PACKAGES], in an app signed
  * by a key Gravel ships under ([TRUSTED]) or by this app's own key (a locally built Gravel beside
  * a locally built router, both on the one key).
  */
 object GravelSigners {
-    const val GRAVEL_PACKAGE = "com.anopticlabs.gravel"
+    /** Gravel's two listings: F-Droid's, and the one signed with Gravel's own key, which the router apps share. */
+    val GRAVEL_PACKAGES: Set<String> = setOf("com.anopticlabs.gravel", "com.anopticlabs.gravel.signed")
 
     /** The lowercase hex SHA-256 of each certificate Gravel is distributed under: F-Droid's key for it. */
     val TRUSTED: Set<String> = setOf(
@@ -35,7 +36,7 @@ object GravelSigners {
 
     /** The rule on its own, for tests: the definer, its protection level, the definer's signers and this app's. */
     fun accepts(definer: String?, protection: Int, definerSigners: Set<String>?, selfSigners: Set<String>?): Boolean {
-        if (definer != GRAVEL_PACKAGE || protection != PermissionInfo.PROTECTION_SIGNATURE) return false
+        if (definer !in GRAVEL_PACKAGES || protection != PermissionInfo.PROTECTION_SIGNATURE) return false
         val signer = definerSigners?.singleOrNull() ?: return false
         return signer in TRUSTED || signer == selfSigners?.singleOrNull()
     }

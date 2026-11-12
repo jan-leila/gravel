@@ -14,10 +14,12 @@ class VikunjaSettingsActivity : ComponentActivity() {
             MaterialTheme {
                 SettingsScreen(
                     title = getString(R.string.app_name),
-                    intro = "Pick this router in Gravel under Settings > Notebook > Text Routing, and what you say becomes a task in the project below, titled with your words.",
+                    intro = "Pick one of this app's routers in Gravel under Settings > Notebook > Text Routing, and what you say becomes a task titled with your words, in the default project or in one of the projects below.",
                     fields = VikunjaApp.FIELDS,
                     settings = app.settings,
                     sender = app.sender,
+                    routers = app.routers,
+                    routerList = app.routerList,
                 )
             }
         }

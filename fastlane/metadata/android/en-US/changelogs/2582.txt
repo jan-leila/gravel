@@ -1,0 +1,7 @@
+Router apps now list a router per Vikunja project, Actual account, Slack channel, email contact, Home Assistant device action, and Signal contact you choose to share.
+
+Text Routing: each router opens on its own page and can carry your own description; apps and trust have their own page.
+
+Settings > Notebook > Recording Location gathers location access and the ring's setting.
+
+Fixed: router apps ignored deliveries from the signed Gravel build.

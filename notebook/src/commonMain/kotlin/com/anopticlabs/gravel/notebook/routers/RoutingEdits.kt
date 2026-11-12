@@ -66,6 +66,9 @@ object RoutingEdits {
     /** The id prefix a new router of the same kind as [router] gets. */
     fun idPrefix(router: RouterConfig): String = kindName(router).lowercase()
 
+    /** What a list shows under a router's name: the user's description of it, or else its [summary]. */
+    fun blurb(router: RouterConfig, config: RoutingConfig): String = router.description ?: summary(router, config)
+
     /** One line under a router's name: what it does with the text, and that it asks first when it does. */
     fun summary(router: RouterConfig, config: RoutingConfig): String = describe(router, config) + if (router.confirm) ", asks you first" else ""
 

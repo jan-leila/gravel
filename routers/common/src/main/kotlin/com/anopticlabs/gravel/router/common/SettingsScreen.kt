@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -32,12 +33,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import java.io.IOException
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +48,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * The one screen a router app has: what it is, its settings, a test send, and the deliveries
+ * The one screen a router app has: what it is, its settings, a test send, its listed routers
+ * when it has any ([routers], kept in [routerList]), and the deliveries
  * set aside as not sent, each with its reason, to try again or discard. Values are saved field by
  * field as the user leaves them; the test runs the app's sender with a fixed text. On its first
  * showing the screen asks for the notification permission, which the worker needs to report a
@@ -53,7 +57,15 @@ import kotlinx.coroutines.withContext
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(title: String, intro: String, fields: List<Field>, settings: Settings, sender: Sender) {
+fun SettingsScreen(
+    title: String,
+    intro: String,
+    fields: List<Field>,
+    settings: Settings,
+    sender: Sender,
+    routers: RouterListSource? = null,
+    routerList: RouterList? = null,
+) {
     val context = LocalContext.current
     val outbox = remember { Outbox(context) }
     val values = remember { mutableStateMapOf<String, String>().apply { fields.forEach { put(it.key, settings[it.key].orEmpty()) } } }
@@ -103,19 +115,12 @@ fun SettingsScreen(title: String, intro: String, fields: List<Field>, settings: 
                 scope.launch {
                     result = withContext(Dispatchers.IO) {
                         settings.missing()?.let { return@withContext "${it.label} is not set." }
-                        try {
-                            when (val sent = sender.send(Delivery(TEST_CAPTURE_ID, TEST_TEXT, null, null))) {
-                                SendResult.Sent -> "Sent."
-                                is SendResult.Refused -> "Refused: ${sent.reason}"
-                                is SendResult.Retry -> "Not sent: ${sent.reason}"
-                            }
-                        } catch (e: RuntimeException) {
-                            "Not sent: ${e::class.simpleName}"
-                        }
+                        testSend(sender, null)
                     }
                 }
             }) { Text("Send a test") }
             result?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            if (routers != null && routerList != null) RoutersSection(routers, routerList, settings, sender)
             if (notSent.isNotEmpty()) {
                 Text("Not sent", style = MaterialTheme.typography.titleMedium)
                 Text("These recordings were not sent. Fix the settings, then try them again, or discard them.", style = MaterialTheme.typography.bodyMedium)
@@ -155,6 +160,127 @@ private fun NotSentRow(item: NotSent, onTryAgain: () -> Unit, onDiscard: () -> U
             TextButton(onClick = onDiscard) { Text("Discard") }
         }
     }
+}
+
+/**
+ * The app's listed routers: fetched from the service with a refresh, each shared with Gravel or
+ * not by its checkbox, or declared here with an add form and removed one by one. Each has a test
+ * send of its own. The list is read and written off the main thread.
+ */
+@Composable
+private fun RoutersSection(source: RouterListSource, list: RouterList, settings: Settings, sender: Sender) {
+    var routers by remember { mutableStateOf(emptyList<ListedRouter>()) }
+    var status by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { routers = withContext(Dispatchers.IO) { list.all() } }
+    fun change(block: () -> Unit) {
+        scope.launch {
+            status = withContext(Dispatchers.IO) {
+                try {
+                    block()
+                    null
+                } catch (e: IOException) {
+                    "Not saved: ${e.message ?: e::class.simpleName}"
+                }
+            }
+            routers = withContext(Dispatchers.IO) { list.all() }
+        }
+    }
+    Text(source.title, style = MaterialTheme.typography.titleMedium)
+    Text(source.intro, style = MaterialTheme.typography.bodyMedium)
+    when (source) {
+        is RouterListSource.Fetched -> Button(onClick = {
+            status = "Refreshing…"
+            scope.launch {
+                status = withContext(Dispatchers.IO) {
+                    settings.missing()?.let { return@withContext "${it.label} is not set." }
+                    try {
+                        val fetched = source.fetch()
+                        list.merge(fetched, source.sharedByDefault)
+                        "${fetched.size} found."
+                    } catch (e: IOException) {
+                        "Not refreshed: ${e.message ?: e::class.simpleName}"
+                    } catch (e: RuntimeException) {
+                        "Not refreshed: ${e.message ?: e::class.simpleName}"
+                    }
+                }
+                routers = withContext(Dispatchers.IO) { list.all() }
+            }
+        }) { Text("Refresh") }
+        is RouterListSource.Declared -> DeclareForm(source) { made -> change { list.add(made) } }
+    }
+    status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+    routers.forEach { router ->
+        ListedRow(
+            router,
+            fetched = source is RouterListSource.Fetched,
+            sender = sender,
+            onShared = { shared -> change { list.setShared(router.id, shared) } },
+            onRemove = { change { list.remove(router.id) } },
+        )
+    }
+}
+
+@Composable
+private fun DeclareForm(source: RouterListSource.Declared, onMade: (ListedRouter) -> Unit) {
+    val values = remember { mutableStateMapOf<String, String>() }
+    var problem by remember { mutableStateOf<String?>(null) }
+    source.fields.forEach { field ->
+        OutlinedTextField(
+            value = values[field.key].orEmpty(),
+            onValueChange = { values[field.key] = it },
+            label = { Text(field.label + if (field.required) "" else " (optional)") },
+            supportingText = field.hint?.let { { Text(it) } },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    OutlinedButton(onClick = {
+        val typed = values.mapValues { it.value.trim() }.filterValues { it.isNotEmpty() }
+        val missing = source.fields.firstOrNull { it.required && typed[it.key] == null }
+        if (missing != null) {
+            problem = "${missing.label} is not set."
+            return@OutlinedButton
+        }
+        try {
+            onMade(source.make(typed))
+            values.clear()
+            problem = null
+        } catch (e: IllegalArgumentException) {
+            problem = e.message
+        }
+    }) { Text("Add") }
+}
+
+@Composable
+private fun ListedRow(router: ListedRouter, fetched: Boolean, sender: Sender, onShared: (Boolean) -> Unit, onRemove: () -> Unit) {
+    var result by remember(router.id) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        if (fetched) Checkbox(checked = router.shared, onCheckedChange = onShared)
+        Column(Modifier.weight(1f)) {
+            Text(router.label, style = MaterialTheme.typography.bodyMedium)
+            router.description?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            if (fetched && !router.shared) Text("Not shown to Gravel", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            result?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+        TextButton(onClick = {
+            result = "Sending a test…"
+            scope.launch { result = withContext(Dispatchers.IO) { testSend(sender, router.id) } }
+        }) { Text("Test") }
+        if (!fetched) TextButton(onClick = onRemove) { Text("Remove") }
+    }
+}
+
+private fun testSend(sender: Sender, routerId: String?): String = try {
+    when (val sent = sender.send(Delivery(TEST_CAPTURE_ID, TEST_TEXT, null, null, routerId))) {
+        SendResult.Sent -> "Sent."
+        is SendResult.Refused -> "Refused: ${sent.reason}"
+        is SendResult.Retry -> "Not sent: ${sent.reason}"
+    }
+} catch (e: RuntimeException) {
+    "Not sent: ${e::class.simpleName}"
 }
 
 @Composable

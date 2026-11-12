@@ -14,10 +14,12 @@ class HomeAssistantSettingsActivity : ComponentActivity() {
             MaterialTheme {
                 SettingsScreen(
                     title = getString(R.string.app_name),
-                    intro = "Pick this router in Gravel under Settings > Notebook > Text Routing, and what you say goes to Home Assistant's Assist as a sentence: \"turn off the kitchen lights\" does what it says.",
+                    intro = "Pick one of this app's routers in Gravel under Settings > Notebook > Text Routing. \"Tell Home Assistant\" hands what you say to Assist as a sentence: \"turn off the kitchen lights\" does what it says. Each device action below calls one action instead.",
                     fields = HomeAssistantApp.FIELDS,
                     settings = app.settings,
                     sender = app.sender,
+                    routers = app.routers,
+                    routerList = app.routerList,
                 )
             }
         }

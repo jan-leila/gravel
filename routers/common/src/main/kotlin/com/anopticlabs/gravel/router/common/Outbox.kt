@@ -25,7 +25,8 @@ class Outbox(private val dir: File) {
     @Throws(IOException::class)
     fun add(delivery: Delivery) {
         if (!dir.isDirectory && !dir.mkdirs()) throw IOException("outbox directory not created")
-        val file = File(dir, fileName(delivery.captureId))
+        // A recording delivered to two of the app's routers is two deliveries; a repeat to the same one replaces the first.
+        val file = File(dir, fileName(delivery.routerId?.let { "${delivery.captureId}/$it" } ?: delivery.captureId))
         val staging = File(dir, "${file.name}.tmp")
         FileOutputStream(staging).use { out ->
             delivery.write(out)
