@@ -8,8 +8,10 @@ complete transcript and the time the recording started. Nothing flows the
 other way: Gravel sends and never receives.
 
 This document is the contract. The names in it are public API: a change to
-one would break installed apps, so a new field gets a new name and the
-version number moves.
+one would break installed apps, so a new field gets a new name. The
+version number moves when a receiver could not take a delivery without
+reading the new field; a field a receiver may ignore, like the match
+fields below, leaves it, so receivers already installed keep working.
 
 ## Declaring a router
 
@@ -194,6 +196,18 @@ never knows whether a part was withheld or simply unknown (a recording
 made without a location fix has none to give), and must work without it or
 refuse the delivery (below) when it cannot.
 
+Every delivery also says what the user's routing matched on the way to
+your router. A **Switch** router in Gravel forwards by a regular
+expression the user wrote, so a routing such as `^add (a )?task:?` in
+front of a tasks router reaches it with "add a task: buy milk". The
+delivery names each Switch rule that matched, in the order the walk
+reached them, with the part of the text it matched, and carries the text
+with those parts cut out ("buy milk"), which is usually what a router
+wants to act on. A router reached by a fallback, or through Time and Place
+routers alone, gets no matches, and its unmatched text is the whole
+text. These parts carry nothing the text does not, beyond the ids and
+names of the user's switches, so no grant governs them.
+
 ## The delivery
 
 Gravel sends one **explicit ordered broadcast** to the receiver, with the
@@ -208,6 +222,10 @@ foreground flag set, carrying these extras and nothing else:
 | `recorded_at` | String | Only with the `recorded_at` need granted. When the recording started, as ISO-8601 with the offset of the zone it was recorded in, to the second: `2026-10-29T14:03:11-04:00`. This is the moment the user pressed record, not when Gravel processed the recording. |
 | `location_latitude`, `location_longitude` | double | Only with the `location` need granted and a fix known: where the phone was when the recording started, in degrees. Always present together. |
 | `location_accuracy_m` | float | With the location, when the fix had an accuracy: its radius in metres. |
+| `unmatched_text` | String | The text with every part a Switch rule matched cut out, the separators at each cut (spaces, `,.:;!?` and dashes) going with it and the pieces joined by one space; the text itself when nothing matched. It can be empty, when a rule matched the whole text. Absent from a Gravel older than it: fall back to `text`. |
+| `match_router_ids`, `match_router_names` | String[] | Only when a Switch rule matched: the id and the name of each switch, one entry per match, in walk order. |
+| `match_starts`, `match_ends` | int[] | With the ids: where each match starts and ends in `text`, as UTF-16 offsets (Java's `String` indices), the end exclusive. |
+| `match_texts` | String[] | With the ids: the words each match covers. |
 
 The receiver **acknowledges** by setting the result code to
 `Activity.RESULT_OK`. Gravel waits up to 12 seconds for the broadcast to
@@ -235,14 +253,16 @@ class NotebookRouter : BroadcastReceiver() {
         if (intent.getIntExtra("api_version", 0) != 1) return
         val id = intent.getStringExtra("capture_id") ?: return
         val text = intent.getStringExtra("text") ?: return
+        // The text without the words that routed it here; an older Gravel sends the text alone.
+        val task = intent.getStringExtra("unmatched_text")?.takeIf { it.isNotBlank() } ?: text
         val recordedAt = intent.getStringExtra("recorded_at")   // null unless needed and granted
-        if (text.isBlank()) {
+        if (task.isBlank()) {
             resultCode = Activity.RESULT_FIRST_USER   // refuse for good, with the reason
             resultData = "Nothing to make a task from"
             return
         }
         // Persist, then acknowledge; keep this quick.
-        TaskStore(context).addFromNotebook(id, recordedAt, text)
+        TaskStore(context).addFromNotebook(id, recordedAt, task)
         resultCode = Activity.RESULT_OK
     }
 }
@@ -271,8 +291,9 @@ F-Droid's main repository.
 
 - It does not take text back. A router that wants to hand text on to
   another router has no way to do so in this version.
-- It does not tell the receiver which router in the user's graph delivered,
-  what the user named it, or anything about the recording beyond the extras
-  above (no length, source or zone fields).
+- It does not tell the receiver which router in the user's graph delivered
+  or what the user named it, beyond the Switch rules that matched on the
+  way, nor anything about the recording beyond the extras above (no
+  length, source or zone fields).
 - It does not retry a delivery that was acknowledged, and it cannot send the
   text again later on the app's request.

@@ -52,6 +52,11 @@ optional now, and a delivery to it is refused while it is empty.
   (`RouterApp.refusal`, for one that can never be sent as the app is set
   up: a missing setting, a bad address, no amount to book), with a reason
   Gravel shows the user.
+- Every sender sends `Delivery.content`: the words
+  left once the user's Switch rules have had theirs cut out (a routing of
+  `^add a task:?` to Vikunja makes "add a task: buy milk" the task "buy
+  milk"; `ROUTER_API.md`, What a delivery carries), or the whole text when
+  nothing is left or Gravel sent no matches.
 - `OutboxWorker` sends what waits once there is a network: a sent delivery
   leaves the outbox; a refused one (an answer no retry changes: a bad
   token, a redirect, no such API at the address, a certificate the pin

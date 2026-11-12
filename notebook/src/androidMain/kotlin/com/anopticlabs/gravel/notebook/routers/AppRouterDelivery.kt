@@ -81,15 +81,17 @@ class AndroidRouterBroadcastSender(private val context: Context) : RouterBroadca
         val intent = Intent(RouterApi.ACTION_ROUTE_TEXT)
             .setComponent(ComponentName(packageName, receiverClass))
             .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-            .putExtra(RouterApi.EXTRA_API_VERSION, if (listedId == null) RouterApi.VERSION else RouterApi.VERSION_LISTED)
-            .putExtra(RouterApi.EXTRA_CAPTURE_ID, text.captureId)
-            .putExtra(RouterApi.EXTRA_TEXT, text.text)
-        listedId?.let { intent.putExtra(RouterApi.EXTRA_ROUTER_ID, it) }
-        if (Need.RECORDED_AT in share) intent.putExtra(RouterApi.EXTRA_RECORDED_AT, text.recordedAt)
-        text.location?.takeIf { Need.LOCATION in share }?.let { location ->
-            intent.putExtra(RouterApi.EXTRA_LOCATION_LATITUDE, location.latitude)
-            intent.putExtra(RouterApi.EXTRA_LOCATION_LONGITUDE, location.longitude)
-            location.accuracyMeters?.let { intent.putExtra(RouterApi.EXTRA_LOCATION_ACCURACY_METERS, it) }
+        deliveryExtras(listedId, text, share).forEach { (name, value) ->
+            @Suppress("UNCHECKED_CAST")
+            when (value) {
+                is String -> intent.putExtra(name, value)
+                is Int -> intent.putExtra(name, value)
+                is Double -> intent.putExtra(name, value)
+                is Float -> intent.putExtra(name, value)
+                is IntArray -> intent.putExtra(name, value)
+                is Array<*> -> intent.putExtra(name, value as Array<String>)
+                else -> error("extra $name has no Intent type")
+            }
         }
         val result = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {

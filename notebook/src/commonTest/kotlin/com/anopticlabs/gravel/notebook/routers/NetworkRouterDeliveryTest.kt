@@ -10,6 +10,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -44,7 +45,7 @@ class NetworkRouterDeliveryTest {
         assertEquals("https://example.test/notes", post.url)
         assertEquals("s3cret", post.token)
         val body = NotebookJson.parseToJsonElement(post.body).jsonObject
-        assertEquals(setOf("api_version", "capture_id", "recorded_at", "text"), body.keys)
+        assertEquals(setOf("api_version", "capture_id", "recorded_at", "text", "unmatched_text"), body.keys)
         assertEquals(RouterApi.VERSION, body.getValue("api_version").jsonPrimitive.content.toInt())
         assertEquals("c1", body.getValue("capture_id").jsonPrimitive.content)
         assertEquals("2026-09-22T17:00:00+02:00", body.getValue("recorded_at").jsonPrimitive.content)
@@ -59,18 +60,34 @@ class NetworkRouterDeliveryTest {
     fun theBodyCarriesOnlyTheSharedParts() = runBlocking<Unit> {
         suspend fun body(share: Set<Need>, text: RoutedText = this@NetworkRouterDeliveryTest.text) =
             delivery.deliver(hook, text, share).let { NotebookJson.parseToJsonElement(poster.posts.last().body).jsonObject }
-        assertEquals(setOf("api_version", "capture_id", "text"), body(emptySet()).keys)
-        assertEquals(setOf("api_version", "capture_id", "text", "recorded_at"), body(setOf(Need.RECORDED_AT)).keys)
+        assertEquals(setOf("api_version", "capture_id", "text", "unmatched_text"), body(emptySet()).keys)
+        assertEquals(setOf("api_version", "capture_id", "text", "unmatched_text", "recorded_at"), body(setOf(Need.RECORDED_AT)).keys)
         val placed = body(setOf(Need.LOCATION))
-        assertEquals(setOf("api_version", "capture_id", "text", "location"), placed.keys)
+        assertEquals(setOf("api_version", "capture_id", "text", "unmatched_text", "location"), placed.keys)
         val location = placed.getValue("location").jsonObject
         assertEquals(setOf("latitude", "longitude", "accuracy_m"), location.keys)
         assertEquals("52.52", location.getValue("latitude").jsonPrimitive.content)
         assertEquals("13.405", location.getValue("longitude").jsonPrimitive.content)
         assertEquals("30.0", location.getValue("accuracy_m").jsonPrimitive.content)
-        assertEquals(setOf("api_version", "capture_id", "text", "recorded_at", "location"), body(setOf(Need.LOCATION, Need.RECORDED_AT)).keys)
+        assertEquals(setOf("api_version", "capture_id", "text", "unmatched_text", "recorded_at", "location"), body(setOf(Need.LOCATION, Need.RECORDED_AT)).keys)
         assertEquals(setOf("latitude", "longitude"), body(setOf(Need.LOCATION), text.copy(location = RoutedLocation(1.0, 2.0))).getValue("location").jsonObject.keys)
-        assertEquals(setOf("api_version", "capture_id", "text"), body(setOf(Need.LOCATION), text.copy(location = null)).keys, "a granted location the recording has not is simply absent")
+        assertEquals(setOf("api_version", "capture_id", "text", "unmatched_text"), body(setOf(Need.LOCATION), text.copy(location = null)).keys, "a granted location the recording has not is simply absent")
+    }
+
+    @Test
+    fun theBodyNamesEverySwitchMatchWithItsWordsAndTheTextLeftOver() = runBlocking<Unit> {
+        val routed = RoutedText("c1", "2026-09-22T17:00:00+02:00", "add a task: buy milk", matches = listOf(TextMatch("tasks", "Tasks", 0, 10)))
+        delivery.deliver(hook, routed, emptySet())
+        val body = NotebookJson.parseToJsonElement(poster.posts.last().body).jsonObject
+        assertEquals("add a task: buy milk", body.getValue("text").jsonPrimitive.content)
+        assertEquals("buy milk", body.getValue("unmatched_text").jsonPrimitive.content)
+        val match = body.getValue("matches").jsonArray.single().jsonObject
+        assertEquals(setOf("router_id", "router_name", "start", "end", "text"), match.keys)
+        assertEquals("tasks", match.getValue("router_id").jsonPrimitive.content)
+        assertEquals("Tasks", match.getValue("router_name").jsonPrimitive.content)
+        assertEquals(0, match.getValue("start").jsonPrimitive.content.toInt())
+        assertEquals(10, match.getValue("end").jsonPrimitive.content.toInt())
+        assertEquals("add a task", match.getValue("text").jsonPrimitive.content)
     }
 
     @Test

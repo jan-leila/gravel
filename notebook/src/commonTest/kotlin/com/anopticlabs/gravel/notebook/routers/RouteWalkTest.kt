@@ -74,6 +74,31 @@ class RouteWalkTest {
         assertEquals(app, RouteWalk.terminal(chained, text("home: urgent fix")))
     }
 
+    @Test
+    fun theRouteCarriesAMatchForEverySwitchRuleThatMatchedOnTheWay() {
+        val second = RouterConfig.Switch("second", "Second", listOf(SwitchRule("urgent", app.ref)), otherwise = g("notes"))
+        val first = RouterConfig.Switch("first", "First", listOf(SwitchRule("^work:?", g("second"))), otherwise = g("second"))
+        val chained = RoutingConfig(entry = g("first"), routers = listOf(first, second, note, app))
+        val route = RouteWalk.route(chained, text("work: urgent fix the build"))
+        assertEquals(app, route.router)
+        assertEquals(listOf(TextMatch("first", "First", 0, 5), TextMatch("second", "Second", 6, 12)), route.text.matches)
+        assertEquals(listOf("work:", "urgent"), route.text.matches.map(route.text::matchedText))
+        assertEquals("fix the build", route.text.unmatchedText)
+        assertEquals("work: urgent fix the build", route.text.text, "the text itself goes on whole")
+        val fallback = RouteWalk.route(chained, text("home: later"))
+        assertEquals(note, fallback.router)
+        assertEquals(emptyList(), fallback.text.matches, "a fallback is no match")
+    }
+
+    /** A Time or Place rule reads the recording's time or location, which reach a router by grant alone, so it adds no match. */
+    @Test
+    fun onlyASwitchAddsAMatch() {
+        val under = RoutingConfig(entry = g("split"), routers = listOf(split.copy(otherwise = g("hours")), hours, note, reminder, app))
+        val route = RouteWalk.route(under, RoutedText("c1", "2026-09-23T12:00:00+02:00", "thoughts"))
+        assertEquals(app, route.router)
+        assertEquals(emptyList(), route.text.matches)
+    }
+
     private val hours = RouterConfig.Time(
         "hours", "Hours",
         listOf(

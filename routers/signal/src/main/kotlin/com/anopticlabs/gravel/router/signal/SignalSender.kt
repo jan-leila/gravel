@@ -24,7 +24,7 @@ fun signalRequest(relay: String, token: String?, number: String, recipients: Lis
     method = "POST",
     url = relay.trimEnd('/') + "/v2/send",
     headers = token?.let { mapOf("Authorization" to "Bearer $it") }.orEmpty(),
-    body = """{"message":${jsonString(delivery.text)},"number":${jsonString(number)},"recipients":[${recipients.joinToString(",") { jsonString(it) }}]}""".encodeToByteArray(),
+    body = """{"message":${jsonString(delivery.content)},"number":${jsonString(number)},"recipients":[${recipients.joinToString(",") { jsonString(it) }}]}""".encodeToByteArray(),
     contentType = "application/json",
 )
 

@@ -85,7 +85,7 @@ class ActualSender(
         }
         if (!Http.allowed(relay, allowPrivateCleartext = true)) return SendResult.Refused(ActualApp.BAD_ADDRESS)
         val decimals = settings[ActualApp.KEY_DECIMALS]?.toIntOrNull()?.coerceIn(0, 4) ?: 2
-        val transaction = TextTransactions.parse(delivery.text, decimals) ?: return SendResult.Refused(ActualApp.NO_AMOUNT)
+        val transaction = TextTransactions.parse(delivery.content, decimals) ?: return SendResult.Refused(ActualApp.NO_AMOUNT)
         return answer(try {
             send(actualRequest(relay, apiKey, budget, account, delivery, transaction, today()))
         } catch (e: IOException) {

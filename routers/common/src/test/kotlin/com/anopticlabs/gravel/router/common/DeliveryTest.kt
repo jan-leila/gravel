@@ -49,6 +49,41 @@ class DeliveryTest {
         assertEquals(stored, Delivery.read(ByteArrayInputStream(ByteArrayOutputStream().also { stored.write(it) }.toByteArray())))
     }
 
+    private val matched = full + mapOf(
+        RouterContract.EXTRA_TEXT to "add a task: buy milk",
+        RouterContract.EXTRA_UNMATCHED_TEXT to "buy milk",
+        RouterContract.EXTRA_MATCH_ROUTER_IDS to arrayOf("tasks"),
+        RouterContract.EXTRA_MATCH_ROUTER_NAMES to arrayOf("Tasks"),
+        RouterContract.EXTRA_MATCH_STARTS to intArrayOf(0),
+        RouterContract.EXTRA_MATCH_ENDS to intArrayOf(10),
+        RouterContract.EXTRA_MATCH_TEXTS to arrayOf("add a task"),
+    )
+
+    @Test
+    fun theMatchesAndTheTextLeftOverAreReadAndTheContentIsWhatIsLeft() {
+        val delivery = Delivery.from(matched)!!
+        assertEquals("buy milk", delivery.unmatchedText)
+        assertEquals(listOf(Match("tasks", "Tasks", 0, 10, "add a task")), delivery.matches)
+        assertEquals("buy milk", delivery.content)
+        assertEquals("buy milk", Delivery.from(full)!!.content, "a Gravel without matches sends the text alone")
+        assertEquals("todo", Delivery("c1", "todo", null, null, unmatchedText = " ").content, "nothing left over sends the whole text")
+    }
+
+    /** The match extras are optional: arrays that do not line up drop the matches, never the delivery. */
+    @Test
+    fun matchArraysThatDoNotLineUpLeaveTheMatchesOut() {
+        assertEquals(emptyList<Match>(), Delivery.from(matched + (RouterContract.EXTRA_MATCH_ENDS to intArrayOf(10, 12)))!!.matches)
+        assertEquals(emptyList<Match>(), Delivery.from(matched - RouterContract.EXTRA_MATCH_TEXTS)!!.matches)
+        assertEquals(emptyList<Match>(), Delivery.from(matched + (RouterContract.EXTRA_MATCH_STARTS to arrayOf("0")))!!.matches)
+        assertEquals("buy milk", Delivery.from(matched - RouterContract.EXTRA_MATCH_TEXTS)!!.unmatchedText)
+    }
+
+    @Test
+    fun theMatchesRoundTripThroughTheOutboxFormat() {
+        val delivery = Delivery.from(matched + (RouterContract.EXTRA_MATCH_ROUTER_NAMES to arrayOf("Tasks = \"todo\"\nlist")))!!
+        assertEquals(delivery, Delivery.read(ByteArrayInputStream(ByteArrayOutputStream().also { delivery.write(it) }.toByteArray())))
+    }
+
     @Test
     fun aDeliveryRoundTripsThroughTheOutboxFormatWithEveryCharacterKept() {
         val tricky = Delivery("c1", "line one\nline two = \"quoted\" é \\ end", "2026-09-22T17:00:00+02:00", Location(-33.9, 151.2, null))

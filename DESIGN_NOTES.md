@@ -1932,7 +1932,13 @@ in the app's device suite:
   pattern, so no rule can hold the drain, at the price of RE2 syntax (no
   backreferences, no lookaround; the platform's engine backtracks, and on
   Android copies the text to a String before matching, so a deadline read
-  through a `CharSequence` never fired there). The default routing is a
+  through a `CharSequence` never fired there). The walk records each Switch
+  rule that matched as a `TextMatch` on the `RoutedText` (the switch, the
+  span it matched; Time and Place rules add none, as they read what only a
+  grant may send), kept on a parked capture with the transcript it indexes,
+  and every delivery carries them with `unmatchedText`, the text with those
+  spans cut out, which the first-party router apps send in place of the
+  whole text (`Delivery.content`). The default routing is a
   Switch of the reminder cues (`RoutingConfig.REMINDER_CUES`, the cue
   detector's requests as rules, without its guards) before a Reminder
   router, falling back to a Note router, so an install upgraded from the

@@ -70,7 +70,7 @@ class EmailSender(
             from = account.from,
             to = to,
             subject = emailSubject(account.subject, delivery.recordedAt),
-            body = delivery.text,
+            body = delivery.content,
             messageId = delivery.captureId,
             date = emailDate(delivery.recordedAt, now()),
         )

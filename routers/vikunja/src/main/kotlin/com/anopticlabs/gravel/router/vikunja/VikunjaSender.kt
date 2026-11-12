@@ -21,14 +21,14 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 
-/** The task: Vikunja creates a task with PUT on the project's tasks; the text is the title, the recording time the description when granted. */
+/** The task: Vikunja creates a task with PUT on the project's tasks; the text the routing left unmatched is the title, the recording time the description when granted. */
 fun vikunjaRequest(baseUrl: String, token: String, projectId: String, delivery: Delivery): HttpRequest {
     val description = delivery.recordedAt?.let { ""","description":${jsonString("Recorded $it")}""" }.orEmpty()
     return HttpRequest(
         method = "PUT",
         url = baseUrl.trimEnd('/') + "/api/v1/projects/${projectId.trim()}/tasks",
         headers = mapOf("Authorization" to "Bearer $token"),
-        body = """{"title":${jsonString(delivery.text)}$description}""".encodeToByteArray(),
+        body = """{"title":${jsonString(delivery.content)}$description}""".encodeToByteArray(),
         contentType = "application/json",
     )
 }

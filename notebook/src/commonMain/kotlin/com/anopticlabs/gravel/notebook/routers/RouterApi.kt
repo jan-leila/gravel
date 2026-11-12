@@ -4,7 +4,9 @@ package com.anopticlabs.gravel.notebook.routers
  * The contract between Gravel and an app that declares a router (`ROUTER_API.md`): the action its
  * receiver filters on, the permission that guards the receiver, the meta-data that names it, and
  * the extras of the broadcast that carries a [RoutedText]. Every name here is public API: a
- * change breaks installed apps, so a new field gets a new name and [VERSION] moves.
+ * change breaks installed apps, so a new field gets a new name, and [VERSION] moves when a
+ * receiver could not take a delivery without reading the new field; one a receiver may ignore
+ * leaves it, so receivers already installed keep taking deliveries.
  */
 object RouterApi {
     const val VERSION = 1
@@ -72,6 +74,20 @@ object RouterApi {
     const val EXTRA_LOCATION_LONGITUDE = "location_longitude"
     const val EXTRA_LOCATION_ACCURACY_METERS = "location_accuracy_m"
 
+    /** Every delivery: [RoutedText.unmatchedText], the text once the spans Switch rules matched on the way are cut out; the text itself when none matched. */
+    const val EXTRA_UNMATCHED_TEXT = "unmatched_text"
+
+    /**
+     * Present together when a Switch rule matched on the way, one entry per match in walk order:
+     * the switch's id and name, the span of the text the rule matched as UTF-16 offsets, end
+     * exclusive, and the matched words themselves.
+     */
+    const val EXTRA_MATCH_ROUTER_IDS = "match_router_ids"
+    const val EXTRA_MATCH_ROUTER_NAMES = "match_router_names"
+    const val EXTRA_MATCH_STARTS = "match_starts"
+    const val EXTRA_MATCH_ENDS = "match_ends"
+    const val EXTRA_MATCH_TEXTS = "match_texts"
+
     /** The result code a receiver sets to acknowledge a delivery: `Activity.RESULT_OK`. Any other code but [RESULT_REFUSED] is no acknowledgement. */
     const val RESULT_ACKNOWLEDGED = -1
 
@@ -121,4 +137,30 @@ object ListedRows {
     }
 
     fun clean(value: String?, max: Int): String? = value?.filterNot { it.isISOControl() }?.trim()?.take(max)?.ifEmpty { null }
+}
+
+/**
+ * The extras of one delivery by name, each a [String], [Int], [Double], [Float], `Array<String>`
+ * or [IntArray]: the router API's payload, the parts in [share] and nothing else. [listedId] names
+ * the listed router the delivery is for, null for the receiver's declared one.
+ */
+fun deliveryExtras(listedId: String?, text: RoutedText, share: Set<Need>): Map<String, Any> = buildMap {
+    put(RouterApi.EXTRA_API_VERSION, if (listedId == null) RouterApi.VERSION else RouterApi.VERSION_LISTED)
+    put(RouterApi.EXTRA_CAPTURE_ID, text.captureId)
+    put(RouterApi.EXTRA_TEXT, text.text)
+    put(RouterApi.EXTRA_UNMATCHED_TEXT, text.unmatchedText)
+    listedId?.let { put(RouterApi.EXTRA_ROUTER_ID, it) }
+    if (Need.RECORDED_AT in share) put(RouterApi.EXTRA_RECORDED_AT, text.recordedAt)
+    text.location?.takeIf { Need.LOCATION in share }?.let { location ->
+        put(RouterApi.EXTRA_LOCATION_LATITUDE, location.latitude)
+        put(RouterApi.EXTRA_LOCATION_LONGITUDE, location.longitude)
+        location.accuracyMeters?.let { put(RouterApi.EXTRA_LOCATION_ACCURACY_METERS, it) }
+    }
+    if (text.matches.isNotEmpty()) {
+        put(RouterApi.EXTRA_MATCH_ROUTER_IDS, text.matches.map { it.routerId }.toTypedArray())
+        put(RouterApi.EXTRA_MATCH_ROUTER_NAMES, text.matches.map { it.routerName }.toTypedArray())
+        put(RouterApi.EXTRA_MATCH_STARTS, text.matches.map { it.start }.toIntArray())
+        put(RouterApi.EXTRA_MATCH_ENDS, text.matches.map { it.end }.toIntArray())
+        put(RouterApi.EXTRA_MATCH_TEXTS, text.matches.map(text::matchedText).toTypedArray())
+    }
 }

@@ -16,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ActualSenderTest {
 
@@ -87,6 +88,17 @@ class ActualSenderTest {
         } finally {
             dir.deleteRecursively()
         }
+    }
+
+    /** A number in the words that routed the recording here ("budget 2") is not the amount. */
+    @Test
+    fun theTransactionIsReadFromTheWordsTheRoutingLeftUnmatched() {
+        val settings = SettingValues { mapOf("url" to "http://budget.lan:5007", "api_key" to "key", "budget" to "b1", "account" to "acc-1")[it] }
+        val bodies = mutableListOf<String>()
+        val sender = ActualSender(settings, RouterList(File(Files.createTempDirectory("actual").toFile(), "list.json")), { bodies += it.body!!.decodeToString(); HttpAnswer(200, "{}") }, { LocalDate.of(2026, 10, 30) })
+        assertEquals(SendResult.Sent, sender.send(Delivery("c1", "budget 2: coffee 3.5", null, null, unmatchedText = "coffee 3.5")))
+        assertTrue(bodies.single().contains("-350"), bodies.single())
+        assertTrue(bodies.single().contains("\"coffee 3.5\""), bodies.single())
     }
 
     @Test

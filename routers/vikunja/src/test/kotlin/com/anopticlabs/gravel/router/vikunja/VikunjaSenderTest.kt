@@ -28,6 +28,12 @@ class VikunjaSenderTest {
         assertEquals("""{"title":"buy milk"}""", bare.body!!.decodeToString())
     }
 
+    @Test
+    fun theTitleIsTheTaskWithoutTheWordsThatRoutedItHere() {
+        val routed = Delivery("c1", "add a task: buy milk", null, null, unmatchedText = "buy milk")
+        assertEquals("""{"title":"buy milk"}""", vikunjaRequest("https://tasks.example.net", "tok", "7", routed).body!!.decodeToString())
+    }
+
     /** A project is a router of its own, its id stable for the project; a saved filter and an archived project are not. */
     @Test
     fun theProjectsAreReadPageByPage() {

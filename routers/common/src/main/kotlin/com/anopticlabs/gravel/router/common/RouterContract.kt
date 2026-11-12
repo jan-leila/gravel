@@ -30,6 +30,14 @@ object RouterContract {
     const val EXTRA_LOCATION_LONGITUDE = "location_longitude"
     const val EXTRA_LOCATION_ACCURACY_METERS = "location_accuracy_m"
 
+    /** The text once the words the user's Switch rules matched on the way are cut out, and those matches, one array entry each. */
+    const val EXTRA_UNMATCHED_TEXT = "unmatched_text"
+    const val EXTRA_MATCH_ROUTER_IDS = "match_router_ids"
+    const val EXTRA_MATCH_ROUTER_NAMES = "match_router_names"
+    const val EXTRA_MATCH_STARTS = "match_starts"
+    const val EXTRA_MATCH_ENDS = "match_ends"
+    const val EXTRA_MATCH_TEXTS = "match_texts"
+
     /** `Activity.RESULT_OK`: the delivery is taken. */
     const val RESULT_ACKNOWLEDGED = -1
 

@@ -34,4 +34,42 @@ class RoutedTextTest {
         val rough = NotebookJson.encodeToString(RoutedLocation(1.0, 2.0))
         assertEquals(setOf("latitude", "longitude"), NotebookJson.parseToJsonElement(rough).jsonObject.keys)
     }
+
+    private fun cut(text: String, vararg spans: Pair<Int, Int>) = RoutedText.unmatched(text, spans.map { (start, end) -> TextMatch("s", "S", start, end) })
+
+    @Test
+    fun theUnmatchedTextIsTheTextWithTheMatchesCutOutAndTheSeparatorsAtTheCutsGone() {
+        assertEquals("buy milk", cut("add a task: buy milk", 0 to 10))
+        assertEquals("Buy milk and eggs.", cut("Buy milk, todo, and eggs.", 8 to 14))
+        assertEquals("buy milk", cut("buy milk, todo.", 8 to 14))
+        assertEquals("call Sam", cut("work task call Sam", 0 to 4, 5 to 9), "adjacent matches")
+        assertEquals("call Sam", cut("work task call Sam", 0 to 9, 5 to 9), "overlapping matches")
+        assertEquals("call Sam", cut("work task call Sam", 5 to 9, 0 to 4), "in any order")
+        assertEquals("", cut("todo", 0 to 4), "a match of the whole text leaves nothing")
+    }
+
+    @Test
+    fun withNoMatchOrOnlyEmptyOnesTheUnmatchedTextIsTheTextAsIs() {
+        assertEquals("  as heard, ", cut("  as heard, "))
+        assertEquals("  as heard, ", cut("  as heard, ", 0 to 0))
+        assertEquals("as heard", RoutedText("c1", "2026-09-22T17:00:00+02:00", "as heard").unmatchedText)
+    }
+
+    /** Matches come back from storage: a span past the text is clamped, never thrown on. */
+    @Test
+    fun aSpanPastTheTextIsClamped() {
+        assertEquals("buy", cut("buy milk", 3 to 99))
+        assertEquals("milk", cut("buy milk", -5 to 3))
+        val text = RoutedText("c1", "2026-09-22T17:00:00+02:00", "buy milk")
+        assertEquals("milk", text.matchedText(TextMatch("s", "S", 4, 99)))
+        assertEquals("", text.matchedText(TextMatch("s", "S", 6, 2)))
+    }
+
+    @Test
+    fun theMatchesAreSerializedOnlyWhenThereAreAny() {
+        val routed = RoutedText("c1", "2026-09-22T17:00:00+02:00", "todo milk", matches = listOf(TextMatch("split", "Split", 0, 4)))
+        val json = NotebookJson.encodeToString(routed)
+        assertEquals(setOf("captureId", "recordedAt", "text", "matches"), NotebookJson.parseToJsonElement(json).jsonObject.keys)
+        assertEquals(routed, NotebookJson.decodeFromString<RoutedText>(json))
+    }
 }

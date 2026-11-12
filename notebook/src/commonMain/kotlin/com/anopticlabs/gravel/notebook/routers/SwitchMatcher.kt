@@ -7,6 +7,12 @@ import com.google.re2j.PatternSyntaxException
 class SwitchPattern internal constructor(private val pattern: Pattern) {
     /** True when the pattern matches anywhere in [text]. */
     fun matchesIn(text: String): Boolean = pattern.matcher(text).find()
+
+    /** The first match in [text] as start and end offsets in UTF-16 units, end exclusive, or null. */
+    fun findIn(text: String): Pair<Int, Int>? {
+        val matcher = pattern.matcher(text)
+        return if (matcher.find()) matcher.start() to matcher.end() else null
+    }
 }
 
 /**
@@ -28,4 +34,6 @@ object SwitchMatcher {
     }
 
     fun matches(pattern: SwitchPattern, text: String): Boolean = pattern.matchesIn(text)
+
+    fun find(pattern: SwitchPattern, text: String): Pair<Int, Int>? = pattern.findIn(text)
 }

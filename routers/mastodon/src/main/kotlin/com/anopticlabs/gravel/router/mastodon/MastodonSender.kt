@@ -18,7 +18,7 @@ fun mastodonRequest(baseUrl: String, token: String, visibility: String, delivery
     method = "POST",
     url = baseUrl.trimEnd('/') + "/api/v1/statuses",
     headers = mapOf("Authorization" to "Bearer $token", "Idempotency-Key" to delivery.captureId),
-    body = "status=${form(delivery.text)}&visibility=${form(visibility)}".encodeToByteArray(),
+    body = "status=${form(delivery.content)}&visibility=${form(visibility)}".encodeToByteArray(),
     contentType = "application/x-www-form-urlencoded",
 )
 
