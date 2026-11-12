@@ -1,6 +1,7 @@
 package coredevices.pebble
 
 import android.content.Context
+import com.anopticlabs.gravel.gitsource.AndroidGitSourceNotifier
 import com.anopticlabs.gravel.watchsync.AndroidFirstSyncNotifier
 import com.anopticlabs.gravel.watchsync.FirstSyncNotifier
 import com.anopticlabs.gravel.gitsource.GitSourceNotifier
