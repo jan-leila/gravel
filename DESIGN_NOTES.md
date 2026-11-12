@@ -172,7 +172,7 @@ WAV marked as from the ring, dated by the ring's clock unless the ring
 gives no time, one before 2025 (a clock the phone never set) or one ahead
 of the phone's, in the phone's time zone at the sync. The ring has no
 position, so a recording dated by the ring's clock that ended at most the
-Ring Recording Location setting's window before the sync (10 minutes by
+Ring Recordings setting's window (Settings > Notebook > Recording Location) before the sync (10 minutes by
 default, 15 seconds to an hour; Off is stored as -1, since preferences
 hold no null)
 is placed with a `RecordingLocation` lookup at the sync; any other has no

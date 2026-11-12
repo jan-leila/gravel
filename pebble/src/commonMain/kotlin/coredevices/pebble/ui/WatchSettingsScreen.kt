@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DoNotDisturb
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreHoriz
@@ -232,6 +233,7 @@ enum class Section(val title: String, val icon: ImageVector) {
     Health("Health", Icons.AutoMirrored.Filled.DirectionsRun),
     AI("AI", Icons.Default.AutoAwesome), // Gravel
     Speech("Speech Recognition", Icons.Default.Mic), // Gravel: opened from AI, see parent()
+    NotebookLocation("Recording Location", Icons.Default.LocationOn), // Gravel: opened from Notebook, see parent()
     Display("Display", Icons.Default.DarkMode), // watch only
     Weather("Weather", Icons.Default.Cloud),
     Notifications("Notifications", Icons.Default.Notifications),
@@ -253,6 +255,7 @@ fun Section.navigatesDirectlyTo(): NavBarRoute? = when (this) {
 /** Gravel: the section whose page lists this one; such a section stays out of the top-level list. */
 fun Section.parent(): Section? = when (this) {
     Section.Speech -> Section.AI
+    Section.NotebookLocation -> Section.Notebook
     else -> null
 }
 
@@ -1012,9 +1015,28 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                         )
                     }
                 },
+                notebookSettings?.let { notebook ->
+                    navBarNav?.let { nav ->
+                        basicSettingsActionItem(
+                            title = "Recording Location",
+                            description = NotebookSettingsChoices.locationSummary(locationAccess, backgroundLocationAccess, notebook.ringLocationSeconds),
+                            topLevelType = TopLevelType.Phone,
+                            section = Section.Notebook,
+                            keywords = "notebook recording location place gps where ring",
+                            action = {
+                                nav.navigateTo(
+                                    PebbleNavBarRoutes.WatchSettingsCategoryRoute(
+                                        section = Section.NotebookLocation.name,
+                                        topLevelType = TopLevelType.Phone.name,
+                                    )
+                                )
+                            },
+                        )
+                    }
+                },
                 notebookSettings?.let {
                     basicSettingsActionItem(
-                        title = "Recording Location",
+                        title = "Location Access",
                         description = NotebookSettingsText.RECORDING_LOCATION + when {
                             !locationAccess -> ": not allowed, tap to allow"
                             // A watch recording is located with Gravel in the background, which needs the "all the time" grant.
@@ -1022,7 +1044,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                             else -> ": allowed"
                         },
                         topLevelType = TopLevelType.Phone,
-                        section = Section.Notebook,
+                        section = Section.NotebookLocation,
                         keywords = "notebook recording location place gps where background watch",
                         action = {
                             uiContext?.let { ctx ->
@@ -1038,10 +1060,10 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                 },
                 notebookSettings?.let { notebook ->
                     basicSettingsDropdownItem(
-                        title = "Ring Recording Location",
+                        title = "Ring Recordings",
                         description = NotebookSettingsText.RING_LOCATION,
                         topLevelType = TopLevelType.Phone,
-                        section = Section.Notebook,
+                        section = Section.NotebookLocation,
                         keywords = "notebook ring index recording location place sync",
                         items = NotebookSettingsChoices.ringLocationWithCurrent(notebook.ringLocationSeconds),
                         selectedItem = notebook.ringLocationSeconds,
