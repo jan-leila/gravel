@@ -1,5 +1,6 @@
 package io.rebble.libpebblecommon.js
 
+import com.anopticlabs.gravel.push.WatchappPush
 import co.touchlab.kermit.Logger
 import io.rebble.libpebblecommon.connection.CompanionApp
 import io.rebble.libpebblecommon.connection.ConnectedPebble
@@ -140,6 +141,17 @@ class PKJSApp(
         }?.launchIn(scope) ?: error("JsRunner not initialized")
     }
 
+    // Gravel: a push opens the app on the watch, which starts this session; its message is taken
+    // from the inbox only once the JavaScript has its listeners in place.
+    private fun launchPushHandler(scope: CoroutineScope) {
+        val runner = jsRunner ?: error("JsRunner not initialized")
+        val push: WatchappPush = get()
+        scope.launch {
+            runner.readyState.first { it }
+            push.watchappPushMessages(uuid).collect { runner.signalPush(it) }
+        }
+    }
+
     suspend fun requestConfigurationUrl(): String? {
         if (runningScope == null) {
             logger.e { "Cannot show configuration, PKJSApp is not running" }
@@ -205,6 +217,7 @@ class PKJSApp(
         jsRunner = injectJsRunner(scope)
         launchIncomingAppMessageHandler(incomingAppMessages, scope)
         launchOutgoingAppMessageHandler(device, scope)
+        launchPushHandler(scope)
         jsRunner?.start() ?: error("JsRunner not initialized")
     }
 

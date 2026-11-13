@@ -3,6 +3,10 @@ package io.rebble.libpebblecommon.di
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.link.WatchLinkPace
 import com.anopticlabs.gravel.pkjs.NetworkDenyEnforcement
+import com.anopticlabs.gravel.push.LockerPushTargetApps
+import com.anopticlabs.gravel.push.PushTargetApps
+import com.anopticlabs.gravel.push.WatchappPush
+import com.anopticlabs.gravel.push.WatchappPushManager
 import com.anopticlabs.gravel.watchapp.InjectedWatchAppCaptures
 import com.anopticlabs.gravel.watchsync.InjectedFirstSyncDecider
 import com.russhwolf.settings.Settings
@@ -391,6 +395,10 @@ fun initKoin(
                 // concrete type for the JS enforcement sites that inject it directly.
                 single { WatchappPermissionResolver(get(), get()) } binds
                         arrayOf(WatchappPermissionResolver::class, WatchappPermissions::class)
+                // Gravel: the transport comes from the platform module, and only Android has one.
+                single { WatchappPushManager(getOrNull(), get(), get(), get()) } binds
+                        arrayOf(WatchappPushManager::class, WatchappPush::class)
+                singleOf(::LockerPushTargetApps) bind PushTargetApps::class
                 singleOf(::RealWatchPrefs) bind WatchPrefs::class
                 singleOf(::WebSyncManager) bind RequestSync::class
                 singleOf(::TimelineApi) bind Timeline::class
@@ -428,6 +436,8 @@ fun initKoin(
                         get(),
                         get(),
                         // watchappPermissions
+                        get(),
+                        // watchappPush
                         get(),
                         // Gravel: backupRows
                         TableRows(get<Database>()),

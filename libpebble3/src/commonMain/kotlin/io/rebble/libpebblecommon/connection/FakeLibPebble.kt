@@ -1,5 +1,10 @@
 package io.rebble.libpebblecommon.connection
 
+import com.anopticlabs.gravel.push.PushFailure
+import com.anopticlabs.gravel.push.PushMessage
+import com.anopticlabs.gravel.push.PushRegistration
+import com.anopticlabs.gravel.push.PushState
+import kotlinx.coroutines.flow.emptyFlow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toArgb
@@ -285,6 +290,19 @@ class FakeLibPebble : LibPebble {
             PermissionSetting.Deny -> watchappPermissionRows.value + ((uuid to type) to false)
         }
     }
+
+    override val pushState = MutableStateFlow(PushState())
+
+    override fun refreshPushState() {}
+
+    override fun selectPushDistributor(packageName: String?) {
+        pushState.value = pushState.value.copy(selectedDistributor = packageName)
+    }
+
+    override suspend fun registerWatchappPush(appUuid: Uuid): PushRegistration =
+        PushRegistration.Failed(PushFailure.Unsupported)
+
+    override fun watchappPushMessages(appUuid: Uuid): Flow<PushMessage> = emptyFlow()
 
     override fun notificationAppChannelCounts(packageName: String): Flow<List<ChannelAndCount>> =
         MutableStateFlow(emptyList())

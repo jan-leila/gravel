@@ -24,4 +24,8 @@ enum class LockerAppPermissionType {
     // Location here and left even that ungated; Network is new to the fork's
     // watchapp-permission system.
     Network,
+
+    // Gravel: whether the app may register a UnifiedPush endpoint and be opened on the
+    // watch when a message arrives at it (DESIGN_NOTES, UnifiedPush for watchapps).
+    Push,
 }

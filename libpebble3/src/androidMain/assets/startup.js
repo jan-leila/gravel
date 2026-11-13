@@ -138,6 +138,7 @@ navigator.geolocation.clearWatch = (id) => {
         APP_MESSAGE_NACK: 'appmessage_nack',
         GET_TIMELINE_TOKEN_SUCCESS: 'getTimelineTokenSuccess',
         GET_TIMELINE_TOKEN_FAILURE: 'getTimelineTokenFailure',
+        PUSH: 'push',
     };
     Object.freeze(PebbleEventTypes);
     const DEFAULT_TIMEOUT = 5000; // 5 seconds
@@ -281,6 +282,23 @@ navigator.geolocation.clearWatch = (id) => {
         }
         dispatchPebbleEvent(PebbleEventTypes.GET_TIMELINE_TOKEN_SUCCESS, { payload });
     };
+    // Gravel: UnifiedPush for watchapps.
+    const pushEndpointCallbacks = new Map();
+    global.signalPushEndpoint = (data) => {
+        const callbacks = pushEndpointCallbacks.get(data.callId);
+        if (!callbacks) {
+            return;
+        }
+        pushEndpointCallbacks.delete(data.callId);
+        if (data.endpoint) {
+            callbacks.onSuccess(data.endpoint);
+        } else if (typeof callbacks.onFailure === 'function') {
+            callbacks.onFailure(data.reason);
+        }
+    };
+    global.signalPush = (data) => {
+        dispatchPebbleEvent(PebbleEventTypes.PUSH, { payload: data.body, encrypted: data.encrypted });
+    };
     global.signalTimelineTokenFailure = (data) => {
         var payload;
         if (typeof data === 'string') {
@@ -355,6 +373,13 @@ navigator.geolocation.clearWatch = (id) => {
             pebbleEventHandler.addEventListener(PebbleEventTypes.GET_TIMELINE_TOKEN_SUCCESS, successCallback);
             pebbleEventHandler.addEventListener(PebbleEventTypes.GET_TIMELINE_TOKEN_FAILURE, failureCallback);
         },
+        getPushEndpoint: (onSuccess, onFailure) => {
+            if (typeof onSuccess !== 'function') {
+                throw new TypeError('getPushEndpoint needs a success callback');
+            }
+            const callId = _Pebble.getPushEndpointAsync();
+            pushEndpointCallbacks.set(callId, { onSuccess, onFailure });
+        },
         timelineSubscribe: (token, onSuccess, onFailure) => {
             //TODO
         },
@@ -388,6 +413,7 @@ navigator.geolocation.clearWatch = (id) => {
     global.Pebble.removeEventListener = PebbleAPI.removeEventListener;
     global.Pebble.sendAppMessage = PebbleAPI.sendAppMessage;
     global.Pebble.getTimelineToken = PebbleAPI.getTimelineToken;
+    global.Pebble.getPushEndpoint = PebbleAPI.getPushEndpoint;
     global.Pebble.timelineSubscribe = PebbleAPI.timelineSubscribe;
     global.Pebble.timelineUnsubscribe = PebbleAPI.timelineUnsubscribe;
     global.Pebble.timelineSubscriptions = PebbleAPI.timelineSubscriptions;

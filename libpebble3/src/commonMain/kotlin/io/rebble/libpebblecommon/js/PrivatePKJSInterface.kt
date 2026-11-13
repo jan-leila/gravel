@@ -1,5 +1,8 @@
 package io.rebble.libpebblecommon.js
 
+import com.anopticlabs.gravel.push.PushFailure
+import com.anopticlabs.gravel.push.PushRegistration
+import com.anopticlabs.gravel.push.WatchappPush
 import co.touchlab.kermit.Logger
 import io.rebble.cobble.shared.data.js.ActivePebbleWatchInfo
 import io.rebble.cobble.shared.data.js.fromWatchInfo
@@ -36,6 +39,8 @@ abstract class PrivatePKJSInterface(
     private val httpInterceptorManager: HttpInterceptorManager,
     private val notificationConfigFlow: NotificationConfigFlow,
     private val watchappPermissions: WatchappPermissionResolver,
+    // Gravel: optional so the iOS bridge, which has no push transport, constructs unchanged.
+    private val watchappPush: WatchappPush? = null,
 ) {
     companion object {
         private val logger = Logger.withTag("PrivatePKJSInterface")
@@ -125,6 +130,21 @@ abstract class PrivatePKJSInterface(
             }
         }
         return uuid.toString()
+    }
+
+    /** Gravel: registers this app for push; the answer arrives by [JsRunner.signalPushEndpoint]. */
+    open fun getPushEndpointAsync(): String {
+        val uuid = Uuid.parse(jsRunner.appInfo.uuid)
+        val callId = Uuid.random().toString()
+        scope.launch {
+            val result = watchappPush?.registerWatchappPush(uuid)
+                ?: PushRegistration.Failed(PushFailure.Unsupported)
+            when (result) {
+                is PushRegistration.Registered -> jsRunner.signalPushEndpoint(callId, result.endpoint)
+                is PushRegistration.Failed -> jsRunner.signalPushEndpointFail(callId, result.reason)
+            }
+        }
+        return callId
     }
 
     open fun signalAppScriptLoadedByBootstrap() {

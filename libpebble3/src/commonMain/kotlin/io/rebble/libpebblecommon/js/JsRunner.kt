@@ -1,5 +1,8 @@
 package io.rebble.libpebblecommon.js
 
+import com.anopticlabs.gravel.push.PushEndpoint
+import com.anopticlabs.gravel.push.PushFailure
+import com.anopticlabs.gravel.push.PushMessage
 import io.rebble.libpebblecommon.database.entity.LockerEntry
 import io.rebble.libpebblecommon.metadata.pbw.appinfo.PbwAppInfo
 import io.rebble.libpebblecommon.services.appmessage.AppMessageResult
@@ -30,6 +33,11 @@ abstract class JsRunner(
     abstract suspend fun eval(js: String)
     abstract suspend fun evalWithResult(js: String): Any?
     abstract fun debugForceGC()
+
+    // Gravel: no-ops by default so a runner without push support needs no change.
+    open suspend fun signalPushEndpoint(callId: String, endpoint: PushEndpoint) {}
+    open suspend fun signalPushEndpointFail(callId: String, reason: PushFailure) {}
+    open suspend fun signalPush(message: PushMessage) {}
 
     open fun onReadyConfirmed(success: Boolean) {
         _readyState.value = true
