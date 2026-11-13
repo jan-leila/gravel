@@ -9,7 +9,7 @@ import kotlin.time.TimeSource
 class SwitchMatcherTest {
 
     private fun matches(pattern: String, text: String, ignoreCase: Boolean = true): Boolean =
-        SwitchMatcher.matches(SwitchMatcher.compile(SwitchRule(pattern, RouterRef.gravel("r"), ignoreCase)), text)
+        SwitchMatcher.find(SwitchMatcher.compile(SwitchRule(pattern, RouterRef.gravel("r"), ignoreCase)), text) != null
 
     @Test
     fun aRuleMatchesAnywhereInTheTextCaseInsensitivelyUnlessToldOtherwise() {

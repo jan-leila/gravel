@@ -21,7 +21,7 @@ import java.util.concurrent.TimeoutException
  * its app's router list names when [listed], and [namespace] the lowercase hex SHA-256 of the
  * app's one signing certificate, so [ref] is the name the routing config forwards to; [label],
  * [description] and [appName] are text another app wrote; [needs] what it declared it wants
- * beyond the text.
+ * beyond the text, and [params] the request parameters its receiver takes.
  */
 data class InstalledRouter(
     val packageName: String,
@@ -33,6 +33,7 @@ data class InstalledRouter(
     val appName: String,
     val needs: Set<Need> = emptySet(),
     val listed: Boolean = false,
+    val params: List<String> = emptyList(),
 ) {
     val ref: RouterRef get() = RouterRef(namespace, id)
 }
@@ -90,17 +91,18 @@ class AndroidInstalledRouters(private val context: Context) : InstalledRouters {
         if (!info.exported || info.permission != RouterApi.PERMISSION_ROUTE_TEXT) return emptyList()
         val namespace = signers(info.packageName).singleOrNull() ?: return emptyList()
         val meta = info.metaData
+        val params = RouterApi.parseParams(meta?.getString(RouterApi.META_PARAMS))
         val appName = info.applicationInfo?.loadLabel(pm)?.toString()?.let { ListedRows.clean(it, RouterApi.MAX_LABEL_CHARS) } ?: info.packageName
         val declared = meta?.getString(RouterApi.META_ID)?.takeIf { RoutingConfig.isRouterId(it) }?.let { id ->
             val label = ListedRows.clean(meta.getString(RouterApi.META_LABEL), RouterApi.MAX_LABEL_CHARS)
                 ?: ListedRows.clean(loadLabel(pm).toString(), RouterApi.MAX_LABEL_CHARS)
                 ?: info.packageName
             val description = ListedRows.clean(meta.getString(RouterApi.META_DESCRIPTION), RouterApi.MAX_DESCRIPTION_CHARS)
-            InstalledRouter(info.packageName, info.name, id, namespace, label, description, appName, RouterApi.parseNeeds(meta.getString(RouterApi.META_NEEDS)))
+            InstalledRouter(info.packageName, info.name, id, namespace, label, description, appName, RouterApi.parseNeeds(meta.getString(RouterApi.META_NEEDS)), params = params)
         }
         val listed = meta?.getString(RouterApi.META_LIST)?.let { authority ->
             ListedRows.read(listRows(info, authority), declared?.let { setOf(it.id) }.orEmpty()).map {
-                InstalledRouter(info.packageName, info.name, it.id, namespace, it.label, it.description, appName, it.needs, listed = true)
+                InstalledRouter(info.packageName, info.name, it.id, namespace, it.label, it.description, appName, it.needs, listed = true, params = params)
             }
         }.orEmpty()
         return listOfNotNull(declared) + listed

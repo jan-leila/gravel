@@ -37,21 +37,21 @@ class RouteWalkTest {
             "remember to buy milk", "don't let me forget the keys", "don’t let me forget the keys", "set a reminder for the dentist at 3",
             "I need an alarm at six tomorrow", "ping me at noon", "reminder: water the plants", "um, so, like, could you remind me to call",
         )) {
-            assertEquals(reminder, RouteWalk.terminal(RoutingConfig.DEFAULT, text(cue)), cue)
+            assertEquals(reminder, RouteWalk.route(RoutingConfig.DEFAULT, text(cue)).router, cue)
         }
         for (plain in listOf(
             "anything at all", "the meeting went well, that reminds me of last year", "a reminder is something I rarely use",
             "one two three four five six seven eight remind me later",
         )) {
-            assertEquals(notes, RouteWalk.terminal(RoutingConfig.DEFAULT, text(plain)), plain)
+            assertEquals(notes, RouteWalk.route(RoutingConfig.DEFAULT, text(plain)).router, plain)
         }
     }
 
     @Test
     fun theFirstMatchingRuleWinsAndTheFallbackTakesTheRest() {
-        assertEquals(reminder, RouteWalk.terminal(config, text("Remind me to call Sam, todo list later")))
-        assertEquals(app, RouteWalk.terminal(config, text("add to my todo list: remind me later")))
-        assertEquals(note, RouteWalk.terminal(config, text("thoughts on the garden")))
+        assertEquals(reminder, RouteWalk.route(config, text("Remind me to call Sam, todo list later")).router)
+        assertEquals(app, RouteWalk.route(config, text("add to my todo list: remind me later")).router)
+        assertEquals(note, RouteWalk.route(config, text("thoughts on the garden")).router)
     }
 
     /** A ref names a router by namespace and id: the same id in Gravel's namespace is a different router. */
@@ -59,9 +59,9 @@ class RouteWalkTest {
     fun aRefIsMatchedByNamespaceAndId() {
         val mine = RouterConfig.Note("tasks", "My tasks")
         val both = config.copy(routers = config.routers + mine)
-        assertEquals(app, RouteWalk.terminal(both, text("todo: buy milk")))
+        assertEquals(app, RouteWalk.route(both, text("todo: buy milk")).router)
         val toMine = both.copy(routers = both.routers.map { if (it is RouterConfig.Switch) it.copy(rules = listOf(SwitchRule("todo", g("tasks")))) else it })
-        assertEquals(mine, RouteWalk.terminal(toMine, text("todo: buy milk")))
+        assertEquals(mine, RouteWalk.route(toMine, text("todo: buy milk")).router)
     }
 
     @Test
@@ -69,25 +69,38 @@ class RouteWalkTest {
         val second = RouterConfig.Switch("second", "Second", listOf(SwitchRule("urgent", app.ref)), otherwise = g("notes"))
         val first = RouterConfig.Switch("first", "First", listOf(SwitchRule("work", g("second"))), otherwise = g("second"))
         val chained = RoutingConfig(entry = g("first"), routers = listOf(first, second, note, app))
-        assertEquals(app, RouteWalk.terminal(chained, text("work: urgent fix")))
-        assertEquals(note, RouteWalk.terminal(chained, text("work: later")))
-        assertEquals(app, RouteWalk.terminal(chained, text("home: urgent fix")))
+        assertEquals(app, RouteWalk.route(chained, text("work: urgent fix")).router)
+        assertEquals(note, RouteWalk.route(chained, text("work: later")).router)
+        assertEquals(app, RouteWalk.route(chained, text("home: urgent fix")).router)
     }
 
     @Test
     fun theRouteCarriesAMatchForEverySwitchRuleThatMatchedOnTheWay() {
         val second = RouterConfig.Switch("second", "Second", listOf(SwitchRule("urgent", app.ref)), otherwise = g("notes"))
-        val first = RouterConfig.Switch("first", "First", listOf(SwitchRule("^work:?", g("second"))), otherwise = g("second"))
+        val first = RouterConfig.Switch("first", "First", listOf(SwitchRule("^work:?", g("second"), cut = true)), otherwise = g("second"))
         val chained = RoutingConfig(entry = g("first"), routers = listOf(first, second, note, app))
         val route = RouteWalk.route(chained, text("work: urgent fix the build"))
         assertEquals(app, route.router)
-        assertEquals(listOf(TextMatch("first", "First", 0, 5), TextMatch("second", "Second", 6, 12)), route.text.matches)
-        assertEquals(listOf("work:", "urgent"), route.text.matches.map(route.text::matchedText))
-        assertEquals("fix the build", route.text.unmatchedText)
+        assertEquals(listOf(TextMatch("first", 0, 5, cut = true), TextMatch("second", 6, 12)), route.text.matches)
+        assertEquals("urgent fix the build", route.text.unmatchedText, "only the rule that cuts takes its words out")
         assertEquals("work: urgent fix the build", route.text.text, "the text itself goes on whole")
         val fallback = RouteWalk.route(chained, text("home: later"))
         assertEquals(note, fallback.router)
         assertEquals(emptyList(), fallback.text.matches, "a fallback is no match")
+    }
+
+    /** A named group that takes no part in the match, an optional one left out, is not listed. */
+    @Test
+    fun aMatchCarriesTheNamedGroupsThatTookPart() {
+        val spend = RouterConfig.Switch(
+            "spend", "Spend",
+            listOf(SwitchRule("^spent (?<amount>\\d+([.,]\\d+)?)( at (?P<payee>.+))?", app.ref)), otherwise = g("notes"),
+        )
+        val spending = RoutingConfig(entry = g("spend"), routers = listOf(spend, note, app))
+        val placed = RouteWalk.route(spending, text("spent 3.50 at the bakery")).text
+        assertEquals(listOf(MatchGroup("amount", 6, 10), MatchGroup("payee", 14, 24)), placed.matches.single().groups)
+        assertEquals(mapOf("amount" to "3.50", "payee" to "the bakery"), placed.groupValues())
+        assertEquals(listOf(MatchGroup("amount", 6, 8)), RouteWalk.route(spending, text("spent 12")).text.matches.single().groups)
     }
 
     /** A Time or Place rule reads the recording's time or location, which reach a router by grant alone, so it adds no match. */
@@ -112,18 +125,18 @@ class RouteWalkTest {
     @Test
     fun aTimeRouterForwardsByTheRecordingsLocalTime() {
         val timed = RoutingConfig(entry = g("hours"), routers = listOf(hours, note, reminder, app))
-        assertEquals(app, RouteWalk.terminal(timed, RoutedText("c1", "2026-09-23T12:00:00+02:00", "x")), "Wednesday noon")
-        assertEquals(reminder, RouteWalk.terminal(timed, RoutedText("c1", "2026-09-23T23:30:00+02:00", "x")), "late evening")
-        assertEquals(reminder, RouteWalk.terminal(timed, RoutedText("c1", "2026-09-24T05:59:00+02:00", "x")), "the wrap holds to the end")
-        assertEquals(note, RouteWalk.terminal(timed, RoutedText("c1", "2026-09-26T12:00:00+02:00", "x")), "Saturday noon")
-        assertEquals(app, RouteWalk.terminal(timed, RoutedText("c1", "2026-09-23T12:00:00Z", "x")), "the offset the payload carries is the one that counts")
+        assertEquals(app, RouteWalk.route(timed, RoutedText("c1", "2026-09-23T12:00:00+02:00", "x")).router, "Wednesday noon")
+        assertEquals(reminder, RouteWalk.route(timed, RoutedText("c1", "2026-09-23T23:30:00+02:00", "x")).router, "late evening")
+        assertEquals(reminder, RouteWalk.route(timed, RoutedText("c1", "2026-09-24T05:59:00+02:00", "x")).router, "the wrap holds to the end")
+        assertEquals(note, RouteWalk.route(timed, RoutedText("c1", "2026-09-26T12:00:00+02:00", "x")).router, "Saturday noon")
+        assertEquals(app, RouteWalk.route(timed, RoutedText("c1", "2026-09-23T12:00:00Z", "x")).router, "the offset the payload carries is the one that counts")
         val strict = timed.copy(routers = timed.routers.map { if (it is RouterConfig.Time) it.copy(otherwise = null) else it })
-        assertTrue(flagged { RouteWalk.terminal(strict, RoutedText("c1", "2026-09-26T12:00:00+02:00", "x")) }.message!!.contains("no rule of Hours matched"))
-        assertTrue(flagged { RouteWalk.terminal(timed, RoutedText("c1", "noon", "x")) }.message!!.contains("could not be read"))
+        assertTrue(flagged { RouteWalk.route(strict, RoutedText("c1", "2026-09-26T12:00:00+02:00", "x")).router }.message!!.contains("no rule of Hours matched"))
+        assertTrue(flagged { RouteWalk.route(timed, RoutedText("c1", "noon", "x")).router }.message!!.contains("could not be read"))
         // Under a switch: a reminder cue goes to the reminders, the rest by the hour.
         val under = RoutingConfig(entry = g("split"), routers = listOf(split.copy(otherwise = g("hours")), hours, note, reminder, app))
-        assertEquals(reminder, RouteWalk.terminal(under, RoutedText("c1", "2026-09-23T12:00:00+02:00", "remind me later")))
-        assertEquals(app, RouteWalk.terminal(under, RoutedText("c1", "2026-09-23T12:00:00+02:00", "thoughts")))
+        assertEquals(reminder, RouteWalk.route(under, RoutedText("c1", "2026-09-23T12:00:00+02:00", "remind me later")).router)
+        assertEquals(app, RouteWalk.route(under, RoutedText("c1", "2026-09-23T12:00:00+02:00", "thoughts")).router)
     }
 
     @Test
@@ -137,49 +150,49 @@ class RouteWalkTest {
         )
         val placed = RoutingConfig(entry = g("places"), routers = listOf(places, note, reminder, app))
         fun at(latitude: Double, longitude: Double) = RoutedText("c1", "2026-09-22T17:00:00+02:00", "x", RoutedLocation(latitude, longitude))
-        assertEquals(app, RouteWalk.terminal(placed, at(52.5210, 13.4060)), "at home")
-        assertEquals(note, RouteWalk.terminal(placed, at(52.5500, 13.4050)), "in town but not at home")
-        assertEquals(reminder, RouteWalk.terminal(placed, at(48.8566, 2.3522)), "far away")
-        assertEquals(reminder, RouteWalk.terminal(placed, text("x")), "no location goes where the router says")
+        assertEquals(app, RouteWalk.route(placed, at(52.5210, 13.4060)).router, "at home")
+        assertEquals(note, RouteWalk.route(placed, at(52.5500, 13.4050)).router, "in town but not at home")
+        assertEquals(reminder, RouteWalk.route(placed, at(48.8566, 2.3522)).router, "far away")
+        assertEquals(reminder, RouteWalk.route(placed, text("x")).router, "no location goes where the router says")
         val noUnknown = placed.copy(routers = placed.routers.map { if (it is RouterConfig.Place) it.copy(unknown = null) else it })
-        assertEquals(note, RouteWalk.terminal(noUnknown, text("x")), "else to the fallback")
+        assertEquals(note, RouteWalk.route(noUnknown, text("x")).router, "else to the fallback")
         val strict = noUnknown.copy(routers = noUnknown.routers.map { if (it is RouterConfig.Place) it.copy(otherwise = null) else it })
-        assertTrue(flagged { RouteWalk.terminal(strict, text("x")) }.message!!.contains("no rule of Places matched"))
+        assertTrue(flagged { RouteWalk.route(strict, text("x")).router }.message!!.contains("no rule of Places matched"))
     }
 
     @Test
     fun noMatchWithoutAFallbackIsFlaggedAsNotRouted() {
         val strict = config.copy(routers = config.routers.map { if (it is RouterConfig.Switch) it.copy(otherwise = null) else it })
-        assertTrue(flagged { RouteWalk.terminal(strict, text("thoughts on the garden")) }.message!!.contains("no rule of Split matched"))
+        assertTrue(flagged { RouteWalk.route(strict, text("thoughts on the garden")).router }.message!!.contains("no rule of Split matched"))
     }
 
     @Test
     fun aGraphTheValidationWouldRefuseStillEndsInAFlagNotALoop() {
         val missingEntry = RoutingConfig(entry = g("gone"), routers = listOf(note))
-        assertTrue(flagged { RouteWalk.terminal(missingEntry, text("x")) }.message!!.contains("entry router"))
+        assertTrue(flagged { RouteWalk.route(missingEntry, text("x")).router }.message!!.contains("entry router"))
         val missingTarget = RoutingConfig(entry = g("s"), routers = listOf(RouterConfig.Switch("s", "S", emptyList(), otherwise = g("gone"))))
-        assertTrue(flagged { RouteWalk.terminal(missingTarget, text("x")) }.message!!.contains("does not exist"))
+        assertTrue(flagged { RouteWalk.route(missingTarget, text("x")).router }.message!!.contains("does not exist"))
         val circle = RoutingConfig(
             entry = g("a"),
             routers = listOf(RouterConfig.Switch("a", "A", emptyList(), otherwise = g("b")), RouterConfig.Switch("b", "B", emptyList(), otherwise = g("a"))),
         )
-        assertTrue(flagged { RouteWalk.terminal(circle, text("x")) }.message!!.contains("circle at A"))
+        assertTrue(flagged { RouteWalk.route(circle, text("x")).router }.message!!.contains("circle at A"))
         val badRule = RoutingConfig(entry = g("s"), routers = listOf(RouterConfig.Switch("s", "S", listOf(SwitchRule("(open", g("notes")))), note))
-        assertTrue(flagged { RouteWalk.terminal(badRule, text("x")) }.message!!.contains("rule 1 of S is not a valid"))
+        assertTrue(flagged { RouteWalk.route(badRule, text("x")).router }.message!!.contains("rule 1 of S is not a valid"))
     }
 
     @Test
     fun aChainLongerThanTheHopCapIsFlagged() {
         val chain = (0..RouteWalk.MAX_HOPS).map { RouterConfig.Switch("s$it", "S$it", emptyList(), otherwise = g("s${it + 1}")) }
         val config = RoutingConfig(entry = g("s0"), routers = chain + RouterConfig.Note("s${RouteWalk.MAX_HOPS + 1}", "End"))
-        assertTrue(flagged { RouteWalk.terminal(config, text("x")) }.message!!.contains("in a row"))
+        assertTrue(flagged { RouteWalk.route(config, text("x")).router }.message!!.contains("in a row"))
         val shorter = RoutingConfig(entry = g("s1"), routers = config.routers)
-        assertEquals(config.routers.last(), RouteWalk.terminal(shorter, text("x")))
+        assertEquals(config.routers.last(), RouteWalk.route(shorter, text("x")).router)
     }
 
     @Test
     fun aRuleThatWouldBlowUpABacktrackingEngineIsDecidedAtOnce() {
         val slow = RoutingConfig(entry = g("s"), routers = listOf(RouterConfig.Switch("s", "S", listOf(SwitchRule("(.*a){32}", g("s"))), otherwise = g("notes")), note))
-        assertEquals(note, RouteWalk.terminal(slow, text("a".repeat(31))))
+        assertEquals(note, RouteWalk.route(slow, text("a".repeat(31))).router)
     }
 }

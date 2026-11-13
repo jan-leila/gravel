@@ -10,7 +10,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -75,19 +74,17 @@ class NetworkRouterDeliveryTest {
     }
 
     @Test
-    fun theBodyNamesEverySwitchMatchWithItsWordsAndTheTextLeftOver() = runBlocking<Unit> {
-        val routed = RoutedText("c1", "2026-09-22T17:00:00+02:00", "add a task: buy milk", matches = listOf(TextMatch("tasks", "Tasks", 0, 10)))
-        delivery.deliver(hook, routed, emptySet())
+    fun theBodyCarriesTheCutTextAndTheMappedFieldsButNotTheMatches() = runBlocking<Unit> {
+        val routed = RoutedText(
+            "c1", "2026-09-22T17:00:00+02:00", "add a task: buy milk",
+            matches = listOf(TextMatch("tasks", 0, 10, cut = true, groups = listOf(MatchGroup("item", 12, 20)))),
+        )
+        delivery.deliver(hook.copy(fields = listOf(FieldMapping("title", "item"), FieldMapping("said", FieldMapping.WHOLE_TEXT))), routed, emptySet())
         val body = NotebookJson.parseToJsonElement(poster.posts.last().body).jsonObject
-        assertEquals("add a task: buy milk", body.getValue("text").jsonPrimitive.content)
+        assertEquals(setOf("api_version", "capture_id", "text", "unmatched_text", "fields"), body.keys)
         assertEquals("buy milk", body.getValue("unmatched_text").jsonPrimitive.content)
-        val match = body.getValue("matches").jsonArray.single().jsonObject
-        assertEquals(setOf("router_id", "router_name", "start", "end", "text"), match.keys)
-        assertEquals("tasks", match.getValue("router_id").jsonPrimitive.content)
-        assertEquals("Tasks", match.getValue("router_name").jsonPrimitive.content)
-        assertEquals(0, match.getValue("start").jsonPrimitive.content.toInt())
-        assertEquals(10, match.getValue("end").jsonPrimitive.content.toInt())
-        assertEquals("add a task", match.getValue("text").jsonPrimitive.content)
+        val fields = body.getValue("fields").jsonObject
+        assertEquals(mapOf("title" to "buy milk", "said" to "add a task: buy milk"), fields.mapValues { it.value.jsonPrimitive.content })
     }
 
     @Test

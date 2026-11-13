@@ -542,6 +542,9 @@ private fun AwaitingRow(
             Text("${stringResource(R.string.notebook_result_awaiting)} \u00B7 $target", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             item.resultLabel?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             item.transcript?.let { Text(it, maxLines = 8, overflow = TextOverflow.Ellipsis) }
+            // What the router gets when it is not the transcript as heard, so a confirmation is of what is sent.
+            item.sends?.let { Text(stringResource(R.string.notebook_awaiting_sends, it), style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis) }
+            item.fields.forEach { (param, value) -> Text("$param: $value", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
             item.asks.sortedBy { it.ordinal }.forEach { need ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(

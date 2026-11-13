@@ -7,7 +7,7 @@ import com.anopticlabs.gravel.notebook.storage.NotebookJson
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** The body a Network router posts: the router API's payload under its snake-case names (`ROUTER_API.md`); a part not shared is left out. */
+/** The body a Network router posts: the router API's payload under its snake-case names (`ROUTER_API.md`) and the mapped [fields]; a part not shared is left out, and so are [fields] when there are none. */
 @Serializable
 data class NetworkPayload(
     @SerialName("api_version") val apiVersion: Int,
@@ -16,28 +16,18 @@ data class NetworkPayload(
     @SerialName("recorded_at") val recordedAt: String? = null,
     val location: NetworkLocation? = null,
     @SerialName("unmatched_text") val unmatchedText: String,
-    val matches: List<NetworkMatch> = emptyList(),
+    val fields: Map<String, String> = emptyMap(),
 ) {
     companion object {
-        fun of(text: RoutedText, share: Set<Need>): NetworkPayload = NetworkPayload(
+        fun of(text: RoutedText, share: Set<Need>, fields: Map<String, String> = emptyMap()): NetworkPayload = NetworkPayload(
             RouterApi.VERSION, text.captureId, text.text,
             recordedAt = text.recordedAt.takeIf { Need.RECORDED_AT in share },
             location = text.location?.takeIf { Need.LOCATION in share }?.let { NetworkLocation(it.latitude, it.longitude, it.accuracyMeters) },
             unmatchedText = text.unmatchedText,
-            matches = text.matches.map { NetworkMatch(it.routerId, it.routerName, it.start, it.end, text.matchedText(it)) },
+            fields = fields,
         )
     }
 }
-
-/** A [TextMatch] under the API's names, with the words it covers, so a server need not count UTF-16 units. */
-@Serializable
-data class NetworkMatch(
-    @SerialName("router_id") val routerId: String,
-    @SerialName("router_name") val routerName: String,
-    val start: Int,
-    val end: Int,
-    val text: String,
-)
 
 @Serializable
 data class NetworkLocation(val latitude: Double, val longitude: Double, @SerialName("accuracy_m") val accuracyMeters: Float? = null)
@@ -56,7 +46,7 @@ class NetworkRouterDelivery(
         require(router is RouterConfig.Network) { "${router.name} is not a network router" }
         if (!RoutingConfig.isHttpsUrl(router.url)) unavailable("${router.name} has no https:// address")
         if (!hasNetwork()) waitForNetwork("${router.name} waits for a network")
-        val body = NotebookJson.encodeToString(NetworkPayload.serializer(), NetworkPayload.of(text, share))
+        val body = NotebookJson.encodeToString(NetworkPayload.serializer(), NetworkPayload.of(text, share, router.fieldsFor(text)))
         when (val result = poster.post(router.url, router.bearerToken, body)) {
             is PostResult.Answered -> when (result.status) {
                 in 200..299 -> Unit

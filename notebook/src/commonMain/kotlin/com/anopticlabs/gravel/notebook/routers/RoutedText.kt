@@ -9,22 +9,29 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class RoutedLocation(val latitude: Double, val longitude: Double, val accuracyMeters: Float? = null)
 
+/** A named group of a [TextMatch] and the span of [RoutedText.text] it took, in UTF-16 units, [end] exclusive. */
+@Serializable
+data class MatchGroup(val name: String, val start: Int, val end: Int)
+
 /**
- * A Switch rule that matched on the way to the router: the switch by id and name, and the span of
- * [RoutedText.text] its pattern matched, in UTF-16 units, [end] exclusive. A switch is always one
- * of Gravel's own routers, so its id needs no namespace.
+ * A Switch rule that matched on the way to the router: the switch by id (a switch is always one
+ * of Gravel's own routers), the span of [RoutedText.text] the rule matched, in UTF-16 units,
+ * [end] exclusive, whether the rule [cut]s those words from the text a router sends, and the
+ * named [groups] that took part in the match.
  */
 @Serializable
-data class TextMatch(val routerId: String, val routerName: String, val start: Int, val end: Int)
+data class TextMatch(val routerId: String, val start: Int, val end: Int, val cut: Boolean = false, val groups: List<MatchGroup> = emptyList())
 
 /**
  * What a voice recording's transcript is routed as: the whole text, the time the recording
  * started, and where it was made when the phone knew. Every router receives it as one value and
  * forwards it whole; [recordedAt] is a [RecordedAt] value; [captureId] identifies the recording,
  * so a receiver can tell a repeated delivery of the same recording from a new one; [matches] are
- * the Switch rules that matched on the way, in walk order. These are the fields of the router API
- * (`ROUTER_API.md`): a field added here can reach every app and server a user routes to, so what a
- * delivery carries beyond the text is the user's to grant per router.
+ * the Switch rules that matched on the way, in walk order, which stay on the phone: what a
+ * delivery carries of them is the unmatched text and the fields the user mapped
+ * ([RouterConfig.fieldsFor]). These are the fields of the router API (`ROUTER_API.md`): a field
+ * added here can reach every app and server a user routes to, so what a delivery carries beyond
+ * the text is the user's to grant per router.
  */
 @Serializable
 data class RoutedText(
@@ -34,13 +41,18 @@ data class RoutedText(
     val location: RoutedLocation? = null,
     val matches: List<TextMatch> = emptyList(),
 ) {
-    /** [text] without the spans [matches] cover: what a router acts on once the words that routed it are gone. */
-    val unmatchedText: String get() = unmatched(text, matches)
+    /** [text] without the spans of the [matches] that cut theirs: what a router acts on once the words that routed it are gone. */
+    val unmatchedText: String get() = unmatched(text, matches.filter { it.cut }.map { it.start to it.end })
 
-    /** The words [match] covers, its span clamped to the text. */
-    fun matchedText(match: TextMatch): String {
-        val start = match.start.coerceIn(0, text.length)
-        return text.substring(start, match.end.coerceIn(start, text.length))
+    /** The words from [start] to [end] of the text, the span clamped to it. */
+    fun slice(start: Int, end: Int): String {
+        val from = start.coerceIn(0, text.length)
+        return text.substring(from, end.coerceIn(from, text.length))
+    }
+
+    /** The value of every named group that took part in a match; a name two matches share takes the later one, nearer the router. */
+    fun groupValues(): Map<String, String> = buildMap {
+        for (match in matches) for (group in match.groups) put(group.name, slice(group.start, group.end))
     }
 
     companion object {
@@ -48,34 +60,31 @@ data class RoutedText(
             RoutedText(captureId, RecordedAt.render(recordedAt, zone), text, location)
 
         /**
-         * [text] with every span of [matches] cut out, overlapping spans merged, the pieces left
-         * joined by one space; the whole text when nothing matched. The separators at a cut go
-         * with the match ("Task: buy milk", "buy milk, todo, and eggs"); the text's own ends keep
-         * theirs. A stored span past the text is clamped to it.
+         * [text] with every one of [spans] cut out, overlapping spans merged, the pieces left
+         * joined by one space; the whole text when there is nothing to cut. At a cut, the spaces
+         * and the commas, colons, semicolons and spaced dashes there go with it ("Task: buy
+         * milk", "buy milk, todo, and eggs"); a sign, a decimal point and a sentence's end stay,
+         * and so do the text's own ends. A span past the text is clamped to it, as matches come
+         * back from storage.
          */
-        fun unmatched(text: String, matches: List<TextMatch>): String {
-            val spans = matches
-                .map { it.start.coerceIn(0, text.length) to it.end.coerceIn(0, text.length) }
+        fun unmatched(text: String, spans: List<Pair<Int, Int>>): String {
+            val cuts = spans
+                .map { (start, end) -> start.coerceIn(0, text.length) to end.coerceIn(0, text.length) }
                 .filter { (start, end) -> end > start }
                 .sortedBy { it.first }
-            if (spans.isEmpty()) return text
-            // Each piece is (text, follows a cut, precedes a cut).
-            val pieces = mutableListOf<Triple<String, Boolean, Boolean>>()
+            if (cuts.isEmpty()) return text
+            val pieces = mutableListOf<String>()
             var from = 0
-            for ((start, end) in spans) {
-                if (start > from) pieces += Triple(text.substring(from, start), from > 0, true)
+            for ((start, end) in cuts) {
+                if (start > from) pieces += text.substring(from, start).let { if (from > 0) it.replace(LEADING_SEAM, "") else it }.replace(TRAILING_SEAM, "")
                 from = maxOf(from, end)
             }
-            pieces += Triple(text.substring(from), true, false)
-            return pieces.map { (piece, afterCut, beforeCut) ->
-                var kept = piece
-                if (afterCut) kept = kept.replace(LEADING_SEAM, "")
-                if (beforeCut) kept = kept.replace(TRAILING_SEAM, "")
-                kept.trim()
-            }.filter { it.isNotEmpty() }.joinToString(" ")
+            pieces += text.substring(from).replace(LEADING_SEAM, "")
+            // A piece that opens with a sentence's end ("buy milk, todo.") closes the one before it.
+            return pieces.filter { it.isNotEmpty() }.ifEmpty { return "" }.reduce { joined, piece -> if (piece.first() in ".!?") joined + piece else "$joined $piece" }
         }
 
-        private val LEADING_SEAM = Regex("^[\\s,.:;!?–—-]+")
-        private val TRAILING_SEAM = Regex("[\\s,.:;!?–—-]+$")
+        private val LEADING_SEAM = Regex("^(?:[\\s,:;]+|[–—-]\\s)+")
+        private val TRAILING_SEAM = Regex("(?:[\\s,:;]+|\\s[–—-])+$")
     }
 }

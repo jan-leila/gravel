@@ -37,7 +37,7 @@ class ActualApp : Application(), RouterApp {
         settings.missing()?.let { return "The Actual router is not set up: ${it.label} is missing" }
         if (delivery.routerId == null && settings[KEY_ACCOUNT] == null) return NO_DEFAULT
         if (!Http.allowed(settings[KEY_URL].orEmpty(), allowPrivateCleartext = true)) return BAD_ADDRESS
-        return if (TextTransactions.parse(delivery.content, decimals()) == null) NO_AMOUNT else null
+        return if (TextTransactions.of(delivery, decimals()) == null) NO_AMOUNT else null
     }
 
     fun decimals(): Int = settings[KEY_DECIMALS]?.toIntOrNull()?.coerceIn(0, 4) ?: 2

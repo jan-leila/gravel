@@ -7,16 +7,15 @@ import java.util.Properties
 /** Where a recording was made, as Gravel delivered it. */
 data class Location(val latitude: Double, val longitude: Double, val accuracyMeters: Float?)
 
-/** A Switch rule in the user's routing that matched on the way here: the switch, and the [text] it matched at [start] until [end] of the delivery's text. */
-data class Match(val routerId: String, val routerName: String, val start: Int, val end: Int, val text: String)
-
 /**
  * One delivery from Gravel: the text and the capture id always, the recording time and the
  * location only when this router declared the need and the user granted it (`ROUTER_API.md`).
  * [routerId] names the listed router ([RouterList]) the delivery is for, and is null for the
  * router the app's manifest declares. [captureId] repeats when Gravel delivers the same recording
- * again, so with [routerId] it is the outbox's key. [unmatchedText] and [matches] are what the
- * user's Switch rules matched on the way, absent from a Gravel older than them.
+ * again, so with [routerId] it is the outbox's key. [unmatchedText] is the text with the words the
+ * user's Switch rules cut taken out, and [fields] the request parameters the user filled from
+ * what those rules matched, by the names the manifest's `params` declares; both are absent from a
+ * Gravel older than them.
  */
 data class Delivery(
     val captureId: String,
@@ -25,13 +24,17 @@ data class Delivery(
     val location: Location?,
     val routerId: String? = null,
     val unmatchedText: String? = null,
-    val matches: List<Match> = emptyList(),
+    val fields: Map<String, String> = emptyMap(),
 ) {
     /**
-     * What a sender sends: the text without the words that routed it here ("add a task: buy milk"
-     * to "buy milk"), or the whole text when nothing is left of it or Gravel sent no unmatched text.
+     * What a sender sends where the user mapped no parameter: the text without the words a rule cut
+     * ("add a task: buy milk" to "buy milk"), or the whole text when nothing is left of it or
+     * Gravel sent no unmatched text.
      */
     val content: String get() = unmatchedText?.takeIf { it.isNotBlank() } ?: text
+
+    /** The parameter [name] as the user filled it, or null when it was not, or with nothing but spaces. */
+    fun field(name: String): String? = fields[name]?.takeIf { it.isNotBlank() }
 
     /** The delivery as the outbox stores it; [read] turns it back. */
     fun write(out: OutputStream) {
@@ -46,13 +49,10 @@ data class Delivery(
             it.accuracyMeters?.let { accuracy -> properties.setProperty(KEY_ACCURACY, accuracy.toString()) }
         }
         unmatchedText?.let { properties.setProperty(KEY_UNMATCHED_TEXT, it) }
-        if (matches.isNotEmpty()) properties.setProperty(KEY_MATCH_COUNT, matches.size.toString())
-        matches.forEachIndexed { index, match ->
-            properties.setProperty("$KEY_MATCH.$index.router_id", match.routerId)
-            properties.setProperty("$KEY_MATCH.$index.router_name", match.routerName)
-            properties.setProperty("$KEY_MATCH.$index.start", match.start.toString())
-            properties.setProperty("$KEY_MATCH.$index.end", match.end.toString())
-            properties.setProperty("$KEY_MATCH.$index.text", match.text)
+        if (fields.isNotEmpty()) properties.setProperty(KEY_FIELD_COUNT, fields.size.toString())
+        fields.entries.forEachIndexed { index, (name, value) ->
+            properties.setProperty("$KEY_FIELD.$index.name", name)
+            properties.setProperty("$KEY_FIELD.$index.value", value)
         }
         properties.store(out, null)
     }
@@ -66,18 +66,19 @@ data class Delivery(
         private const val KEY_LONGITUDE = "longitude"
         private const val KEY_ACCURACY = "accuracy_m"
         private const val KEY_UNMATCHED_TEXT = "unmatched_text"
-        private const val KEY_MATCH_COUNT = "match_count"
-        private const val KEY_MATCH = "match"
+        private const val KEY_FIELD_COUNT = "field_count"
+        private const val KEY_FIELD = "field"
 
-        /** More matches than Gravel's walk can make (16 switches in a row); past it the matches are not read. */
-        private const val MAX_MATCHES = 16
+        /** As many parameters as Gravel maps for a router; past them, the rest are not read. */
+        private const val MAX_FIELDS = 16
 
         /**
          * The delivery the broadcast's extras carry, or null for one this version does not
          * understand: another API version, a missing id or text, a version 2 delivery without a
-         * router id of the id grammar, or a location with one coordinate missing. The match
-         * extras are optional, so arrays that do not line up leave the matches empty rather than
-         * turn the delivery away. The extras come as a map so the reading is testable without Android.
+         * router id of the id grammar, or a location with one coordinate missing. The field
+         * extras are optional, so arrays that do not line up leave the fields empty rather than turn
+         * the delivery away; past [MAX_FIELDS], the rest are not read. The extras come as a map so
+         * the reading is testable without Android.
          */
         fun from(extras: Map<String, Any?>): Delivery? {
             val routerId = when (extras[RouterContract.EXTRA_API_VERSION]) {
@@ -97,18 +98,14 @@ data class Delivery(
                 else -> Location(latitude, longitude, extras[RouterContract.EXTRA_LOCATION_ACCURACY_METERS] as? Float)
             }
             val unmatchedText = extras[RouterContract.EXTRA_UNMATCHED_TEXT] as? String
-            return Delivery(captureId, text, recordedAt, location, routerId, unmatchedText, matches(extras))
+            return Delivery(captureId, text, recordedAt, location, routerId, unmatchedText, fields(extras))
         }
 
-        private fun matches(extras: Map<String, Any?>): List<Match> {
-            val ids = (extras[RouterContract.EXTRA_MATCH_ROUTER_IDS] as? Array<*>)?.filterIsInstance<String>() ?: return emptyList()
-            val names = (extras[RouterContract.EXTRA_MATCH_ROUTER_NAMES] as? Array<*>)?.filterIsInstance<String>() ?: return emptyList()
-            val texts = (extras[RouterContract.EXTRA_MATCH_TEXTS] as? Array<*>)?.filterIsInstance<String>() ?: return emptyList()
-            val starts = extras[RouterContract.EXTRA_MATCH_STARTS] as? IntArray ?: return emptyList()
-            val ends = extras[RouterContract.EXTRA_MATCH_ENDS] as? IntArray ?: return emptyList()
-            val count = ids.size
-            if (count > MAX_MATCHES || listOf(names.size, texts.size, starts.size, ends.size).any { it != count }) return emptyList()
-            return List(count) { Match(ids[it], names[it], starts[it], ends[it], texts[it]) }
+        private fun fields(extras: Map<String, Any?>): Map<String, String> {
+            val names = extras[RouterContract.EXTRA_FIELD_NAMES] as? Array<*> ?: return emptyMap()
+            val values = extras[RouterContract.EXTRA_FIELD_VALUES] as? Array<*> ?: return emptyMap()
+            if (names.size != values.size) return emptyMap()
+            return names.zip(values).take(MAX_FIELDS).mapNotNull { (name, value) -> if (name is String && value is String) name to value else null }.toMap()
         }
 
         /** A delivery [write] stored, or null for a file that is not one. */
@@ -120,20 +117,14 @@ data class Delivery(
             val latitude = properties.getProperty(KEY_LATITUDE)?.toDoubleOrNull()
             val longitude = properties.getProperty(KEY_LONGITUDE)?.toDoubleOrNull()
             val location = if (latitude != null && longitude != null) Location(latitude, longitude, properties.getProperty(KEY_ACCURACY)?.toFloatOrNull()) else null
-            val matchCount = properties.getProperty(KEY_MATCH_COUNT)?.toIntOrNull()?.coerceIn(0, MAX_MATCHES) ?: 0
-            val matches = (0 until matchCount).mapNotNull { index ->
-                fun value(name: String) = properties.getProperty("$KEY_MATCH.$index.$name")
-                Match(
-                    value("router_id") ?: return@mapNotNull null,
-                    value("router_name") ?: return@mapNotNull null,
-                    value("start")?.toIntOrNull() ?: return@mapNotNull null,
-                    value("end")?.toIntOrNull() ?: return@mapNotNull null,
-                    value("text") ?: return@mapNotNull null,
-                )
-            }
+            val fieldCount = properties.getProperty(KEY_FIELD_COUNT)?.toIntOrNull()?.coerceIn(0, MAX_FIELDS) ?: 0
+            val fields = (0 until fieldCount).mapNotNull { index ->
+                val name = properties.getProperty("$KEY_FIELD.$index.name") ?: return@mapNotNull null
+                properties.getProperty("$KEY_FIELD.$index.value")?.let { name to it }
+            }.toMap()
             return Delivery(
                 captureId, text, properties.getProperty(KEY_RECORDED_AT), location, properties.getProperty(KEY_ROUTER_ID),
-                properties.getProperty(KEY_UNMATCHED_TEXT), matches,
+                properties.getProperty(KEY_UNMATCHED_TEXT), fields,
             )
         }
     }

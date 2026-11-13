@@ -15,6 +15,7 @@
                 <action android:name="com.anopticlabs.gravel.notebook.action.ROUTE_TEXT" />
             </intent-filter>
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.id" android:value="assist" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.params" android:value="text" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.label" android:value="Tell Home Assistant" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.description" android:value="Hands what you said to Home Assistant's Assist, as if you had typed it" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.list" android:value="${applicationId}.routers" />

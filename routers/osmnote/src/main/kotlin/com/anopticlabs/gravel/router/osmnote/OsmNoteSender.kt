@@ -29,7 +29,7 @@ class OsmNoteSender(private val settings: Settings, private val send: (HttpReque
         val server = settings[OsmNoteApp.KEY_SERVER] ?: OsmNoteApp.DEFAULT_SERVER
         if (!Http.allowed(server, allowPrivateCleartext = false)) return SendResult.Refused(OsmNoteApp.BAD_ADDRESS)
         return answer(try {
-            send(osmNoteRequest(server, settings[OsmNoteApp.KEY_TOKEN], location, delivery.content))
+            send(osmNoteRequest(server, settings[OsmNoteApp.KEY_TOKEN], location, (delivery.field("text") ?: delivery.content)))
         } catch (e: IOException) {
             return SendResult.Retry("OpenStreetMap could not be reached: ${e::class.simpleName}")
         })

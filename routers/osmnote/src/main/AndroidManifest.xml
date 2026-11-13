@@ -15,6 +15,7 @@
                 <action android:name="com.anopticlabs.gravel.notebook.action.ROUTE_TEXT" />
             </intent-filter>
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.id" android:value="note" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.params" android:value="text" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.label" android:value="Leave an OSM note" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.description" android:value="Leaves what you said as an OpenStreetMap note where the recording was made" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.needs" android:value="location" />

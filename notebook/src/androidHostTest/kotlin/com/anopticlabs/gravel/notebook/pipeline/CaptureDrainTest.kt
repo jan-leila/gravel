@@ -1279,7 +1279,7 @@ class CaptureDrainTest {
     /** The matches index the kept transcript, so they are kept with it for the router reached once the user answers. */
     @Test
     fun aParkedCaptureKeepsItsSwitchMatchesForTheResume() = runBlocking<Unit> {
-        val match = TextMatch("split", "Split", 0, 5)
+        val match = TextMatch("split", 0, 5)
         enqueue("p1", "hello")
         parkAt(hook, setOf(Need.LOCATION), listOf(match))
         drain.drain()

@@ -3,15 +3,22 @@ package com.anopticlabs.gravel.notebook.routers
 import com.google.re2j.Pattern
 import com.google.re2j.PatternSyntaxException
 
+/** Where a pattern matched: the span, and each named group that took part, in UTF-16 units, ends exclusive. */
+data class SwitchFind(val start: Int, val end: Int, val groups: List<MatchGroup>)
+
 /** A [SwitchRule]'s pattern, compiled. */
 class SwitchPattern internal constructor(private val pattern: Pattern) {
-    /** True when the pattern matches anywhere in [text]. */
-    fun matchesIn(text: String): Boolean = pattern.matcher(text).find()
+    /** The named groups the pattern declares, `(?<name>...)` or `(?P<name>...)`. */
+    val groupNames: Set<String> get() = pattern.namedGroups().keys
 
-    /** The first match in [text] as start and end offsets in UTF-16 units, end exclusive, or null. */
-    fun findIn(text: String): Pair<Int, Int>? {
+    /** The first match in [text], or null; a group left out of the match (an optional one) is not listed. */
+    fun findIn(text: String): SwitchFind? {
         val matcher = pattern.matcher(text)
-        return if (matcher.find()) matcher.start() to matcher.end() else null
+        if (!matcher.find()) return null
+        val groups = pattern.namedGroups().entries.sortedBy { it.value }.mapNotNull { (name, index) ->
+            matcher.start(index).takeIf { it >= 0 }?.let { MatchGroup(name, it, matcher.end(index)) }
+        }
+        return SwitchFind(matcher.start(), matcher.end(), groups)
     }
 }
 
@@ -33,7 +40,5 @@ object SwitchMatcher {
         }
     }
 
-    fun matches(pattern: SwitchPattern, text: String): Boolean = pattern.matchesIn(text)
-
-    fun find(pattern: SwitchPattern, text: String): Pair<Int, Int>? = pattern.findIn(text)
+    fun find(pattern: SwitchPattern, text: String): SwitchFind? = pattern.findIn(text)
 }

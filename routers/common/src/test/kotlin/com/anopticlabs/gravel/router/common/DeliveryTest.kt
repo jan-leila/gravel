@@ -52,35 +52,35 @@ class DeliveryTest {
     private val matched = full + mapOf(
         RouterContract.EXTRA_TEXT to "add a task: buy milk",
         RouterContract.EXTRA_UNMATCHED_TEXT to "buy milk",
-        RouterContract.EXTRA_MATCH_ROUTER_IDS to arrayOf("tasks"),
-        RouterContract.EXTRA_MATCH_ROUTER_NAMES to arrayOf("Tasks"),
-        RouterContract.EXTRA_MATCH_STARTS to intArrayOf(0),
-        RouterContract.EXTRA_MATCH_ENDS to intArrayOf(10),
-        RouterContract.EXTRA_MATCH_TEXTS to arrayOf("add a task"),
+        RouterContract.EXTRA_FIELD_NAMES to arrayOf("title", "list"),
+        RouterContract.EXTRA_FIELD_VALUES to arrayOf("Buy milk", " "),
     )
 
     @Test
-    fun theMatchesAndTheTextLeftOverAreReadAndTheContentIsWhatIsLeft() {
+    fun theFieldsAndTheTextLeftOverAreReadAndTheContentIsWhatIsLeft() {
         val delivery = Delivery.from(matched)!!
         assertEquals("buy milk", delivery.unmatchedText)
-        assertEquals(listOf(Match("tasks", "Tasks", 0, 10, "add a task")), delivery.matches)
+        assertEquals(mapOf("title" to "Buy milk", "list" to " "), delivery.fields)
+        assertEquals("Buy milk", delivery.field("title"))
+        assertNull(delivery.field("list"), "a blank field is no field")
+        assertNull(delivery.field("other"))
         assertEquals("buy milk", delivery.content)
-        assertEquals("buy milk", Delivery.from(full)!!.content, "a Gravel without matches sends the text alone")
+        assertEquals("buy milk", Delivery.from(full)!!.content, "a Gravel without them sends the text alone")
         assertEquals("todo", Delivery("c1", "todo", null, null, unmatchedText = " ").content, "nothing left over sends the whole text")
     }
 
-    /** The match extras are optional: arrays that do not line up drop the matches, never the delivery. */
+    /** The field extras are optional: arrays that do not line up drop the fields, never the delivery. */
     @Test
-    fun matchArraysThatDoNotLineUpLeaveTheMatchesOut() {
-        assertEquals(emptyList<Match>(), Delivery.from(matched + (RouterContract.EXTRA_MATCH_ENDS to intArrayOf(10, 12)))!!.matches)
-        assertEquals(emptyList<Match>(), Delivery.from(matched - RouterContract.EXTRA_MATCH_TEXTS)!!.matches)
-        assertEquals(emptyList<Match>(), Delivery.from(matched + (RouterContract.EXTRA_MATCH_STARTS to arrayOf("0")))!!.matches)
-        assertEquals("buy milk", Delivery.from(matched - RouterContract.EXTRA_MATCH_TEXTS)!!.unmatchedText)
+    fun fieldArraysThatDoNotLineUpLeaveTheFieldsOut() {
+        assertEquals(emptyMap<String, String>(), Delivery.from(matched + (RouterContract.EXTRA_FIELD_VALUES to arrayOf("x")))!!.fields)
+        assertEquals(emptyMap<String, String>(), Delivery.from(matched - RouterContract.EXTRA_FIELD_NAMES)!!.fields)
+        assertEquals(emptyMap<String, String>(), Delivery.from(matched + (RouterContract.EXTRA_FIELD_NAMES to "title"))!!.fields)
+        assertEquals(16, Delivery.from(matched + mapOf(RouterContract.EXTRA_FIELD_NAMES to Array(20) { "p$it" }, RouterContract.EXTRA_FIELD_VALUES to Array(20) { "v" }))!!.fields.size)
     }
 
     @Test
-    fun theMatchesRoundTripThroughTheOutboxFormat() {
-        val delivery = Delivery.from(matched + (RouterContract.EXTRA_MATCH_ROUTER_NAMES to arrayOf("Tasks = \"todo\"\nlist")))!!
+    fun theFieldsRoundTripThroughTheOutboxFormat() {
+        val delivery = Delivery.from(matched + (RouterContract.EXTRA_FIELD_VALUES to arrayOf("Buy = \"milk\"\nnow", "x")))!!
         assertEquals(delivery, Delivery.read(ByteArrayInputStream(ByteArrayOutputStream().also { delivery.write(it) }.toByteArray())))
     }
 

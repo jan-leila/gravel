@@ -12,9 +12,6 @@ object RouteWalk {
     /** Forwarding routers in a row past which a walk is flagged, whatever the config says. */
     const val MAX_HOPS = 16
 
-    /** The router [text] ends at; see [route]. */
-    fun terminal(config: RoutingConfig, text: RoutedText): RouterConfig = route(config, text).router
-
     /**
      * The router [text] ends at, with the text carrying a [TextMatch] for every Switch rule that
      * matched on the way. Every switch reads the whole text, whatever an earlier one matched. A
@@ -63,8 +60,8 @@ object RouteWalk {
             } catch (e: IllegalArgumentException) {
                 notRouted("rule $n of ${switch.name} is not a valid regular expression")
             }
-            SwitchMatcher.find(pattern, text.text)?.let { (start, end) ->
-                matches += TextMatch(switch.id, switch.name, start, end)
+            SwitchMatcher.find(pattern, text.text)?.let { found ->
+                matches += TextMatch(switch.id, found.start, found.end, rule.cut, found.groups)
                 return rule.router
             }
         }
