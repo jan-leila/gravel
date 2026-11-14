@@ -59,6 +59,7 @@ import com.anopticlabs.gravel.notebook.R
 import com.anopticlabs.gravel.notebook.routers.FieldMapping
 import com.anopticlabs.gravel.notebook.routers.Grant
 import com.anopticlabs.gravel.notebook.routers.InstalledRouter
+import com.anopticlabs.gravel.notebook.routers.OpenAppRule
 import com.anopticlabs.gravel.notebook.routers.PlaceRule
 import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
@@ -78,6 +79,8 @@ import com.anopticlabs.gravel.notebook.routers.TimeMatcher
 import com.anopticlabs.gravel.notebook.routers.TimeRule
 import com.anopticlabs.gravel.notebook.routers.Trial
 import com.anopticlabs.gravel.notebook.routers.TrustedCertificate
+import com.anopticlabs.gravel.notebook.routers.WatchAppInfo
+import com.anopticlabs.gravel.notebook.routers.WatchAppTarget
 import com.anopticlabs.gravel.notebook.routers.groupNames
 import com.anopticlabs.gravel.notebook.routers.forwardsText
 import com.anopticlabs.gravel.notebook.routers.shares
@@ -201,7 +204,7 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>, topB
             // The stored router when there is one, so a page come back to shows what its target pages saved.
             val router = c.router(page.router.ref) ?: page.router
             RouterPage(
-                router, c, ui.apps, topBarParams, locate = viewModel::currentLocation,
+                router, c, ui.apps, topBarParams, locate = viewModel::currentLocation, watchApps = ui.watchApps, watchTargets = ui.watchTargets,
                 onSave = { saved ->
                     viewModel.save(RoutingEdits.withRouter(c, saved, replacing = router.ref))
                     pop()
@@ -415,6 +418,8 @@ private fun kindName(router: RouterConfig): String = stringResource(
         is RouterConfig.Place -> R.string.notebook_routing_kind_place
         is RouterConfig.App -> R.string.notebook_routing_kind_app
         is RouterConfig.Network -> R.string.notebook_routing_kind_network
+        is RouterConfig.OpenApp -> R.string.notebook_routing_kind_open_app
+        is RouterConfig.WatchApp -> R.string.notebook_routing_kind_watch_app
     }
 )
 
@@ -514,9 +519,12 @@ private fun KindPicker(config: RoutingConfig, onPick: (RouterConfig) -> Unit, on
         Kind(R.string.notebook_routing_kind_switch, R.string.notebook_routing_kind_switch_hint) { id, name -> RouterConfig.Switch(id, name) },
         Kind(R.string.notebook_routing_kind_time, R.string.notebook_routing_kind_time_hint) { id, name -> RouterConfig.Time(id, name) },
         Kind(R.string.notebook_routing_kind_place, R.string.notebook_routing_kind_place_hint) { id, name -> RouterConfig.Place(id, name) },
+        Kind(R.string.notebook_routing_kind_open_app, R.string.notebook_routing_kind_open_app_hint) { id, name -> RouterConfig.OpenApp(id, name) },
         // An app router's ref is the picked router's, so it starts with none.
         Kind(R.string.notebook_routing_kind_app, R.string.notebook_routing_kind_app_hint) { _, name -> RouterConfig.App("", name, "", "", "") },
         Kind(R.string.notebook_routing_kind_network, R.string.notebook_routing_kind_network_hint) { id, name -> RouterConfig.Network(id, name, "") },
+        // The app and its router are picked on the page.
+        Kind(R.string.notebook_routing_kind_watch_app, R.string.notebook_routing_kind_watch_app_hint) { id, name -> RouterConfig.WatchApp(id, name, "", "") },
     )
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -528,7 +536,7 @@ private fun KindPicker(config: RoutingConfig, onPick: (RouterConfig) -> Unit, on
                     ListItem(
                         modifier = Modifier.clickable {
                             // The name is the kind's, and the id its tag with the lowest free number; both can be changed.
-                            onPick(kind.make(RoutingEdits.newId(config, name.lowercase()), name))
+                            onPick(kind.make(RoutingEdits.newId(config, RoutingEdits.idPrefix(name)), name))
                         },
                         headlineContent = { Text(name) },
                         supportingContent = { Text(stringResource(kind.hint)) },
@@ -553,6 +561,8 @@ private fun RouterPage(
     apps: List<RouterApp>,
     topBarParams: TopBarParams,
     locate: suspend () -> RoutedLocation?,
+    watchApps: List<WatchAppInfo>,
+    watchTargets: List<WatchAppTarget>,
     onSave: (RouterConfig) -> Unit,
     onTrust: (RouterApp) -> Unit,
     onDelete: (() -> Unit)?,
@@ -571,11 +581,16 @@ private fun RouterPage(
     var picked by remember(router.ref) {
         mutableStateOf((router as? RouterConfig.App)?.let { app -> apps.flatMap { it.routers }.firstOrNull { it.packageName == app.packageName && it.receiverClass == app.receiverClass && it.id == app.id } })
     }
+    var openRules by remember(router.ref) { mutableStateOf((router as? RouterConfig.OpenApp)?.rules.orEmpty()) }
+    var openOtherwise by remember(router.ref) { mutableStateOf((router as? RouterConfig.OpenApp)?.otherwise) }
+    // The watch app's UUID and the id of its router, as picked.
+    var watchPick by remember(router.ref) { mutableStateOf((router as? RouterConfig.WatchApp)?.let { it.app to it.router }) }
+    val watchTarget = watchTargets.firstOrNull { it.app.uuid == watchPick?.first && it.id == watchPick?.second }
     var askTrust by remember(router.ref) { mutableStateOf<Pair<RouterApp, InstalledRouter>?>(null) }
     var url by remember(router.ref) { mutableStateOf((router as? RouterConfig.Network)?.url ?: "https://") }
     var token by remember(router.ref) { mutableStateOf((router as? RouterConfig.Network)?.bearerToken.orEmpty()) }
     var shares by remember(router.ref) { mutableStateOf(router.shares ?: Shares()) }
-    var fieldMaps by remember(router.ref) { mutableStateOf((router as? RouterConfig.App)?.fields ?: (router as? RouterConfig.Network)?.fields.orEmpty()) }
+    var fieldMaps by remember(router.ref) { mutableStateOf((router as? RouterConfig.App)?.fields ?: (router as? RouterConfig.WatchApp)?.fields ?: (router as? RouterConfig.Network)?.fields.orEmpty()) }
     val groups = remember(config) { config.groupNames() }
     var confirm by remember(router.ref) { mutableStateOf(router.confirm) }
     var problem by remember(router.ref) { mutableStateOf<String?>(null) }
@@ -583,6 +598,7 @@ private fun RouterPage(
     var leaving by remember(router.ref) { mutableStateOf<Leaving?>(null) }
     val others = config.routers.filter { it.ref != router.ref }
     val appKindName = stringResource(R.string.notebook_routing_kind_app)
+    val watchAppKindName = stringResource(R.string.notebook_routing_kind_watch_app)
     val pickOne = stringResource(R.string.notebook_routing_pick_one)
     fun built(): RouterConfig {
         val trimmed = name.trim()
@@ -603,6 +619,14 @@ private fun RouterPage(
             is RouterConfig.Network -> RouterConfig.Network(
                 router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares, confirm = confirm, description = about, fields = fieldMaps,
             )
+            is RouterConfig.OpenApp -> RouterConfig.OpenApp(router.id, trimmed, openRules, openOtherwise, description = about)
+            // A router its app no longer declares keeps the app, router and parameters it was picked with.
+            is RouterConfig.WatchApp -> watchTarget?.let {
+                RouterConfig.WatchApp(
+                    router.id, trimmed, it.app.uuid, it.id, shares = shares, confirm = confirm, description = about,
+                    params = it.params, fields = fieldMaps.filter { field -> field.param in it.params },
+                )
+            } ?: router.copy(name = trimmed, shares = shares, confirm = confirm, description = about, fields = fieldMaps.filter { it.param in router.params })
         }
     }
     val dirty = built() != router
@@ -674,6 +698,16 @@ private fun RouterPage(
                         SharesFields(needed = Need.entries.toSet(), shares, onShares = { shares = it })
                         NetworkParamsFields(fieldMaps, groups, onFields = { fieldMaps = it })
                     }
+                    is RouterConfig.OpenApp -> OpenAppRulesFields(openRules, openOtherwise, others, watchApps, onRules = { openRules = it }, onOtherwise = { openOtherwise = it })
+                    is RouterConfig.WatchApp -> {
+                        if (watchTarget == null && router.app.isNotEmpty()) Text(stringResource(R.string.notebook_routing_watch_app_gone), color = MaterialTheme.colorScheme.error)
+                        WatchAppFields(watchTargets, watchTarget, onPick = { choice ->
+                            watchPick = choice.app.uuid to choice.id
+                            if (name.isBlank() || name == router.name && router.name == watchAppKindName) name = choice.name
+                        })
+                        SharesFields(needed = Need.entries.toSet(), shares, onShares = { shares = it })
+                        ParamsFields(watchTarget?.params ?: router.params, fieldMaps, groups, onFields = { fieldMaps = it })
+                    }
                 }
                 if (!router.forwardsText) {
                     Row(Modifier.fillMaxWidth().clickable { confirm = !confirm }, verticalAlignment = Alignment.CenterVertically) {
@@ -691,7 +725,7 @@ private fun RouterPage(
                     TextButton(onClick = { leave(null) }) { Text(stringResource(R.string.notebook_cancel)) }
                     Button(onClick = {
                         val candidate = built()
-                        if (candidate is RouterConfig.App && candidate.packageName.isEmpty()) {
+                        if (candidate is RouterConfig.App && candidate.packageName.isEmpty() || candidate is RouterConfig.WatchApp && candidate.app.isEmpty()) {
                             problem = pickOne
                             return@Button
                         }
@@ -797,6 +831,70 @@ private fun TimeRulesFields(
         ) { Text(stringResource(R.string.notebook_routing_add_rule)) }
     }
     TargetPicker(stringResource(R.string.notebook_routing_otherwise), otherwise, targets, allowNone = true, onPick = onOtherwise)
+}
+
+/** The rules of an Open app router: a watch app from the locker and a target each; then the fallback. */
+@Composable
+private fun OpenAppRulesFields(
+    rules: List<OpenAppRule>,
+    otherwise: RouterRef?,
+    targets: List<RouterConfig>,
+    apps: List<WatchAppInfo>,
+    onRules: (List<OpenAppRule>) -> Unit,
+    onOtherwise: (RouterRef?) -> Unit,
+) {
+    Text(stringResource(R.string.notebook_routing_rules), style = MaterialTheme.typography.titleSmall)
+    if (apps.isEmpty()) Text(stringResource(R.string.notebook_routing_no_watch_apps), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    rules.forEachIndexed { index, rule ->
+        fun replace(changed: OpenAppRule) = onRules(rules.mapIndexed { i, r -> if (i == index) changed else r })
+        var open by remember { mutableStateOf(false) }
+        Box {
+            OutlinedButton(onClick = { open = true }) {
+                Text(stringResource(R.string.notebook_routing_open_app_when, rule.label))
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+            }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                apps.forEach { app ->
+                    DropdownMenuItem(text = { Text(app.name) }, onClick = {
+                        replace(OpenAppRule.of(app, rule.router))
+                        open = false
+                    })
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TargetPicker(stringResource(R.string.notebook_routing_forward_to), rule.router, targets, allowNone = false) { ref -> ref?.let { replace(rule.copy(router = it)) } }
+            IconButton(onClick = { onRules(rules.filterIndexed { i, _ -> i != index }) }) {
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.notebook_routing_remove_rule))
+            }
+        }
+    }
+    if (rules.size < RoutingConfig.MAX_RULES) {
+        val target = targets.firstOrNull()
+        val app = apps.firstOrNull()
+        OutlinedButton(
+            onClick = { if (target != null && app != null) onRules(rules + OpenAppRule.of(app, target.ref)) },
+            enabled = target != null && app != null,
+        ) { Text(stringResource(R.string.notebook_routing_add_rule)) }
+    }
+    TargetPicker(stringResource(R.string.notebook_routing_otherwise), otherwise, targets, allowNone = true, onPick = onOtherwise)
+}
+
+/** Every router the watch apps in the locker declared; the app's locker name tells two routers of one name apart. */
+@Composable
+private fun WatchAppFields(targets: List<WatchAppTarget>, picked: WatchAppTarget?, onPick: (WatchAppTarget) -> Unit) {
+    Text(stringResource(R.string.notebook_routing_pick_app), style = MaterialTheme.typography.titleSmall)
+    if (targets.isEmpty()) Text(stringResource(R.string.notebook_routing_no_watch_targets), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    targets.forEach { choice ->
+        Row(Modifier.fillMaxWidth().clickable { onPick(choice) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = picked == choice, onClick = null)
+            Column(Modifier.padding(start = 8.dp)) {
+                Text(choice.name)
+                choice.description?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Text(choice.app.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
 }
 
 /**
@@ -1317,7 +1415,7 @@ private fun TrialResult(trial: Trial.Ended) {
         match.groups.forEach { (name, value) -> Text("  $name = \"$value\"", style = MaterialTheme.typography.bodySmall) }
     }
     when (trial.router) {
-        is RouterConfig.App, is RouterConfig.Network -> {
+        is RouterConfig.App, is RouterConfig.Network, is RouterConfig.WatchApp -> {
             Text(stringResource(R.string.notebook_routing_try_sends, trial.unmatchedText), style = MaterialTheme.typography.bodyMedium)
             if (trial.fields.isNotEmpty()) {
                 Text(stringResource(R.string.notebook_routing_try_fields), style = MaterialTheme.typography.titleSmall)

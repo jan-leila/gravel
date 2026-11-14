@@ -28,6 +28,7 @@ class NotebookRingSinkTest {
     private val hours = TestTimeSource()
     private val ingested = mutableListOf<Pair<ByteArray, Long>>()
     private val locations = mutableListOf<RoutedLocation?>()
+    private val fresh = mutableListOf<Boolean>()
     private val here = RoutedLocation(52.52, 13.405, 12f)
     private var lookups = 0
     private var windowSeconds: Int? = 600
@@ -35,7 +36,7 @@ class NotebookRingSinkTest {
     private val sink = NotebookRingSink(
         notebookOn = { on },
         ringRecordingsQueued = { queued },
-        ingest = { wav, at, location -> ingested += wav to at; locations += location; result },
+        ingest = { wav, at, location, justMade -> ingested += wav to at; locations += location; fresh += justMade; result },
         locate = { lookups++; here },
         locationWindowSeconds = { windowSeconds },
         clock = { now },
@@ -150,11 +151,22 @@ class NotebookRingSinkTest {
     }
 
     @Test
+    fun onlyARecordingThatJustEndedIsToldAsJustMadeAlsoWhilePlacingIsOff() = runTest {
+        windowSeconds = null
+        store(seconds(16_000, 1.0), at = now / 1000 - 5)
+        store(seconds(16_000, 1.0), at = now / 1000 - 3_600)
+        store(seconds(16_000, 1.0), at = null)
+
+        assertEquals(listOf(true, false, false), fresh)
+        assertEquals(0, lookups)
+    }
+
+    @Test
     fun aRecordingIsStoredWhenThePhoneHasNoPosition() = runTest {
         val unplaced = NotebookRingSink(
             notebookOn = { true },
             ringRecordingsQueued = { 0 },
-            ingest = { _, _, location -> locations += location; IngestResult.QUEUED },
+            ingest = { _, _, location, _ -> locations += location; IngestResult.QUEUED },
             locate = { null },
             clock = { now },
         )

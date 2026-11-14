@@ -539,7 +539,9 @@ val ringClientModule = module {
                 val queue = get<QueueStore>()
                 withContext(Dispatchers.IO) { queue.readQueue().count(QueuedCapture::fromRing) } + queue.retainedRingCount()
             },
-            ingest = { wav, at, location -> get<CaptureIngest>().ingest(wav, "wav", capturedAtMillis = at, location = location, fromRing = true) },
+            ingest = { wav, at, location, justMade ->
+                get<CaptureIngest>().ingest(wav, "wav", capturedAtMillis = at, location = location, fromRing = true, readOpenApp = justMade)
+            },
             locate = { get<RecordingLocation>().current() },
             locationWindowSeconds = { get<NotebookPreferences>().ringLocationSeconds },
         )

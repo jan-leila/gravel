@@ -51,6 +51,14 @@ object RoutingDiff {
                 if (was.otherwise != now.otherwise) lines += fallback(name, now.otherwise, after)
                 if (was.unknown != now.unknown) lines += "'$name' sends recordings without a location to ${nameOf(after, now.unknown)}."
             }
+            was is RouterConfig.OpenApp && now is RouterConfig.OpenApp -> {
+                if (was.rules != now.rules) lines += rules(name, was.rules.size, now.rules.size)
+                if (was.otherwise != now.otherwise) lines += fallback(name, now.otherwise, after)
+            }
+            was is RouterConfig.WatchApp && now is RouterConfig.WatchApp -> {
+                if (was.app != now.app || was.router != now.router) lines += "'$name' now sends to another watch app router."
+                if (was.fields != now.fields) lines += "'$name' fills its parameters differently."
+            }
             was is RouterConfig.Network && now is RouterConfig.Network -> {
                 if (was.url != now.url) lines += "'$name' now posts to ${RoutingEdits.hostOf(now.url)}."
                 when {

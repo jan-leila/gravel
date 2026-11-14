@@ -7,6 +7,8 @@ import com.anopticlabs.gravel.push.LockerPushTargetApps
 import com.anopticlabs.gravel.push.PushTargetApps
 import com.anopticlabs.gravel.push.WatchappPush
 import com.anopticlabs.gravel.push.WatchappPushManager
+import com.anopticlabs.gravel.routers.WatchappRouterManager
+import com.anopticlabs.gravel.routers.WatchappRouters
 import com.anopticlabs.gravel.watchapp.InjectedWatchAppCaptures
 import com.anopticlabs.gravel.watchsync.InjectedFirstSyncDecider
 import com.russhwolf.settings.Settings
@@ -399,6 +401,7 @@ fun initKoin(
                 single { WatchappPushManager(getOrNull(), get(), get(), get()) } binds
                         arrayOf(WatchappPushManager::class, WatchappPush::class)
                 singleOf(::LockerPushTargetApps) bind PushTargetApps::class
+                single { WatchappRouterManager(get(), get()) } bind WatchappRouters::class
                 singleOf(::RealWatchPrefs) bind WatchPrefs::class
                 singleOf(::WebSyncManager) bind RequestSync::class
                 singleOf(::TimelineApi) bind Timeline::class
@@ -438,6 +441,8 @@ fun initKoin(
                         // watchappPermissions
                         get(),
                         // watchappPush
+                        get(),
+                        // watchappRouters
                         get(),
                         // Gravel: backupRows
                         TableRows(get<Database>()),

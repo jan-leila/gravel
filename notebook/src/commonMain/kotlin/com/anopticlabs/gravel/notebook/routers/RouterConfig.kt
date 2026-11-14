@@ -182,6 +182,44 @@ sealed interface RouterConfig {
         override val description: String? = null,
         val fields: List<FieldMapping> = emptyList(),
     ) : RouterConfig
+
+    /**
+     * Forwards to the router of the first rule whose watch app was open on the watch when the
+     * recording was taken in ([RoutedText.openApp]), else to [otherwise], which also takes a
+     * recording made with no watch connected.
+     */
+    @Serializable
+    @SerialName("open_app")
+    data class OpenApp(
+        override val id: String,
+        override val name: String,
+        val rules: List<OpenAppRule> = emptyList(),
+        val otherwise: RouterRef? = null,
+        override val namespace: String? = null,
+        override val description: String? = null,
+    ) : RouterConfig
+
+    /**
+     * Hands the text to the JavaScript of the watch app [app] (its UUID), as the router [router]
+     * that app declared with `Pebble.setRouters`, opening the app on the watch first. [params] are
+     * the request parameters the app declared for it, as read when it was picked, and [fields]
+     * what the user maps to them. Nothing declares what the app needs beyond the text, so, as for
+     * a Network router, [shares] alone decides what goes with it.
+     */
+    @Serializable
+    @SerialName("watch_app")
+    data class WatchApp(
+        override val id: String,
+        override val name: String,
+        val app: String,
+        val router: String,
+        override val namespace: String? = null,
+        val shares: Shares = Shares(),
+        override val confirm: Boolean = false,
+        override val description: String? = null,
+        val params: List<String> = emptyList(),
+        val fields: List<FieldMapping> = emptyList(),
+    ) : RouterConfig
 }
 
 /** The grants of a router that sends out of the phone; null for one the Notebook consumes. */
@@ -189,14 +227,16 @@ val RouterConfig.shares: Shares?
     get() = when (this) {
         is RouterConfig.App -> shares
         is RouterConfig.Network -> shares
-        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place -> null
+        is RouterConfig.WatchApp -> shares
+        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp -> null
     }
 
-/** What a delivery to this router may carry beyond the text: an app's declared needs, a server's every need not refused. */
+/** What a delivery to this router may carry beyond the text: an app's declared needs, every need not refused for a server or a watch app. */
 fun RouterConfig.needed(): Set<Need> = when (this) {
     is RouterConfig.App -> needs
     is RouterConfig.Network -> Need.entries.filterTo(mutableSetOf()) { shares.of(it) != Grant.NEVER }
-    is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place -> emptySet()
+    is RouterConfig.WatchApp -> Need.entries.filterTo(mutableSetOf()) { shares.of(it) != Grant.NEVER }
+    is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp -> emptySet()
 }
 
 /** The needs the user has to be asked about before a delivery to this router. */
@@ -212,7 +252,7 @@ fun RouterConfig.shared(granted: Set<Need>): Set<Need> = needed().filterTo(mutab
 }
 
 /**
- * The request parameters a delivery to this router carries, by name: for an App router each
+ * The request parameters a delivery to this router carries, by name: for an App or Watch app router each
  * parameter it declared, from the source the user mapped to it, else from the named group of the
  * same name; for a Network router each parameter the user mapped. A parameter whose source has no
  * value in [text] (a group that took no part in its match, a rule that never matched) is left out.
@@ -220,8 +260,9 @@ fun RouterConfig.shared(granted: Set<Need>): Set<Need> = needed().filterTo(mutab
 fun RouterConfig.fieldsFor(text: RoutedText): Map<String, String> {
     val sources: List<Pair<String, String?>> = when (this) {
         is RouterConfig.App -> params.map { param -> param to fields.firstOrNull { it.param == param }.let { if (it == null) param else it.source } }
+        is RouterConfig.WatchApp -> params.map { param -> param to fields.firstOrNull { it.param == param }.let { if (it == null) param else it.source } }
         is RouterConfig.Network -> fields.map { it.param to it.source }
-        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place -> return emptyMap()
+        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp -> return emptyMap()
     }
     val groups = text.groupValues()
     return buildMap {
@@ -266,6 +307,16 @@ data class Spot(val label: String, val latitude: Double, val longitude: Double, 
 @Serializable
 data class PlaceRule(val spot: Spot, val within: Boolean, val router: RouterRef)
 
+/** Where a recording goes when the watch app [app] (its UUID) was open; [label] is the app's name when the rule was made, for the screen. */
+@Serializable
+data class OpenAppRule(val app: String, val label: String, val router: RouterRef) {
+    companion object {
+        /** A rule for [app], labelled with as much of its locker name as a label holds. */
+        fun of(app: WatchAppInfo, router: RouterRef): OpenAppRule =
+            OpenAppRule(app.uuid, app.name.trim().take(RoutingConfig.MAX_NAME_CHARS).trim().ifEmpty { app.uuid }, router)
+    }
+}
+
 /** Where a recording goes when every one of [conditions] holds for its time. */
 @Serializable
 data class TimeRule(val conditions: List<TimeCondition>, val router: RouterRef)
@@ -303,11 +354,13 @@ val RouterConfig.forwards: List<RouterRef>
         is RouterConfig.Switch -> rules.map { it.router } + listOfNotNull(otherwise)
         is RouterConfig.Time -> rules.map { it.router } + listOfNotNull(otherwise)
         is RouterConfig.Place -> rules.map { it.router } + listOfNotNull(otherwise, unknown)
-        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.App, is RouterConfig.Network -> emptyList()
+        is RouterConfig.OpenApp -> rules.map { it.router } + listOfNotNull(otherwise)
+        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.App, is RouterConfig.Network, is RouterConfig.WatchApp -> emptyList()
     }
 
 /** Whether this router hands the text on rather than consuming it. */
-val RouterConfig.forwardsText: Boolean get() = this is RouterConfig.Switch || this is RouterConfig.Time || this is RouterConfig.Place
+val RouterConfig.forwardsText: Boolean
+    get() = this is RouterConfig.Switch || this is RouterConfig.Time || this is RouterConfig.Place || this is RouterConfig.OpenApp
 
 /**
  * The whole graph: the [entry] router the transcript goes to first, and every router by ref. The
@@ -347,7 +400,8 @@ data class RoutingConfig(
                 is RouterConfig.App -> require(RouterTrust.normalizeDigest(router.namespace) == router.namespace) {
                     "${router.name} needs the SHA-256 of its app's signing certificate as its namespace."
                 }
-                is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.Network ->
+                is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.Network,
+                is RouterConfig.OpenApp, is RouterConfig.WatchApp ->
                     require(router.namespace == null) { "${router.name} is one of Gravel's own routers and cannot be in a namespace." }
             }
         }
@@ -362,6 +416,8 @@ data class RoutingConfig(
                 is RouterConfig.Place -> requireWellFormed(router)
                 is RouterConfig.Network -> requireWellFormed(router)
                 is RouterConfig.App -> requireWellFormed(router)
+                is RouterConfig.OpenApp -> requireWellFormed(router)
+                is RouterConfig.WatchApp -> requireWellFormed(router)
                 is RouterConfig.Note, is RouterConfig.Reminder -> Unit
             }
         }
@@ -434,6 +490,27 @@ data class RoutingConfig(
             "${app.name} declares parameters this version of Gravel cannot read; pick the router again."
         }
         requireWellFormed(app.name, app.fields, declared = app.params)
+    }
+
+    private fun requireWellFormed(openApp: RouterConfig.OpenApp) {
+        require(openApp.rules.size <= MAX_RULES) { "${openApp.name} can have at most $MAX_RULES rules." }
+        openApp.rules.forEachIndexed { index, rule ->
+            val n = index + 1
+            require(isWatchAppUuid(rule.app)) { "Rule $n of ${openApp.name} needs a watch app; pick one." }
+            require(rule.label.isNotBlank() && rule.label.length <= MAX_NAME_CHARS && rule.label.trim() == rule.label) {
+                "Rule $n of ${openApp.name} needs an app name of up to $MAX_NAME_CHARS characters."
+            }
+            require(router(rule.router) != null) { "Rule $n of ${openApp.name} forwards to a router that does not exist." }
+        }
+        openApp.otherwise?.let { require(router(it) != null) { "${openApp.name} falls back to a router that does not exist." } }
+    }
+
+    private fun requireWellFormed(watchApp: RouterConfig.WatchApp) {
+        require(isWatchAppUuid(watchApp.app) && isRouterId(watchApp.router)) { "${watchApp.name} needs a watch app's router; pick one." }
+        require(watchApp.params.size <= MAX_PARAMS && watchApp.params.all(::isParamName) && watchApp.params.toSet().size == watchApp.params.size) {
+            "${watchApp.name} declares parameters this version of Gravel cannot read; pick the router again."
+        }
+        requireWellFormed(watchApp.name, watchApp.fields, declared = watchApp.params)
     }
 
     // [declared] is the parameters an app declared; a Network router has none to hold its own to.
@@ -511,6 +588,11 @@ data class RoutingConfig(
         private val CLASS_NAME = Regex("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*")
 
         fun isRouterId(id: String): Boolean = ROUTER_ID.matches(id)
+
+        private val WATCH_APP_UUID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+        /** A watch app's UUID as the routing stores it: lowercase, with its dashes. */
+        fun isWatchAppUuid(uuid: String): Boolean = WATCH_APP_UUID.matches(uuid)
 
         private val PARAM_NAME = Regex("[a-z][a-z0-9_]{0,${MAX_PARAM_CHARS - 1}}")
         private val GROUP_NAME = Regex("[A-Za-z_][A-Za-z0-9_]{0,${MAX_PARAM_CHARS - 1}}")
