@@ -1,1 +1,5 @@
-RELEASE NOTES PENDING: replace this file with the release notes before merging main into release.
+Text Routing learns about your watch's apps.
+
+Open app router: send a recording on by the watch app that was open on your watch when you made it.
+
+Watch app router: a watch app can declare routers from its phone-side JavaScript (Pebble.setRouters); routing text to one opens the app on the watch and hands it the text.
