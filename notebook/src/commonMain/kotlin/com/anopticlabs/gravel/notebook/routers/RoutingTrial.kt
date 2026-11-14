@@ -20,10 +20,10 @@ sealed interface Trial {
 
 /** Runs the routing walk on a sentence without saving, delivering or calling the text model, for the user to try their rules. */
 object RoutingTrial {
-    /** [recordedAt] and [location] stand in for the recording's, so Time and Place routers decide as they would now and here. */
-    fun run(config: RoutingConfig, sentence: String, recordedAt: String, location: RoutedLocation?): Trial {
+    /** [recordedAt], [location] and [openApp] stand in for the recording's, so Time, Place and Open app routers decide as they would now and here. */
+    fun run(config: RoutingConfig, sentence: String, recordedAt: String, location: RoutedLocation?, openApp: String? = null): Trial {
         val route = try {
-            RouteWalk.route(config, RoutedText(TRIAL_ID, recordedAt, sentence, location))
+            RouteWalk.route(config, RoutedText(TRIAL_ID, recordedAt, sentence, location, openApp = openApp))
         } catch (e: CaptureProcessingException) {
             return Trial.NotRouted(e.message.orEmpty())
         }

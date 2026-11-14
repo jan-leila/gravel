@@ -139,6 +139,7 @@ navigator.geolocation.clearWatch = (id) => {
         GET_TIMELINE_TOKEN_SUCCESS: 'getTimelineTokenSuccess',
         GET_TIMELINE_TOKEN_FAILURE: 'getTimelineTokenFailure',
         PUSH: 'push',
+        ROUTE: 'route',
     };
     Object.freeze(PebbleEventTypes);
     const DEFAULT_TIMEOUT = 5000; // 5 seconds
@@ -299,6 +300,10 @@ navigator.geolocation.clearWatch = (id) => {
     global.signalPush = (data) => {
         dispatchPebbleEvent(PebbleEventTypes.PUSH, { payload: data.body, encrypted: data.encrypted });
     };
+    // Gravel: routers this app offers the Notebook's text routing.
+    global.signalRoute = (data) => {
+        dispatchPebbleEvent(PebbleEventTypes.ROUTE, { router: data.router, payload: data.delivery });
+    };
     global.signalTimelineTokenFailure = (data) => {
         var payload;
         if (typeof data === 'string') {
@@ -380,6 +385,12 @@ navigator.geolocation.clearWatch = (id) => {
             const callId = _Pebble.getPushEndpointAsync();
             pushEndpointCallbacks.set(callId, { onSuccess, onFailure });
         },
+        setRouters: (routers) => {
+            if (!Array.isArray(routers)) {
+                throw new TypeError('setRouters needs a list of routers');
+            }
+            return typeof _Pebble.setRouters === 'function' && _Pebble.setRouters(JSON.stringify(routers));
+        },
         timelineSubscribe: (token, onSuccess, onFailure) => {
             //TODO
         },
@@ -414,6 +425,7 @@ navigator.geolocation.clearWatch = (id) => {
     global.Pebble.sendAppMessage = PebbleAPI.sendAppMessage;
     global.Pebble.getTimelineToken = PebbleAPI.getTimelineToken;
     global.Pebble.getPushEndpoint = PebbleAPI.getPushEndpoint;
+    global.Pebble.setRouters = PebbleAPI.setRouters;
     global.Pebble.timelineSubscribe = PebbleAPI.timelineSubscribe;
     global.Pebble.timelineUnsubscribe = PebbleAPI.timelineUnsubscribe;
     global.Pebble.timelineSubscriptions = PebbleAPI.timelineSubscriptions;

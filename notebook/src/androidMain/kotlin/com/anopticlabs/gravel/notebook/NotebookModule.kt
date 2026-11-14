@@ -71,6 +71,8 @@ import com.anopticlabs.gravel.notebook.routers.RouterDeliveries
 import com.anopticlabs.gravel.notebook.routers.RouterTrustStore
 import com.anopticlabs.gravel.notebook.routers.RoutingConfigStore
 import com.anopticlabs.gravel.notebook.routers.TextDeliverer
+import com.anopticlabs.gravel.notebook.routers.WatchAppRouterDelivery
+import com.anopticlabs.gravel.notebook.routers.WatchApps
 import com.anopticlabs.gravel.notebook.sources.AudioRecordMicrophone
 import com.anopticlabs.gravel.notebook.sources.Microphone
 import com.anopticlabs.gravel.notebook.sources.LocationManagerRecordingLocation
@@ -137,11 +139,12 @@ val notebookModule = module {
     single { RoutingConfigStore(NotebookFiles.root(androidContext()), get()) }
     single { RouterTrustStore(androidContext().noBackupFilesDir) }
     single<InstalledRouters> { AndroidInstalledRouters(androidContext()) }
-    // TextPoster comes from the app, which binds it to its HTTP client.
+    // TextPoster and WatchApps come from the app, which binds them to its HTTP client and the watch library.
     single<TextDeliverer> {
         RouterDeliveries(
             app = AppRouterDelivery(get(), { get<RouterTrustStore>().trustedDigests() }, AndroidRouterBroadcastSender(androidContext())),
             network = NetworkRouterDelivery(get()) { hasUplinkNetwork(androidContext()) },
+            watchApp = WatchAppRouterDelivery(get()),
         )
     }
     single { BackupStaging(NotebookFiles.root(androidContext())) }
@@ -262,7 +265,7 @@ val notebookModule = module {
     single { NotebookHousekeeping(get(), get(), get(), removeStartOverLeftovers = { get<NotebookRecovery>().removeStartOverLeftovers() }) }
     single { AndroidCaptureKeepAlive(androidContext()) } binds arrayOf(CaptureKeepAlive::class, RecordingKeepAlive::class)
     single { CaptureCoordinator(drain = get(), housekeeping = get(), rows = get(), keepAlive = get()) }
-    single { CaptureIngest(get(), captureQueued = { get<CaptureCoordinator>().captureQueued() }, entryQueued = { get<ProcessingControls>().captureQueued(it) }) }
+    single { CaptureIngest(get(), captureQueued = { get<CaptureCoordinator>().captureQueued() }, entryQueued = { get<ProcessingControls>().captureQueued(it) }, openApp = { get<WatchApps>().open() }) }
     single<Microphone> { AudioRecordMicrophone(androidContext()) }
     single<RecordingLocation> { LocationManagerRecordingLocation(androidContext()) }
     single { PhoneRecorder(microphone = get(), ingest = get(), keepAlive = get(), text = get(), coordinator = get(), location = get()) }
@@ -292,6 +295,7 @@ val notebookModule = module {
         RoutingViewModel(
             get(), get(), get(), BackupDocuments(androidContext().contentResolver),
             location = get(), text = get(), processing = { get<CaptureCoordinator>().working.value },
+            watchApps = get(),
         )
     }
     viewModel {

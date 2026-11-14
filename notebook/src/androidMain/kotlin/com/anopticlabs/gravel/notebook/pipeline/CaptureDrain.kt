@@ -440,6 +440,7 @@ class CaptureDrain(
                 serverTriedAtMillis = entry.serverTriedAtMillis,
                 markServerTry = { at -> recordServerTry(entry.id, at) },
                 location = entry.location,
+                openApp = entry.openApp,
             )
             val built = backend.process(request) { stage -> stage(entry, stage) }
             if (built is BuiltCapture.ToConfirm) return park(entry, built)

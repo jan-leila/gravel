@@ -1,6 +1,7 @@
 package io.rebble.libpebblecommon.js
 
 import com.anopticlabs.gravel.push.WatchappPush
+import com.anopticlabs.gravel.routers.WatchappRouters
 import co.touchlab.kermit.Logger
 import io.rebble.libpebblecommon.connection.CompanionApp
 import io.rebble.libpebblecommon.connection.ConnectedPebble
@@ -152,6 +153,17 @@ class PKJSApp(
         }
     }
 
+    // Gravel: a routed text is claimed only once the JavaScript can hear it, so its sender never counts one
+    // as delivered that no listener saw.
+    private fun launchRoutedTextHandler(scope: CoroutineScope) {
+        val runner = jsRunner ?: error("JsRunner not initialized")
+        val routers: WatchappRouters = get()
+        scope.launch {
+            runner.readyState.first { it }
+            routers.textsRoutedTo(uuid).collect { if (it.claim()) runner.signalRoute(it.routerId, it.payload) }
+        }
+    }
+
     suspend fun requestConfigurationUrl(): String? {
         if (runningScope == null) {
             logger.e { "Cannot show configuration, PKJSApp is not running" }
@@ -218,6 +230,7 @@ class PKJSApp(
         launchIncomingAppMessageHandler(incomingAppMessages, scope)
         launchOutgoingAppMessageHandler(device, scope)
         launchPushHandler(scope)
+        launchRoutedTextHandler(scope)
         jsRunner?.start() ?: error("JsRunner not initialized")
     }
 

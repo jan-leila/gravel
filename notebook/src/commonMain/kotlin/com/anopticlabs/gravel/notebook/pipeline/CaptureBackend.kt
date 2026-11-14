@@ -38,7 +38,8 @@ data class CaptureSettings(
 /**
  * One queued recording to process. [capturedAt] is when the recording started, on the phone, the
  * watch or the ring, never when it was queued or processed: it dates the note, stamps what is built from
- * the transcript, and is the "now" the reminder's time is read against; [location] is where it was made, when known.
+ * the transcript, and is the "now" the reminder's time is read against; [location] is where it was made, when known,
+ * and [openApp] the watch app open on the watch then.
  * [folders] are the ones a note may be routed to.
  * [phoneTried], [markPhoneTried], [long], [fromWearable], [serverTries], [serverTriedAtMillis] and [markServerTry] are what
  * the entry gives its [SpeechCapture].
@@ -59,6 +60,7 @@ class CaptureRequest(
     val serverTriedAtMillis: Long? = null,
     val markServerTry: suspend (atMillis: Long) -> Boolean = { false },
     val location: RoutedLocation? = null,
+    val openApp: String? = null,
 )
 
 /**

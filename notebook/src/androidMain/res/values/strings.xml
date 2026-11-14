@@ -88,6 +88,14 @@
     <string name="notebook_routing_kind_app_hint">Sends the text to a router another app declares; you trust the app when you pick it</string>
     <string name="notebook_routing_kind_network">Network</string>
     <string name="notebook_routing_kind_network_hint">Posts the text as JSON to an https:// address</string>
+    <string name="notebook_routing_kind_open_app">Open app</string>
+    <string name="notebook_routing_kind_open_app_hint">Forwards by the watch app that was open on your watch when the recording was made</string>
+    <string name="notebook_routing_kind_watch_app">Watch app</string>
+    <string name="notebook_routing_kind_watch_app_hint">Opens a watch app and hands the text to a router that app declares</string>
+    <string name="notebook_routing_open_app_when">When open: %1$s</string>
+    <string name="notebook_routing_no_watch_apps">There are no watch apps in the locker.</string>
+    <string name="notebook_routing_no_watch_targets">No watch app has declared a router. An app declares its routers when it runs on the watch.</string>
+    <string name="notebook_routing_watch_app_gone">The watch app behind this router no longer declares it, or is gone from the locker. Recordings routed to an app that is gone are flagged.</string>
     <string name="notebook_routing_kind_time">Time</string>
     <string name="notebook_routing_kind_time_hint">Forwards by when the recording was made: time of day, day, week, month or year</string>
     <string name="notebook_routing_kind_place">Place</string>

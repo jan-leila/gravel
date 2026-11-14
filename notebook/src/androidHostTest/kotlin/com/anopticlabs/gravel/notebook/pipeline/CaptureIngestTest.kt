@@ -72,6 +72,23 @@ class CaptureIngestTest {
     }
 
     @Test
+    fun aRecordingIsQueuedWithTheWatchAppOpenThenUnlessItWasMadeTooLongAgo() = runBlocking<Unit> {
+        var ids = 0
+        val app = "11111111-2222-3333-4444-555555555555"
+        val reading = CaptureIngest(queue, captureQueued = {}, clock = { now }, newId = { "c-${++ids}" }, openApp = { app })
+        reading.ingest(audio, "wav")
+        reading.ingest(audio, "wav", fromRing = true, readOpenApp = false)
+        assertEquals(listOf(app, null), queue.readQueue(strict = true).map { it.openApp })
+    }
+
+    @Test
+    fun aRecordingIsQueuedWhenTheOpenAppCannotBeRead() = runBlocking<Unit> {
+        val failing = CaptureIngest(queue, captureQueued = {}, clock = { now }, newId = { "c-1" }, openApp = { error("no watch library") })
+        assertEquals(IngestResult.QUEUED, failing.ingest(audio, "wav"))
+        assertEquals(null, queue.readQueue(strict = true).single().openApp)
+    }
+
+    @Test
     fun aWavRecordingIsQueuedWithItsLength() = runBlocking<Unit> {
         val wav = RecordingBuffer().apply { append(ShortArray(48_000), 48_000) }.toWav()
         assertEquals(IngestResult.QUEUED, ingest.ingest(wav, "wav"))

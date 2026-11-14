@@ -30,6 +30,9 @@ import com.anopticlabs.gravel.notebook.routers.RoutingExport
 import com.anopticlabs.gravel.notebook.routers.RoutingStoreState
 import com.anopticlabs.gravel.notebook.routers.TrustEntries
 import com.anopticlabs.gravel.notebook.routers.TrustedCertificate
+import com.anopticlabs.gravel.notebook.routers.WatchAppInfo
+import com.anopticlabs.gravel.notebook.routers.WatchAppTarget
+import com.anopticlabs.gravel.notebook.routers.WatchApps
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -61,7 +64,8 @@ data class Proposal(val config: RoutingConfig, val lines: List<String>)
 /**
  * [store] is null until the first load; [error] is the last refused save or failed write and
  * [notice] the last export or import that went through, each until cleared; [proposal] is the
- * text model's answer to a described change, until applied or discarded.
+ * text model's answer to a described change, until applied or discarded; [watchApps] are the
+ * watch apps in the locker and [watchTargets] the routers they declared, as of the last load.
  */
 data class RoutingUi(
     val store: RoutingStoreState? = null,
@@ -71,6 +75,8 @@ data class RoutingUi(
     val notice: String? = null,
     val busy: Boolean = false,
     val proposal: Proposal? = null,
+    val watchApps: List<WatchAppInfo> = emptyList(),
+    val watchTargets: List<WatchAppTarget> = emptyList(),
 )
 
 /**
@@ -89,29 +95,32 @@ class RoutingViewModel<H : Any>(
     private val processing: () -> Boolean = { false },
     private val now: () -> Instant = { Clock.System.now() },
     private val zone: () -> TimeZone = { TimeZone.currentSystemDefault() },
+    private val watchApps: WatchApps = WatchApps.NONE,
 ) : ViewModel() {
     /** Where the phone is now, for a place the user is at; null when it is not known or not allowed. */
     suspend fun currentLocation(): RoutedLocation? = withContext(io) { location.current() }
 
     /**
-     * What the stored routing does with [sentence], as if recorded now and here; null while no
+     * What the stored routing does with [sentence], as if recorded now and here, with the watch as it is; null while no
      * routing is loaded. Nothing is saved or sent, and no text model runs.
      */
     suspend fun tryRoute(sentence: String): Trial? {
         val config = (_ui.value.store as? RoutingStoreState.Loaded)?.config ?: return null
         val here = currentLocation()
-        return withContext(io) { RoutingTrial.run(config, sentence, RecordedAt.render(now(), zone()), here) }
+        return withContext(io) { RoutingTrial.run(config, sentence, RecordedAt.render(now(), zone()), here, watchApps.open()) }
     }
 
     private val _ui = MutableStateFlow(RoutingUi())
     val ui: StateFlow<RoutingUi> = _ui.asStateFlow()
 
-    /** Reads the routing, the trust and the installed routers again. */
+    /** Reads the routing, the trust, the installed routers and the watch apps again. */
     fun load() = run {
         val state = store.load()
         trust.load()
         refreshTrust()
-        _ui.update { it.copy(store = state) }
+        val apps = watchApps.installed()
+        val targets = watchApps.targets()
+        _ui.update { it.copy(store = state, watchApps = apps, watchTargets = targets) }
     }
 
     /** Validates and stores [config]; a config the store refuses leaves the stored routing as it was and sets [RoutingUi.error]. */

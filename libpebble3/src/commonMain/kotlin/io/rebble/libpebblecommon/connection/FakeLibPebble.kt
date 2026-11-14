@@ -4,6 +4,9 @@ import com.anopticlabs.gravel.push.PushFailure
 import com.anopticlabs.gravel.push.PushMessage
 import com.anopticlabs.gravel.push.PushRegistration
 import com.anopticlabs.gravel.push.PushState
+import com.anopticlabs.gravel.routers.RoutedToWatchapp
+import com.anopticlabs.gravel.routers.WatchappDelivery
+import com.anopticlabs.gravel.routers.WatchappRouter
 import kotlinx.coroutines.flow.emptyFlow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -303,6 +306,15 @@ class FakeLibPebble : LibPebble {
         PushRegistration.Failed(PushFailure.Unsupported)
 
     override fun watchappPushMessages(appUuid: Uuid): Flow<PushMessage> = emptyFlow()
+
+    override val watchappRouters = MutableStateFlow<Map<Uuid, List<WatchappRouter>>>(emptyMap())
+
+    override suspend fun declareWatchappRouters(appUuid: Uuid, routersJson: String): Boolean = false
+
+    override suspend fun routeToWatchapp(appUuid: Uuid, routerId: String, payload: String): WatchappDelivery =
+        WatchappDelivery.NotInstalled
+
+    override fun textsRoutedTo(appUuid: Uuid): Flow<RoutedToWatchapp> = emptyFlow()
 
     override fun notificationAppChannelCounts(packageName: String): Flow<List<ChannelAndCount>> =
         MutableStateFlow(emptyList())

@@ -3,6 +3,7 @@ package io.rebble.libpebblecommon.js
 import com.anopticlabs.gravel.push.PushFailure
 import com.anopticlabs.gravel.push.PushRegistration
 import com.anopticlabs.gravel.push.WatchappPush
+import com.anopticlabs.gravel.routers.WatchappRouters
 import co.touchlab.kermit.Logger
 import io.rebble.cobble.shared.data.js.ActivePebbleWatchInfo
 import io.rebble.cobble.shared.data.js.fromWatchInfo
@@ -41,6 +42,7 @@ abstract class PrivatePKJSInterface(
     private val watchappPermissions: WatchappPermissionResolver,
     // Gravel: optional so the iOS bridge, which has no push transport, constructs unchanged.
     private val watchappPush: WatchappPush? = null,
+    private val watchappRouters: WatchappRouters? = null,
 ) {
     companion object {
         private val logger = Logger.withTag("PrivatePKJSInterface")
@@ -145,6 +147,12 @@ abstract class PrivatePKJSInterface(
             }
         }
         return callId
+    }
+
+    /** Gravel: declares the routers this app offers the Notebook, as a JSON list; false when it is refused. */
+    open fun setRouters(routersJson: String): Boolean {
+        val uuid = Uuid.parse(jsRunner.appInfo.uuid)
+        return runBlocking { watchappRouters?.declareWatchappRouters(uuid, routersJson) ?: false }
     }
 
     open fun signalAppScriptLoadedByBootstrap() {
