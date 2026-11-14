@@ -2189,7 +2189,7 @@ in the app's device suite:
     (`RoutingDiff`, which says of an added router what it does) is shown
     for the user to keep or discard; nothing is
     stored before that. One retry carries the refusal's reason.
-  - An **Assistant** router (`RouterConfig.Assistant`, tag `assistant`)
+  - A **Routing Assistant** router (`RouterConfig.Assistant`, tag `assistant`)
     makes the same edit from a recording: the walk ends at it, the text
     without the words a cutting rule matched is the instruction, and
     `OnDeviceCaptureBackend` runs `RoutingEditor.propose` before the

@@ -165,7 +165,7 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   when it was made) leaves the phone only for routers you allow, each
   one asked about or decided once; the routing can also be rewritten by
   the on-device text model from a description, typed in the settings or
-  spoken into a recording routed to an Assistant router, shown as what
+  spoken into a recording routed to a Routing Assistant router, shown as what
   changed before it is kept. Every note and reminder made from a recording
   carries the time the recording started.
   Notes, reminders and waiting recordings are stored as encrypted files

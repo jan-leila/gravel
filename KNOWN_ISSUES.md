@@ -1960,7 +1960,7 @@ send in the app's settings says so.
 **Status: accepted; the preview is the safeguard.**
 
 Settings > Notebook > Text Routing can ask the on-device text model to
-rewrite the routing from a description, and an Assistant router does the
+rewrite the routing from a description, and a Routing Assistant router does the
 same from a recording routed to it. The models Gravel ships are small
 (Qwen3 1.7B and 0.8B, greedy decoding, no grammar-constrained output), so
 a larger routing or a vaguer request can come back as JSON the routing

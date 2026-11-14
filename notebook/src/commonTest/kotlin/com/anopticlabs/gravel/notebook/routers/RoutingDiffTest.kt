@@ -55,7 +55,7 @@ class RoutingDiffTest {
         assertEquals(
             listOf(
                 "Added Network 'Out': posts to hooks.example.net, shares your location.",
-                "Added Assistant 'Assistant': changes this routing as the text says, asks you first.",
+                "Added Routing Assistant 'Assistant': changes this routing as the text says, asks you first.",
             ),
             RoutingDiff.describe(config, after),
         )

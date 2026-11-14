@@ -92,7 +92,7 @@
     <string name="notebook_routing_kind_open_app_hint">Forwards by the watch app that was open on your watch when the recording was made</string>
     <string name="notebook_routing_kind_watch_app">Watch app</string>
     <string name="notebook_routing_kind_watch_app_hint">Opens a watch app and hands the text to a router that app declares</string>
-    <string name="notebook_routing_kind_assistant">Assistant</string>
+    <string name="notebook_routing_kind_assistant">Routing Assistant</string>
     <string name="notebook_routing_kind_assistant_hint">Changes this routing from what you say, once you have looked at the change</string>
     <string name="notebook_routing_assistant_hint">A recording routed here is read as a change to this routing, such as "send anything starting with remind to a reminder router". The text model rewrites the routing, and the recording waits in the Notebook with what would change until you apply or dismiss it. Tokens and places are hidden from the model. Words a Switch rule cuts on the way here are left out of what it reads.</string>
     <string name="notebook_routing_try_assistant">Read as a change to the routing: %1$s</string>

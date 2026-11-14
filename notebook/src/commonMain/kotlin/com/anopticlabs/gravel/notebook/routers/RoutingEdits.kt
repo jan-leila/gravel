@@ -65,7 +65,7 @@ object RoutingEdits {
         is RouterConfig.Network -> "Network"
         is RouterConfig.OpenApp -> "Open app"
         is RouterConfig.WatchApp -> "Watch app"
-        is RouterConfig.Assistant -> "Assistant"
+        is RouterConfig.Assistant -> "Routing Assistant"
     }
 
     /** The id prefix a new router of the same kind as [router] gets. */
