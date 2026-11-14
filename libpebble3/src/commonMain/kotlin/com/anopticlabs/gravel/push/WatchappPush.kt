@@ -100,7 +100,8 @@ interface WatchappPush {
 /** The watch side of a push: whether its target still exists, and opening it. */
 interface PushTargetApps {
     suspend fun isInstalled(appUuid: Uuid): Boolean
-    suspend fun launch(appUuid: Uuid)
+    /** False when no watch is connected to open it on. */
+    suspend fun launch(appUuid: Uuid): Boolean
 }
 
 class LockerPushTargetApps(
@@ -109,8 +110,10 @@ class LockerPushTargetApps(
 ) : PushTargetApps {
     override suspend fun isInstalled(appUuid: Uuid): Boolean = lockerEntryDao.getEntry(appUuid) != null
 
-    override suspend fun launch(appUuid: Uuid) {
-        watches.watches.value.filterIsInstance<ConnectedPebbleDevice>().forEach { it.launchApp(appUuid) }
+    override suspend fun launch(appUuid: Uuid): Boolean {
+        val connected = watches.watches.value.filterIsInstance<ConnectedPebbleDevice>()
+        connected.forEach { it.launchApp(appUuid) }
+        return connected.isNotEmpty()
     }
 }
 

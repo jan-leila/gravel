@@ -16,6 +16,7 @@ import kotlinx.serialization.Serializable
  * often the server could not be reached for it under a server-then-phone route, the last at [serverTriedAtMillis];
  * [fromWatch] and [fromRing] where it was recorded.
  * [latitude], [longitude] and [accuracyMeters] are where it was made when the phone knew, see [location].
+ * [openApp] is the UUID of the watch app open on the watch when it was taken in, when one was.
  * [awaiting] is set while the routing waits on the user for it, see [awaitsUser].
  */
 @Serializable
@@ -37,6 +38,7 @@ data class QueuedCapture(
     val accuracyMeters: Float? = null,
     val awaiting: AwaitingUser? = null,
     val fromRing: Boolean = false,
+    val openApp: String? = null,
 )
 
 /**

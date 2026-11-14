@@ -32,6 +32,7 @@ object RouteWalk {
                 is RouterConfig.Switch -> pick(current, text, matches)
                 is RouterConfig.Time -> pick(current, text)
                 is RouterConfig.Place -> pick(current, text)
+                is RouterConfig.OpenApp -> pick(current, text)
                 else -> error("${current.name} does not forward")
             } ?: notRouted("no rule of ${current.name} matched and it has no fallback")
             current = config.router(next) ?: notRouted("${current.name} forwards to a router that does not exist")
@@ -50,6 +51,10 @@ object RouteWalk {
         val fields = TimeMatcher.fields(text.recordedAt) ?: notRouted("the recording's time could not be read for ${time.name}")
         return time.rules.firstOrNull { TimeMatcher.holds(it, fields) }?.router ?: time.otherwise
     }
+
+    // A recording with no app known (no watch connected, a ring recording synced late) matches no rule.
+    private fun pick(openApp: RouterConfig.OpenApp, text: RoutedText): RouterRef? =
+        openApp.rules.firstOrNull { it.app == text.openApp }?.router ?: openApp.otherwise
 
     // Only a switch adds a match: Time and Place rules read the time and location, which a router gets by grant alone.
     private fun pick(switch: RouterConfig.Switch, text: RoutedText, matches: MutableList<TextMatch>): RouterRef? {

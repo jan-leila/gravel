@@ -370,6 +370,69 @@ stable, Apache-2.0, on Maven Central. It brings
 `com.google.crypto.tink:tink` (Apache-2.0, Maven Central) for the Web Push
 decryption.
 
+## Watch apps in the text routing
+
+The Notebook's text routing (Notebook, below) knows the watch's apps in
+two ways: an **Open app** router forwards by the app that was open on the
+watch, and a **Watch app** router hands the text to a router a watchapp
+declared from its PebbleKit JS.
+
+**Open app** (`RouterConfig.OpenApp`, tag `open_app`). `CaptureIngest`
+reads the UUID of the app running on the connected watch as a recording
+is taken into the queue (`QueuedCapture.openApp`), and the walk compares
+it with the router's rules; no watch, or no rule for that app, takes the
+fallback. A phone or watch recording is taken in as it ends. A ring
+recording is taken in at the next sync, so the app is read for it only
+when it ended within the ring location window (the default window while
+placing is off); a later one has none. The UUID is read by the walk and
+goes into no delivery.
+
+**What a watchapp sees** (`startup.js`):
+
+```js
+Pebble.setRouters([
+    { id: 'station', name: 'Departures', description: 'Shows a station', params: ['station'] },
+]);  // true when Gravel kept the list
+Pebble.addEventListener('route', function (e) {
+    // e.router: the id of the declared router the text is for
+    // e.payload: what a Network router is posted (ROUTER_API.md): text,
+    //   unmatched_text, capture_id, fields, and recorded_at / location
+    //   when the user shares them
+});
+```
+
+`setRouters` replaces the app's whole list (an empty list declares none),
+so an app calls it on every `ready`. A list that breaks a limit is refused
+whole: 16 routers, ids of 1 to 32 lowercase letters, digits or dashes,
+a one-line name of up to 64 characters and description of up to 200, 16
+parameter names. Declarations are kept in the library's settings
+(`WatchappRouterManager`), since the JavaScript runs only while the app
+is open, and they are not part of any backup: an app declares again when
+it next runs. Declaring needs no grant. It only adds entries to the
+picker of a Watch app router, listed under the app's locker name; text
+reaches an app only through a router the user added to the routing.
+
+**A delivery** (`RouterConfig.WatchApp`, tag `watch_app`; the app's UUID
+and the declared router's id). `WatchappRouterManager.routeToWatchapp`
+queues the payload in an in-memory inbox for the app and launches the app
+on every connected watch, as a push does; `PKJSApp` claims the text once
+the JavaScript is ready and dispatches the `route` event. The delivery
+returns once the text is claimed, so a capture leaves the Notebook's
+queue only when the JavaScript was handed it. An app gone from the locker
+flags the capture; with no watch connected the capture waits for a later
+drain (nothing starts one when a watch connects); an app that did not
+come up within 30 seconds is tried again. A text given up on can no
+longer be claimed, so a retry does not arrive twice, but an app whose
+event handler fails has still been handed the text: `capture_id` lets it
+tell a repeat. Delivery asks only that the app is in the locker, not
+that it still declares the router. What goes with the text is the
+router's grants alone, as for a Network router, and the app needs its
+Network grant to send anything on.
+
+**Layout.** `com.anopticlabs.gravel.routers` in `libpebble3` holds the
+declarations and the delivery; the Notebook reaches them through its
+`WatchApps` seam, which `LibPebbleWatchApps` in `composeApp` binds.
+
 ## Watchapp permissions (phone-side network and location)
 
 Third-party watchapps and watchfaces ship companion JavaScript (PebbleKit
@@ -2002,7 +2065,7 @@ in the app's device suite:
   another signer's): a `Note` router builds the note with the text model
   (the stamp goes into the front matter as `recorded:`), a `Reminder`
   router a reminder (the stamp is stored on the item and carried by the
-  backup), and an `App` or `Network` router a `BuiltCapture.Forward` the
+  backup), and an `App`, `Network` or `WatchApp` router a `BuiltCapture.Forward` the
   drain delivers before the capture settles, cancellable, so a stop or a
   pause still lands during a delivery; the capture leaves the queue only
   once the delivery returned. A `Switch` forwards to the target of the

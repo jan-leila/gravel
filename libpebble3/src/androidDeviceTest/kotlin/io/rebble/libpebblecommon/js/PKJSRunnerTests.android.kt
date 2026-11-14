@@ -81,6 +81,7 @@ fun createJsRunner(
         notificationConfigFlow = NotificationConfigFlow(configFlow),
         watchappPermissions = watchappPermissions,
         watchappPush = libPebble,
+        watchappRouters = libPebble,
         networkDenyEnforcement = networkDenyEnforcement,
     )
 }

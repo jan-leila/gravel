@@ -49,8 +49,9 @@ class WatchappPushManagerTest {
         val launched = mutableListOf<Uuid>()
 
         override suspend fun isInstalled(appUuid: Uuid) = installed
-        override suspend fun launch(appUuid: Uuid) {
+        override suspend fun launch(appUuid: Uuid): Boolean {
             launched += appUuid
+            return true
         }
     }
 

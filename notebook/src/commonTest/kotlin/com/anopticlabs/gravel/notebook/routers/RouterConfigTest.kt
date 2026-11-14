@@ -121,14 +121,15 @@ class RouterConfigTest {
     fun aConfirmationFlagRoundTripsOnTheKindsThatConsumeTheTextAndIsLeftOutWhenOff() {
         val untouched = NotebookJson.parseToJsonElement(NotebookJson.encodeToString(full)).jsonObject.getValue("routers").jsonArray
         assertTrue(untouched.none { it.jsonObject.containsKey("confirm") })
-        for (router in listOf(note, reminder, app, network)) {
+        for (router in listOf(note, reminder, app, network, RouterConfig.WatchApp("watch", "Watch", "11111111-2222-3333-4444-555555555555", "station"))) {
             assertFalse(router.confirm)
             val careful = when (router) {
                 is RouterConfig.Note -> router.copy(confirm = true)
                 is RouterConfig.Reminder -> router.copy(confirm = true)
                 is RouterConfig.App -> router.copy(confirm = true)
                 is RouterConfig.Network -> router.copy(confirm = true)
-                is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place -> error("not here")
+                is RouterConfig.WatchApp -> router.copy(confirm = true)
+                is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp -> error("not here")
             }
             val json = NotebookJson.encodeToString(RouterConfig.serializer(), careful)
             assertEquals("true", NotebookJson.parseToJsonElement(json).jsonObject.getValue("confirm").jsonPrimitive.content)

@@ -43,12 +43,13 @@ private const val RING_TIME_FLOOR_MILLIS = 1_735_689_600_000L
  *
  * The ring has no position, so a recording is placed by [locate] at the phone's position when it is taken in, and only
  * when it is dated by the ring's clock and ended at most [locationWindowSeconds] before; otherwise, or while
- * [locationWindowSeconds] is null (the user turned placing off), it has no location.
+ * [locationWindowSeconds] is null (the user turned placing off), it has no location. The watch app open on the watch is
+ * read for it under the same window (the default one while placing is off), which [ingest] is told as `justMade`.
  */
 class NotebookRingSink(
     private val notebookOn: suspend () -> Boolean,
     private val ringRecordingsQueued: suspend () -> Int,
-    private val ingest: suspend (wav: ByteArray, capturedAtMillis: Long, location: RoutedLocation?) -> IngestResult,
+    private val ingest: suspend (wav: ByteArray, capturedAtMillis: Long, location: RoutedLocation?, justMade: Boolean) -> IngestResult,
     private val locate: suspend () -> RoutedLocation? = { null },
     private val locationWindowSeconds: () -> Int? = { DEFAULT_RING_LOCATION_SECONDS },
     private val clock: () -> Long = System::currentTimeMillis,
@@ -79,11 +80,11 @@ class NotebookRingSink(
         val now = clock()
         val ringTime = capturedAtUnixSeconds?.times(1000)?.takeIf { it in RING_TIME_FLOOR_MILLIS..now }
         val window = locationWindowSeconds()
-        val recent = ringTime != null && window != null && now - (ringTime + millis) <= window * 1_000L
-        val location = if (recent) locate() else null
+        val justMade = ringTime != null && now - (ringTime + millis) <= (window ?: DEFAULT_RING_LOCATION_SECONDS) * 1_000L
+        val location = if (justMade && window != null) locate() else null
         val wav = withContext(Dispatchers.Default) { ringWav(sampleRate, samples) }
         val capturedAt = ringTime ?: now
-        val result = ingest(wav, capturedAt, location)
+        val result = ingest(wav, capturedAt, location, justMade)
         logger.i { "recording at collection $firstIndex, $millis ms: $result" }
         if (result == IngestResult.LOST) return leftOnRing(firstIndex, RingWait.NOT_KEPT)
         synchronized(storedInLastHour) { storedInLastHour.addLast(marks.markNow()) }

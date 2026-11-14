@@ -18,12 +18,14 @@ interface TextDeliverer {
 class RouterDeliveries(
     private val app: TextDeliverer? = null,
     private val network: TextDeliverer? = null,
+    private val watchApp: TextDeliverer? = null,
 ) : TextDeliverer {
     override suspend fun deliver(router: RouterConfig, text: RoutedText, share: Set<Need>) {
         val deliverer = when (router) {
             is RouterConfig.App -> app
             is RouterConfig.Network -> network
-            is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place ->
+            is RouterConfig.WatchApp -> watchApp
+            is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp ->
                 throw IllegalArgumentException("${router.name} is consumed by the Notebook, not delivered")
         } ?: throw CaptureProcessingException(
             CaptureFailureKind.FLAG, "this build cannot deliver to ${router.name}", reason = CaptureFailureReason.ROUTER_UNAVAILABLE,

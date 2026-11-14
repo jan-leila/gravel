@@ -24,7 +24,8 @@ data class TextMatch(val routerId: String, val start: Int, val end: Int, val cut
 
 /**
  * What a voice recording's transcript is routed as: the whole text, the time the recording
- * started, and where it was made when the phone knew. Every router receives it as one value and
+ * started, where it was made when the phone knew, and the watch app open on the watch then
+ * ([openApp], its UUID, which only the routing reads: no delivery carries it). Every router receives it as one value and
  * forwards it whole; [recordedAt] is a [RecordedAt] value; [captureId] identifies the recording,
  * so a receiver can tell a repeated delivery of the same recording from a new one; [matches] are
  * the Switch rules that matched on the way, in walk order, which stay on the phone: what a
@@ -40,6 +41,7 @@ data class RoutedText(
     val text: String,
     val location: RoutedLocation? = null,
     val matches: List<TextMatch> = emptyList(),
+    val openApp: String? = null,
 ) {
     /** [text] without the spans of the [matches] that cut theirs: what a router acts on once the words that routed it are gone. */
     val unmatchedText: String get() = unmatched(text, matches.filter { it.cut }.map { it.start to it.end })
@@ -56,8 +58,8 @@ data class RoutedText(
     }
 
     companion object {
-        fun of(captureId: String, recordedAt: Instant, zone: TimeZone, text: String, location: RoutedLocation? = null): RoutedText =
-            RoutedText(captureId, RecordedAt.render(recordedAt, zone), text, location)
+        fun of(captureId: String, recordedAt: Instant, zone: TimeZone, text: String, location: RoutedLocation? = null, openApp: String? = null): RoutedText =
+            RoutedText(captureId, RecordedAt.render(recordedAt, zone), text, location, openApp = openApp)
 
         /**
          * [text] with every one of [spans] cut out, overlapping spans merged, the pieces left

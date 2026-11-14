@@ -22,6 +22,7 @@ object RoutingEdits {
                 existing is RouterConfig.Switch -> existing.copy(rules = existing.rules.map { it.copy(router = it.router.moved()) }, otherwise = existing.otherwise?.moved())
                 existing is RouterConfig.Time -> existing.copy(rules = existing.rules.map { it.copy(router = it.router.moved()) }, otherwise = existing.otherwise?.moved())
                 existing is RouterConfig.Place -> existing.copy(rules = existing.rules.map { it.copy(router = it.router.moved()) }, otherwise = existing.otherwise?.moved(), unknown = existing.unknown?.moved())
+                existing is RouterConfig.OpenApp -> existing.copy(rules = existing.rules.map { it.copy(router = it.router.moved()) }, otherwise = existing.otherwise?.moved())
                 else -> existing
             }
         }
@@ -47,6 +48,7 @@ object RoutingEdits {
                 router.ref != ref -> router
                 router is RouterConfig.App -> router.copy(shares = router.shares.with(need, grant))
                 router is RouterConfig.Network -> router.copy(shares = router.shares.with(need, grant))
+                router is RouterConfig.WatchApp -> router.copy(shares = router.shares.with(need, grant))
                 else -> router
             }
         },
@@ -61,10 +63,15 @@ object RoutingEdits {
         is RouterConfig.Place -> "Place"
         is RouterConfig.App -> "App"
         is RouterConfig.Network -> "Network"
+        is RouterConfig.OpenApp -> "Open app"
+        is RouterConfig.WatchApp -> "Watch app"
     }
 
     /** The id prefix a new router of the same kind as [router] gets. */
-    fun idPrefix(router: RouterConfig): String = kindName(router).lowercase()
+    fun idPrefix(router: RouterConfig): String = idPrefix(kindName(router))
+
+    /** A kind's name as an id can spell it: `open-app` for "Open app". */
+    fun idPrefix(kindName: String): String = kindName.lowercase().replace(' ', '-')
 
     /** What a list shows under a router's name: the user's description of it, or else its [summary]. */
     fun blurb(router: RouterConfig, config: RoutingConfig): String = router.description ?: summary(router, config)
@@ -80,6 +87,8 @@ object RoutingEdits {
         is RouterConfig.Place -> rulesSummary(router.rules.size, router.otherwise, config, "place")
         is RouterConfig.App -> "Sends to ${router.packageName}" + sharesSummary(router)
         is RouterConfig.Network -> "Posts to ${hostOf(router.url)}" + sharesSummary(router)
+        is RouterConfig.OpenApp -> rulesSummary(router.rules.size, router.otherwise, config, "app")
+        is RouterConfig.WatchApp -> "Opens its watch app with the text" + sharesSummary(router)
     }
 
     private fun rulesSummary(count: Int, otherwise: RouterRef?, config: RoutingConfig, unit: String = "rule"): String {

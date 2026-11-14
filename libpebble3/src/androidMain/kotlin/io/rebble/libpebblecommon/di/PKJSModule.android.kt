@@ -25,6 +25,7 @@ actual val pkjsPlatformModule: Module = module {
             notificationConfigFlow = get(),
             watchappPermissions = get(),
             watchappPush = get(),
+            watchappRouters = get(),
             networkDenyEnforcement = get(),
         )
     } bind JsRunner::class

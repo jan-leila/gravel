@@ -77,7 +77,7 @@ class OnDeviceCaptureBackend(
             return BuiltCapture.Completion(utterance)
         }
         val config = readRouting()
-        val (terminal, routed) = RouteWalk.route(config, RoutedText.of(request.id, request.capturedAt, request.zone, transcript, request.location))
+        val (terminal, routed) = RouteWalk.route(config, RoutedText.of(request.id, request.capturedAt, request.zone, transcript, request.location, request.openApp))
         // A router that waits on the user gets nothing built now: the answer may change what is sent, or drop it.
         val asks = terminal.asked()
         if (terminal.confirm || asks.isNotEmpty()) return BuiltCapture.ToConfirm(terminal, routed, asks)
@@ -106,11 +106,11 @@ class OnDeviceCaptureBackend(
     ): BuiltCapture = when (terminal) {
         is RouterConfig.Note -> buildNote(routed, capturedAt, zone, folders, folderTags, onStage)
         is RouterConfig.Reminder -> buildReminder(routed, capturedAt, zone, onStage)
-        is RouterConfig.App, is RouterConfig.Network -> {
+        is RouterConfig.App, is RouterConfig.Network, is RouterConfig.WatchApp -> {
             onStage(CaptureStage.FORWARDING)
             BuiltCapture.Forward(terminal, routed, terminal.shared(granted) - denied)
         }
-        is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place -> throw IllegalStateException("the routing walk ended at a router that forwards")
+        is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp -> throw IllegalStateException("the routing walk ended at a router that forwards")
     }
 
     private fun unavailable(why: String): Nothing =

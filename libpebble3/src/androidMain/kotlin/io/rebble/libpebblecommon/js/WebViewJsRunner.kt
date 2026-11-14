@@ -4,6 +4,7 @@ import com.anopticlabs.gravel.push.PushEndpoint
 import com.anopticlabs.gravel.push.PushFailure
 import com.anopticlabs.gravel.push.PushMessage
 import com.anopticlabs.gravel.push.WatchappPush
+import com.anopticlabs.gravel.routers.WatchappRouters
 import kotlinx.serialization.json.putJsonObject
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
@@ -95,6 +96,7 @@ class WebViewJsRunner(
     notificationConfigFlow: NotificationConfigFlow,
     private val watchappPermissions: WatchappPermissionResolver,
     private val watchappPush: WatchappPush,
+    private val watchappRouters: WatchappRouters,
     private val networkDenyEnforcement: NetworkDenyEnforcement,
 ): JsRunner(appInfo, lockerEntry, jsPath, device, urlOpenRequests), LibPebbleKoinComponent {
     private val context = appContext.context
@@ -175,7 +177,7 @@ class WebViewJsRunner(
     private var restoreCompleted: Boolean = false
     private val initializedLock = Object()
     private val publicJsInterface = WebViewPKJSInterface(this, device, context, libPebble, jsTokenUtil)
-    private val privateJsInterface = WebViewPrivatePKJSInterface(this, device, scope, _outgoingAppMessages, logMessages, jsTokenUtil, remoteTimelineEmulator, httpInterceptorManager, notificationConfigFlow, watchappPermissions, watchappPush)
+    private val privateJsInterface = WebViewPrivatePKJSInterface(this, device, scope, _outgoingAppMessages, logMessages, jsTokenUtil, remoteTimelineEmulator, httpInterceptorManager, notificationConfigFlow, watchappPermissions, watchappPush, watchappRouters)
     private val localStorageInterface = WebViewJSLocalStorageInterface(appInfo.uuid, appContext) {
         // The frame's localStorage stand-in computes its own length.
         if (denyConstruction) return@WebViewJSLocalStorageInterface
@@ -844,6 +846,16 @@ class WebViewJsRunner(
         }.toString()
         withContext(Dispatchers.Main) {
             evaluateInPage("window.signalPush($json)")
+        }
+    }
+
+    override suspend fun signalRoute(routerId: String, payload: String) {
+        val json = buildJsonObject {
+            put("router", routerId)
+            put("delivery", Json.parseToJsonElement(payload))
+        }.toString()
+        withContext(Dispatchers.Main) {
+            evaluateInPage("window.signalRoute($json)")
         }
     }
 

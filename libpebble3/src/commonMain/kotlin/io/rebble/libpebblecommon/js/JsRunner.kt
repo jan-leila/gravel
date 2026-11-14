@@ -38,6 +38,7 @@ abstract class JsRunner(
     open suspend fun signalPushEndpoint(callId: String, endpoint: PushEndpoint) {}
     open suspend fun signalPushEndpointFail(callId: String, reason: PushFailure) {}
     open suspend fun signalPush(message: PushMessage) {}
+    open suspend fun signalRoute(routerId: String, payload: String) {}
 
     open fun onReadyConfirmed(success: Boolean) {
         _readyState.value = true
