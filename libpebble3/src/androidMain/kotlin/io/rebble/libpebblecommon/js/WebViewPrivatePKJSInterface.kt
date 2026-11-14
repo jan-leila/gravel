@@ -4,6 +4,7 @@ import android.net.Uri
 import android.webkit.JavascriptInterface
 import androidx.core.net.toUri
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.push.WatchappPush
 import io.rebble.libpebblecommon.NotificationConfigFlow
 import io.rebble.libpebblecommon.locker.WatchappPermissionResolver
 import kotlinx.coroutines.CoroutineScope
@@ -23,7 +24,8 @@ class WebViewPrivatePKJSInterface(
     httpInterceptorManager: HttpInterceptorManager,
     notificationConfigFlow: NotificationConfigFlow,
     watchappPermissions: WatchappPermissionResolver,
-): PrivatePKJSInterface(webViewJsRunner, device, scope, outgoingAppMessages, logMessages, jsTokenUtil, remoteTimelineEmulator, httpInterceptorManager, notificationConfigFlow, watchappPermissions) {
+    watchappPush: WatchappPush,
+): PrivatePKJSInterface(webViewJsRunner, device, scope, outgoingAppMessages, logMessages, jsTokenUtil, remoteTimelineEmulator, httpInterceptorManager, notificationConfigFlow, watchappPermissions, watchappPush) {
 
     companion object {
         private val logger = Logger.withTag(WebViewPrivatePKJSInterface::class.simpleName!!)
@@ -90,6 +92,11 @@ class WebViewPrivatePKJSInterface(
     @JavascriptInterface
     override fun getTimelineTokenAsync(): String {
         return super.getTimelineTokenAsync()
+    }
+
+    @JavascriptInterface
+    override fun getPushEndpointAsync(): String {
+        return super.getPushEndpointAsync()
     }
 
     @JavascriptInterface

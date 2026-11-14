@@ -15,6 +15,7 @@
                 <action android:name="com.anopticlabs.gravel.notebook.action.ROUTE_TEXT" />
             </intent-filter>
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.id" android:value="message" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.params" android:value="text" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.label" android:value="Post to Slack" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.description" android:value="Posts what you said to a Slack channel through an incoming webhook" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.list" android:value="${applicationId}.routers" />

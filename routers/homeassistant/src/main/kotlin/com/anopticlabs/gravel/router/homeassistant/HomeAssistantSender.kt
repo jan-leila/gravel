@@ -20,7 +20,7 @@ fun homeAssistantRequest(baseUrl: String, token: String, language: String, deliv
     method = "POST",
     url = baseUrl.trimEnd('/') + "/api/conversation/process",
     headers = mapOf("Authorization" to "Bearer $token"),
-    body = """{"text":${jsonString(delivery.text)},"language":${jsonString(language)}}""".encodeToByteArray(),
+    body = """{"text":${jsonString(delivery.field("text") ?: delivery.content)},"language":${jsonString(language)}}""".encodeToByteArray(),
     contentType = "application/json",
 )
 
@@ -61,7 +61,7 @@ fun actionRouter(typed: Map<String, String>): ListedRouter {
 fun homeAssistantActionRequest(baseUrl: String, token: String, action: HomeAssistantAction, delivery: Delivery): HttpRequest {
     val fields = buildList {
         if (action.entities.isNotEmpty()) add(""""entity_id":${action.entities.joinToString(",", "[", "]") { jsonString(it) }}""")
-        action.textField?.let { add("${jsonString(it)}:${jsonString(delivery.text)}") }
+        action.textField?.let { add("${jsonString(it)}:${jsonString(delivery.field("text") ?: delivery.content)}") }
     }
     return HttpRequest(
         method = "POST",

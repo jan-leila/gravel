@@ -120,4 +120,5 @@ private fun io.rebble.libpebblecommon.WatchConfig.globalDefaultFor(
 ): Boolean = when (type) {
     LockerAppPermissionType.Network -> watchappDefaultNetworkAllowed
     LockerAppPermissionType.Location -> watchappDefaultLocationAllowed
+    LockerAppPermissionType.Push -> watchappDefaultPushAllowed
 }

@@ -291,6 +291,85 @@ Push either registers a device token with Google or does not exist, so
 `PushMessaging`, `PushService`, and their call sites were deleted outright
 rather than no-opped.
 
+## UnifiedPush for watchapps
+
+A watchapp's PebbleKit JS runs only while the app is open on the watch, so
+it cannot listen for anything while closed. Gravel receives pushes for it
+through UnifiedPush: a distributor app on the phone (ntfy, for example)
+holds the connection to a push server and hands messages to Gravel, with
+no Google service involved, so this is a different thing from the FCM
+stack above, which stays deleted.
+
+**Registrations.** Gravel is one client of the distributor. The user picks
+the distributor under Settings > Apps > Watch App Permissions, which
+registers Gravel's own instance (`gravel`); that registration carries no
+messages and exists to show the distributor answers. Each watchapp that
+asks gets a further instance named by its UUID, with its own endpoint, so
+an arriving message names its target without Gravel reading the body.
+
+**What a watchapp sees** (`startup.js`):
+
+```js
+Pebble.getPushEndpoint(function (endpoint) {
+    // endpoint.url, and endpoint.p256dh / endpoint.auth for Web Push encryption
+}, function (reason) {
+    // permission_denied, no_distributor, registration_failed, timeout, unsupported
+});
+Pebble.addEventListener('push', function (e) {
+    // e.payload: the body as text, '' when the sender posted none
+    // e.encrypted: false when the body arrived in the clear
+});
+```
+
+An endpoint can change (a new distributor, a reinstall), so an app calls
+`getPushEndpoint` on every `ready` and hands its sender the current one.
+
+**A message arriving.** `WatchappPushManager.onMessage` checks the app's
+Push grant and that the app is still in the locker, queues the body in an
+in-memory inbox for that app (8 messages, oldest dropped), and launches
+the app on every connected watch. The launch starts the app's PebbleKit JS
+session, and `PKJSApp` hands over the inbox once the JavaScript is ready.
+A message for an app without the grant, or no longer installed, is dropped
+and its instance unregistered, which is how a registration ends: there is
+no watcher on grants or the locker. With no watch connected the launch
+does nothing and the message waits in the inbox until the app next runs
+or the process ends.
+
+**The grant.** `LockerAppPermissionType.Push`, in the same tri-state system
+as Network and Location, denied by default
+(`WatchConfig.watchappDefaultPushAllowed`). It gates registration,
+arrival, and delivery to the JavaScript. An app needs its Network grant as
+well to send the endpoint anywhere.
+
+**Who can send.** Anyone who holds an endpoint URL can open that app on the
+watch and give it up to the distributor's size limit of text, as often as
+the push server allows; Gravel does not rate-limit. The endpoint is
+unguessable and goes only where the app's JavaScript sends it. A body is
+accepted both Web Push encrypted (RFC 8291, decrypted by the connector)
+and in the clear, where the push server can read it; `e.encrypted` tells
+the app which it got.
+
+**Cross-app surface.** The connector's manifest adds an exported receiver
+(`MessagingReceiverImpl`). It acts only on a broadcast carrying the random
+token Gravel gave the distributor for that registration
+(`MessagingReceiver.onReceive`) and forwards to `WatchappPushService`,
+which is not exported. No permission can protect it, because any
+installed app may be the distributor, so it is on the release
+exported-component allowlist (`allowedExportedComponents`) without one.
+The connector's exported `RaiseToForegroundService` is removed in
+`libpebble3`'s manifest.
+
+**Layout.** `com.anopticlabs.gravel.push` in `libpebble3`: the routing
+(`WatchappPushManager`) is common code over a `PushTransport` seam, and
+`UnifiedPushTransport` and `WatchappPushService` are the Android side. No
+other platform binds a transport, and registration there fails with
+`unsupported`.
+
+**Dependency.** `org.unifiedpush.android:connector` (3.3.5): current
+stable, Apache-2.0, on Maven Central. It brings
+`com.google.crypto.tink:tink` (Apache-2.0, Maven Central) for the Web Push
+decryption.
+
 ## Watchapp permissions (phone-side network and location)
 
 Third-party watchapps and watchfaces ship companion JavaScript (PebbleKit
@@ -1932,7 +2011,20 @@ in the app's device suite:
   pattern, so no rule can hold the drain, at the price of RE2 syntax (no
   backreferences, no lookaround; the platform's engine backtracks, and on
   Android copies the text to a String before matching, so a deadline read
-  through a `CharSequence` never fired there). The default routing is a
+  through a `CharSequence` never fired there). The walk records each Switch
+  rule that matched as a `TextMatch` on the `RoutedText` (the switch, the
+  span, whether the rule cuts its words, its named groups; Time and Place
+  rules add none, as they read what only a grant may send), kept on a
+  parked capture with the transcript it indexes. The matches stay on the
+  phone: a delivery carries `unmatchedText`, the text with the cutting
+  rules' spans out, and the request parameters `fieldsFor` fills from the
+  named groups by the mapping on the App router (its app's declared
+  `params`, each by default from the group of its name) or the Network
+  router (parameters the user names); the first-party router apps send a
+  mapped parameter where there is one, else `Delivery.content`. A parked
+  row shows the cut text and the fields, so a confirmation is of what is
+  sent, and the Text Routing screen's "Try a sentence" page runs the walk
+  (`RoutingTrial`) on typed text without saving or sending. The default routing is a
   Switch of the reminder cues (`RoutingConfig.REMINDER_CUES`, the cue
   detector's requests as rules, without its guards) before a Reminder
   router, falling back to a Note router, so an install upgraded from the

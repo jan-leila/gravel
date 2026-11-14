@@ -1,0 +1,3 @@
+Text Routing: a Switch rule can cut its words from the text it passes on, and named groups in a rule fill a router's parameters (a task's title, an amount, an email subject). "Try a sentence" shows where a sentence would end up without sending it.
+
+Push for watch apps: an app you grant Push under Settings > Apps > Watch App Permissions can be opened on the watch by a message through your UnifiedPush distributor.

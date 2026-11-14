@@ -44,7 +44,7 @@ class NetworkRouterDeliveryTest {
         assertEquals("https://example.test/notes", post.url)
         assertEquals("s3cret", post.token)
         val body = NotebookJson.parseToJsonElement(post.body).jsonObject
-        assertEquals(setOf("api_version", "capture_id", "recorded_at", "text"), body.keys)
+        assertEquals(setOf("api_version", "capture_id", "recorded_at", "text", "unmatched_text"), body.keys)
         assertEquals(RouterApi.VERSION, body.getValue("api_version").jsonPrimitive.content.toInt())
         assertEquals("c1", body.getValue("capture_id").jsonPrimitive.content)
         assertEquals("2026-09-22T17:00:00+02:00", body.getValue("recorded_at").jsonPrimitive.content)
@@ -59,18 +59,32 @@ class NetworkRouterDeliveryTest {
     fun theBodyCarriesOnlyTheSharedParts() = runBlocking<Unit> {
         suspend fun body(share: Set<Need>, text: RoutedText = this@NetworkRouterDeliveryTest.text) =
             delivery.deliver(hook, text, share).let { NotebookJson.parseToJsonElement(poster.posts.last().body).jsonObject }
-        assertEquals(setOf("api_version", "capture_id", "text"), body(emptySet()).keys)
-        assertEquals(setOf("api_version", "capture_id", "text", "recorded_at"), body(setOf(Need.RECORDED_AT)).keys)
+        assertEquals(setOf("api_version", "capture_id", "text", "unmatched_text"), body(emptySet()).keys)
+        assertEquals(setOf("api_version", "capture_id", "text", "unmatched_text", "recorded_at"), body(setOf(Need.RECORDED_AT)).keys)
         val placed = body(setOf(Need.LOCATION))
-        assertEquals(setOf("api_version", "capture_id", "text", "location"), placed.keys)
+        assertEquals(setOf("api_version", "capture_id", "text", "unmatched_text", "location"), placed.keys)
         val location = placed.getValue("location").jsonObject
         assertEquals(setOf("latitude", "longitude", "accuracy_m"), location.keys)
         assertEquals("52.52", location.getValue("latitude").jsonPrimitive.content)
         assertEquals("13.405", location.getValue("longitude").jsonPrimitive.content)
         assertEquals("30.0", location.getValue("accuracy_m").jsonPrimitive.content)
-        assertEquals(setOf("api_version", "capture_id", "text", "recorded_at", "location"), body(setOf(Need.LOCATION, Need.RECORDED_AT)).keys)
+        assertEquals(setOf("api_version", "capture_id", "text", "unmatched_text", "recorded_at", "location"), body(setOf(Need.LOCATION, Need.RECORDED_AT)).keys)
         assertEquals(setOf("latitude", "longitude"), body(setOf(Need.LOCATION), text.copy(location = RoutedLocation(1.0, 2.0))).getValue("location").jsonObject.keys)
-        assertEquals(setOf("api_version", "capture_id", "text"), body(setOf(Need.LOCATION), text.copy(location = null)).keys, "a granted location the recording has not is simply absent")
+        assertEquals(setOf("api_version", "capture_id", "text", "unmatched_text"), body(setOf(Need.LOCATION), text.copy(location = null)).keys, "a granted location the recording has not is simply absent")
+    }
+
+    @Test
+    fun theBodyCarriesTheCutTextAndTheMappedFieldsButNotTheMatches() = runBlocking<Unit> {
+        val routed = RoutedText(
+            "c1", "2026-09-22T17:00:00+02:00", "add a task: buy milk",
+            matches = listOf(TextMatch("tasks", 0, 10, cut = true, groups = listOf(MatchGroup("item", 12, 20)))),
+        )
+        delivery.deliver(hook.copy(fields = listOf(FieldMapping("title", "item"), FieldMapping("said", FieldMapping.WHOLE_TEXT))), routed, emptySet())
+        val body = NotebookJson.parseToJsonElement(poster.posts.last().body).jsonObject
+        assertEquals(setOf("api_version", "capture_id", "text", "unmatched_text", "fields"), body.keys)
+        assertEquals("buy milk", body.getValue("unmatched_text").jsonPrimitive.content)
+        val fields = body.getValue("fields").jsonObject
+        assertEquals(mapOf("title" to "buy milk", "said" to "add a task: buy milk"), fields.mapValues { it.value.jsonPrimitive.content })
     }
 
     @Test

@@ -118,6 +118,12 @@ data class WatchConfig(
      * inert and everything was effectively allowed; this restores a real default.
      */
     val watchappDefaultLocationAllowed: Boolean = false,
+    /**
+     * Gravel: global default for whether a watchapp may register a UnifiedPush endpoint and be
+     * opened on the watch by a message to it. Same override semantics as
+     * [watchappDefaultNetworkAllowed].
+     */
+    val watchappDefaultPushAllowed: Boolean = false,
     val musicSeekWhenAvailable: Boolean = true,
     /**
      * Fork: whether classic PebbleKit is reachable. Off by default: while on, any installed app

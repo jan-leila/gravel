@@ -6,6 +6,7 @@ import androidx.paging.PagingSource
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.pkjs.UnreportedNetworkDenyEnforcement
 import com.anopticlabs.gravel.pkjs.NetworkDenyEnforcement
+import com.anopticlabs.gravel.push.WatchappPush
 import com.anopticlabs.gravel.watchapp.InjectedWatchAppCaptures
 import com.anopticlabs.gravel.backup.TableRows
 import com.anopticlabs.gravel.watchsync.FirstSyncDecider
@@ -95,7 +96,7 @@ sealed class PebbleConnectionEvent {
 }
 
 @Stable
-interface LibPebble : Scanning, RequestSync, LockerApi, NotificationApps, WatchappPermissions, CallManagement, Calendar,
+interface LibPebble : Scanning, RequestSync, LockerApi, NotificationApps, WatchappPermissions, WatchappPush, CallManagement, Calendar,
     OtherPebbleApps, PKJSToken, Watches, Errors, Contacts, AnalyticsEvents, HealthApi, WatchPrefs,
     SystemGeolocation, Timeline, Vibrations, Weather, HealthDataApi {
     fun init()
@@ -436,10 +437,12 @@ class LibPebble3(
     private val watchPreferences: WatchPrefs,
     private val weatherManager: WeatherManager,
     private val watchappPermissions: WatchappPermissions,
+    private val watchappPush: WatchappPush,
     /** Gravel: the rows of this library's database, for the app's settings backup. */
     val backupRows: TableRows,
 ) : LibPebble, Scanning by scanning, RequestSync by webSyncManager, LockerApi by locker,
     NotificationApps by notificationApi, WatchappPermissions by watchappPermissions,
+    WatchappPush by watchappPush,
     Calendar by phoneCalendarSyncer,
     OtherPebbleApps by otherPebbleApps, PKJSToken by jsTokenUtil, Watches by watchManager,
     Errors by errorTracker, Contacts by contacts, AnalyticsEvents by analytics,

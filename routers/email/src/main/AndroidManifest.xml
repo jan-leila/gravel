@@ -15,6 +15,7 @@
                 <action android:name="com.anopticlabs.gravel.notebook.action.ROUTE_TEXT" />
             </intent-filter>
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.id" android:value="mail" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.params" android:value="subject,body" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.label" android:value="Send as email" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.description" android:value="Sends what you said as an email through an SMTP server you set up, a Proton Bridge for example" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.needs" android:value="recorded_at" />

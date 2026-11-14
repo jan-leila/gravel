@@ -45,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,6 +56,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.anopticlabs.gravel.notebook.R
+import com.anopticlabs.gravel.notebook.routers.FieldMapping
 import com.anopticlabs.gravel.notebook.routers.Grant
 import com.anopticlabs.gravel.notebook.routers.InstalledRouter
 import com.anopticlabs.gravel.notebook.routers.PlaceRule
@@ -74,7 +76,9 @@ import com.anopticlabs.gravel.notebook.routers.TimeCondition
 import com.anopticlabs.gravel.notebook.routers.TimeField
 import com.anopticlabs.gravel.notebook.routers.TimeMatcher
 import com.anopticlabs.gravel.notebook.routers.TimeRule
+import com.anopticlabs.gravel.notebook.routers.Trial
 import com.anopticlabs.gravel.notebook.routers.TrustedCertificate
+import com.anopticlabs.gravel.notebook.routers.groupNames
 import com.anopticlabs.gravel.notebook.routers.forwardsText
 import com.anopticlabs.gravel.notebook.routers.shares
 import coredevices.pebble.ui.TopBarParams
@@ -102,6 +106,8 @@ private sealed interface RoutingPage {
     data class Router(val router: RouterConfig) : RoutingPage
 
     data object Apps : RoutingPage
+
+    data object Try : RoutingPage
 }
 
 private sealed interface RoutingDialog {
@@ -141,15 +147,17 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>, topB
     val page = pages.lastOrNull()
     val mainTitle = stringResource(R.string.notebook_routing_title)
     val appsTitle = stringResource(R.string.notebook_routing_apps_page)
+    val tryTitle = stringResource(R.string.notebook_routing_try)
     val pageTitle = when (page) {
         null -> mainTitle
         RoutingPage.Apps -> appsTitle
+        RoutingPage.Try -> tryTitle
         is RoutingPage.Router -> page.router.name
     }
     LaunchedEffect(pageTitle) { topBarParams.title(pageTitle) }
     // The router page takes back itself, as it may have changes to ask about.
-    BackHandler(enabled = page == RoutingPage.Apps) { pop() }
-    if (page == RoutingPage.Apps) {
+    BackHandler(enabled = page == RoutingPage.Apps || page == RoutingPage.Try) { pop() }
+    if (page == RoutingPage.Apps || page == RoutingPage.Try) {
         LaunchedEffect(Unit) { topBarParams.overrideGoBack.collect { pop() } }
     }
     val config = (ui.store as? RoutingStoreState.Loaded)?.config
@@ -188,6 +196,7 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>, topB
             HorizontalDivider()
             AppsSection(ui, viewModel) { dialog = it }
         }
+        RoutingPage.Try -> TryPage(viewModel::tryRoute)
         is RoutingPage.Router -> config?.let { c ->
             // The stored router when there is one, so a page come back to shows what its target pages saved.
             val router = c.router(page.router.ref) ?: page.router
@@ -224,6 +233,15 @@ private fun RoutingContent(ui: RoutingUi, viewModel: RoutingViewModel<Uri>, topB
                 OutlinedButton(onClick = { dialog = RoutingDialog.Describe }, enabled = !ui.busy) { Text(stringResource(R.string.notebook_routing_describe)) }
                 if (ui.busy) Text(stringResource(R.string.notebook_routing_describe_working), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+        if (config != null) {
+            HorizontalDivider()
+            ListItem(
+                modifier = Modifier.clickable { push(RoutingPage.Try) },
+                headlineContent = { Text(tryTitle) },
+                supportingContent = { Text(stringResource(R.string.notebook_routing_try_summary)) },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null) },
+            )
         }
         HorizontalDivider()
         ListItem(
@@ -557,6 +575,8 @@ private fun RouterPage(
     var url by remember(router.ref) { mutableStateOf((router as? RouterConfig.Network)?.url ?: "https://") }
     var token by remember(router.ref) { mutableStateOf((router as? RouterConfig.Network)?.bearerToken.orEmpty()) }
     var shares by remember(router.ref) { mutableStateOf(router.shares ?: Shares()) }
+    var fieldMaps by remember(router.ref) { mutableStateOf((router as? RouterConfig.App)?.fields ?: (router as? RouterConfig.Network)?.fields.orEmpty()) }
+    val groups = remember(config) { config.groupNames() }
     var confirm by remember(router.ref) { mutableStateOf(router.confirm) }
     var problem by remember(router.ref) { mutableStateOf<String?>(null) }
     // Set while the user is asked whether to drop the changes: where to go once they agree.
@@ -573,9 +593,16 @@ private fun RouterPage(
             is RouterConfig.Switch -> RouterConfig.Switch(router.id, trimmed, rules, otherwise, description = about)
             is RouterConfig.Time -> RouterConfig.Time(router.id, trimmed, timeRules, timeOtherwise, description = about)
             is RouterConfig.Place -> RouterConfig.Place(router.id, trimmed, placeRules, placeOtherwise, placeUnknown, description = about)
-            is RouterConfig.App -> picked?.let { RouterConfig.App(it.id, trimmed, it.packageName, it.receiverClass, it.namespace, it.needs, shares, confirm, description = about) }
-                ?: router.copy(name = trimmed, shares = shares, confirm = confirm, description = about)
-            is RouterConfig.Network -> RouterConfig.Network(router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares, confirm = confirm, description = about)
+            // A mapping for a parameter the picked router does not take is dropped with the old pick.
+            is RouterConfig.App -> picked?.let {
+                RouterConfig.App(
+                    it.id, trimmed, it.packageName, it.receiverClass, it.namespace, it.needs, shares, confirm, description = about,
+                    params = it.params, fields = fieldMaps.filter { field -> field.param in it.params },
+                )
+            } ?: router.copy(name = trimmed, shares = shares, confirm = confirm, description = about, fields = fieldMaps.filter { it.param in router.params })
+            is RouterConfig.Network -> RouterConfig.Network(
+                router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares, confirm = confirm, description = about, fields = fieldMaps,
+            )
         }
     }
     val dirty = built() != router
@@ -640,10 +667,12 @@ private fun RouterPage(
                         if (picked == null && router.packageName.isNotEmpty()) Text(stringResource(R.string.notebook_routing_app_gone), color = MaterialTheme.colorScheme.error)
                         AppFields(apps, picked, onPick = { app, choice -> if (app.trusted) take(choice) else askTrust = app to choice })
                         SharesFields(needed = picked?.needs ?: router.needs, shares, onShares = { shares = it })
+                        ParamsFields(picked?.params ?: router.params, fieldMaps, groups, onFields = { fieldMaps = it })
                     }
                     is RouterConfig.Network -> {
                         NetworkFields(url, token, onUrl = { url = it }, onToken = { token = it })
                         SharesFields(needed = Need.entries.toSet(), shares, onShares = { shares = it })
+                        NetworkParamsFields(fieldMaps, groups, onFields = { fieldMaps = it })
                     }
                 }
                 if (!router.forwardsText) {
@@ -694,6 +723,7 @@ private fun SwitchFields(
     onOtherwise: (RouterRef?) -> Unit,
 ) {
     Text(stringResource(R.string.notebook_routing_rules), style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(R.string.notebook_routing_cut_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     rules.forEachIndexed { index, rule ->
         fun replace(changed: SwitchRule) = onRules(rules.mapIndexed { i, r -> if (i == index) changed else r })
         OutlinedTextField(
@@ -710,6 +740,10 @@ private fun SwitchFields(
             IconButton(onClick = { onRules(rules.filterIndexed { i, _ -> i != index }) }) {
                 Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.notebook_routing_remove_rule))
             }
+        }
+        Row(Modifier.fillMaxWidth().clickable { replace(rule.copy(cut = !rule.cut)) }, verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = rule.cut, onCheckedChange = { replace(rule.copy(cut = it)) })
+            Text(stringResource(R.string.notebook_routing_cut), style = MaterialTheme.typography.bodySmall)
         }
     }
     if (rules.size < RoutingConfig.MAX_RULES) {
@@ -1147,4 +1181,149 @@ private fun AddCertificateDialog(onAdd: (String, String?) -> Unit, onDismiss: ()
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.notebook_cancel)) } },
     )
+}
+
+/** What a parameter is filled from, as its picker offers it; [Default] is an App router's same-named group, written as no mapping. */
+private sealed interface SourceChoice {
+    data object Default : SourceChoice
+
+    data class Source(val source: String?) : SourceChoice
+}
+
+@Composable
+private fun sourceName(choice: SourceChoice, param: String): String = when (choice) {
+    SourceChoice.Default -> stringResource(R.string.notebook_routing_source_same, param)
+    is SourceChoice.Source -> when (val source = choice.source) {
+        null -> stringResource(R.string.notebook_routing_source_none)
+        FieldMapping.WHOLE_TEXT -> stringResource(R.string.notebook_routing_source_text)
+        FieldMapping.UNMATCHED_TEXT -> stringResource(R.string.notebook_routing_source_unmatched)
+        else -> stringResource(R.string.notebook_routing_source_group, source)
+    }
+}
+
+/** [groups] are the routing's named groups; a mapped group no switch defines any more stays offered, so the page shows what is stored. */
+@Composable
+private fun SourcePicker(param: String, current: SourceChoice, groups: Set<String>, offerDefault: Boolean, onPick: (SourceChoice) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val stored = (current as? SourceChoice.Source)?.source?.takeIf { RoutingConfig.isFieldSource(it) && !it.startsWith("@") }
+    val choices = buildList {
+        if (offerDefault) add(SourceChoice.Default)
+        add(SourceChoice.Source(FieldMapping.UNMATCHED_TEXT))
+        add(SourceChoice.Source(FieldMapping.WHOLE_TEXT))
+        (groups + listOfNotNull(stored)).forEach { add(SourceChoice.Source(it)) }
+        add(SourceChoice.Source(null))
+    }.distinct()
+    Box {
+        OutlinedButton(onClick = { open = true }) {
+            Text(sourceName(current, param))
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            choices.forEach { choice ->
+                DropdownMenuItem(text = { Text(sourceName(choice, param)) }, onClick = {
+                    onPick(choice)
+                    open = false
+                })
+            }
+        }
+    }
+}
+
+/** The parameters an app declared, each filled from the source the user picked; the default needs no mapping stored. */
+@Composable
+private fun ParamsFields(params: List<String>, fields: List<FieldMapping>, groups: Set<String>, onFields: (List<FieldMapping>) -> Unit) {
+    if (params.isEmpty()) return
+    Text(stringResource(R.string.notebook_routing_params), style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(R.string.notebook_routing_params_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    params.forEach { param ->
+        val mapped = fields.firstOrNull { it.param == param }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(param, Modifier.weight(1f))
+            SourcePicker(param, mapped?.let { SourceChoice.Source(it.source) } ?: SourceChoice.Default, groups, offerDefault = true) { choice ->
+                val others = fields.filter { it.param != param }
+                onFields(if (choice is SourceChoice.Source) others + FieldMapping(param, choice.source) else others)
+            }
+        }
+    }
+}
+
+/** A server's parameters are the user's to name: one row each, a name and where it is filled from. */
+@Composable
+private fun NetworkParamsFields(fields: List<FieldMapping>, groups: Set<String>, onFields: (List<FieldMapping>) -> Unit) {
+    Text(stringResource(R.string.notebook_routing_params), style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(R.string.notebook_routing_params_network_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    fields.forEachIndexed { index, field ->
+        fun replace(changed: FieldMapping) = onFields(fields.mapIndexed { i, f -> if (i == index) changed else f })
+        OutlinedTextField(
+            value = field.param,
+            onValueChange = { typed -> replace(field.copy(param = typed.lowercase().filter { it in 'a'..'z' || it in '0'..'9' || it == '_' }.take(RoutingConfig.MAX_PARAM_CHARS))) },
+            label = { Text(stringResource(R.string.notebook_routing_param_name)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            SourcePicker(field.param, SourceChoice.Source(field.source), groups, offerDefault = false) { choice ->
+                (choice as? SourceChoice.Source)?.let { replace(field.copy(source = it.source)) }
+            }
+            Box(Modifier.weight(1f))
+            IconButton(onClick = { onFields(fields.filterIndexed { i, _ -> i != index }) }) {
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.notebook_routing_param_remove))
+            }
+        }
+    }
+    if (fields.size < RoutingConfig.MAX_PARAMS) {
+        OutlinedButton(onClick = { onFields(fields + FieldMapping("", groups.firstOrNull() ?: FieldMapping.UNMATCHED_TEXT)) }) {
+            Text(stringResource(R.string.notebook_routing_param_add))
+        }
+    }
+}
+
+/** Runs the stored routing on a typed sentence and shows where it ends and what would go with it; nothing is saved or sent. */
+@Composable
+private fun TryPage(tryRoute: suspend (String) -> Trial?) {
+    var sentence by rememberSaveable { mutableStateOf("") }
+    var trial by remember { mutableStateOf<Trial?>(null) }
+    val scope = rememberCoroutineScope()
+    NoKeyboardLearning {
+        Column(
+            Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(stringResource(R.string.notebook_routing_try_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(
+                value = sentence,
+                onValueChange = { sentence = it },
+                label = { Text(stringResource(R.string.notebook_routing_try_field)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(onClick = { scope.launch { trial = tryRoute(sentence) } }, enabled = sentence.isNotBlank()) { Text(stringResource(R.string.notebook_routing_try_go)) }
+            when (val shown = trial) {
+                null -> Unit
+                is Trial.NotRouted -> Text(stringResource(R.string.notebook_routing_try_not_routed, shown.reason), color = MaterialTheme.colorScheme.error)
+                is Trial.Ended -> TrialResult(shown)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrialResult(trial: Trial.Ended) {
+    HorizontalDivider()
+    Text(stringResource(R.string.notebook_routing_try_ends, trial.router.name), style = MaterialTheme.typography.titleSmall)
+    if (trial.matches.isEmpty()) Text(stringResource(R.string.notebook_routing_try_no_match), style = MaterialTheme.typography.bodySmall)
+    trial.matches.forEach { match ->
+        val cut = if (match.cut) " (${stringResource(R.string.notebook_routing_try_cut)})" else ""
+        Text(stringResource(R.string.notebook_routing_try_matched, match.switchName, match.matched) + cut, style = MaterialTheme.typography.bodyMedium)
+        match.groups.forEach { (name, value) -> Text("  $name = \"$value\"", style = MaterialTheme.typography.bodySmall) }
+    }
+    when (trial.router) {
+        is RouterConfig.App, is RouterConfig.Network -> {
+            Text(stringResource(R.string.notebook_routing_try_sends, trial.unmatchedText), style = MaterialTheme.typography.bodyMedium)
+            if (trial.fields.isNotEmpty()) {
+                Text(stringResource(R.string.notebook_routing_try_fields), style = MaterialTheme.typography.titleSmall)
+                trial.fields.forEach { (param, value) -> Text("$param: $value", style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+        else -> Text(stringResource(R.string.notebook_routing_try_whole), style = MaterialTheme.typography.bodySmall)
+    }
 }

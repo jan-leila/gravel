@@ -26,6 +26,7 @@ import com.anopticlabs.gravel.notebook.notes.captureRouteFolders
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterDeliveries
 import com.anopticlabs.gravel.notebook.routers.TextDeliverer
+import com.anopticlabs.gravel.notebook.routers.fieldsFor
 import com.anopticlabs.gravel.notebook.storage.BlobRead
 import com.anopticlabs.gravel.notebook.storage.CorruptFileException
 import com.anopticlabs.gravel.notebook.storage.NoteStore
@@ -467,7 +468,7 @@ class CaptureDrain(
             val resume = CaptureResume(
                 router = awaiting.router,
                 routerName = awaiting.routerName,
-                text = RoutedText(entry.id, awaiting.recordedAt, awaiting.text, awaiting.location),
+                text = RoutedText(entry.id, awaiting.recordedAt, awaiting.text, awaiting.location, awaiting.matches),
                 granted = awaiting.granted,
                 denied = awaiting.denied,
                 capturedAt = Instant.fromEpochMilliseconds(entry.queuedAtMillis),
@@ -509,6 +510,7 @@ class CaptureDrain(
         if (!settling(entry)) throw CancellationException("capture interrupted")
         val awaiting = AwaitingUser(
             built.router.ref, built.router.name, built.text.text, built.text.recordedAt, built.router.confirm, built.text.location, built.asks,
+            matches = built.text.matches, fields = built.router.fieldsFor(built.text),
         )
         val parked = withContext(NonCancellable) { queue.update { awaitUser(it, entry.id, awaiting, entry.attempts) } }
         rowBack(entry.copy(awaiting = awaiting))
@@ -532,6 +534,7 @@ class CaptureDrain(
             rows.settle(
                 entry.id, CaptureQueueItem.Status.AWAITING_USER, null, label,
                 transcript = awaiting.text, target = awaiting.routerName, asks = awaiting.asks, confirm = awaiting.confirm,
+                sends = awaiting.sends, fields = awaiting.fields,
             )
         }
     }

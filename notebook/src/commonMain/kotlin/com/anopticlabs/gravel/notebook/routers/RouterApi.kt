@@ -4,7 +4,9 @@ package com.anopticlabs.gravel.notebook.routers
  * The contract between Gravel and an app that declares a router (`ROUTER_API.md`): the action its
  * receiver filters on, the permission that guards the receiver, the meta-data that names it, and
  * the extras of the broadcast that carries a [RoutedText]. Every name here is public API: a
- * change breaks installed apps, so a new field gets a new name and [VERSION] moves.
+ * change breaks installed apps, so a new field gets a new name, and [VERSION] moves when a
+ * receiver could not take a delivery without reading the new field; one a receiver may ignore
+ * leaves it, so receivers already installed keep taking deliveries.
  */
 object RouterApi {
     const val VERSION = 1
@@ -34,6 +36,13 @@ object RouterApi {
     const val META_NEEDS = "com.anopticlabs.gravel.notebook.router.needs"
     const val NEED_LOCATION = "location"
     const val NEED_RECORDED_AT = "recorded_at"
+
+    /**
+     * `<meta-data>` on the receiver: the request parameters it takes, as a comma-separated list of
+     * names ([RoutingConfig.isParamName]), which the user maps to what the routing matched; they
+     * hold for every router the receiver declares or lists. See [parseParams].
+     */
+    const val META_PARAMS = "com.anopticlabs.gravel.notebook.router.params"
 
     /**
      * `<meta-data>` on the receiver: the authority of a content provider in the same app that lists
@@ -72,6 +81,16 @@ object RouterApi {
     const val EXTRA_LOCATION_LONGITUDE = "location_longitude"
     const val EXTRA_LOCATION_ACCURACY_METERS = "location_accuracy_m"
 
+    /** Every delivery: [RoutedText.unmatchedText], the text once the words of the Switch rules that cut theirs are taken out; the text itself when none did. */
+    const val EXTRA_UNMATCHED_TEXT = "unmatched_text"
+
+    /**
+     * Present together when the delivery carries request parameters ([RouterConfig.fieldsFor]):
+     * their names and values, one entry each, in the same order.
+     */
+    const val EXTRA_FIELD_NAMES = "field_names"
+    const val EXTRA_FIELD_VALUES = "field_values"
+
     /** The result code a receiver sets to acknowledge a delivery: `Activity.RESULT_OK`. Any other code but [RESULT_REFUSED] is no acknowledgement. */
     const val RESULT_ACKNOWLEDGED = -1
 
@@ -88,6 +107,10 @@ object RouterApi {
 
     const val MAX_LABEL_CHARS = 64
     const val MAX_DESCRIPTION_CHARS = 200
+
+    /** The parameters a [META_PARAMS] value declares, in its order: the first [RoutingConfig.MAX_PARAMS] distinct names of the grammar; any other word is ignored. */
+    fun parseParams(value: String?): List<String> =
+        value.orEmpty().split(',').map { it.trim() }.filter { RoutingConfig.isParamName(it) }.distinct().take(RoutingConfig.MAX_PARAMS)
 
     /** The needs a [META_NEEDS] value declares; a word that is not a need is ignored, so a newer app lists one an older Gravel does not know. */
     fun parseNeeds(value: String?): Set<Need> = value.orEmpty().split(',').mapNotNullTo(mutableSetOf()) {
@@ -121,4 +144,36 @@ object ListedRows {
     }
 
     fun clean(value: String?, max: Int): String? = value?.filterNot { it.isISOControl() }?.trim()?.take(max)?.ifEmpty { null }
+}
+
+/** Where the extras of a delivery are written, typed as the router API names them; the Android sender writes them into its Intent. */
+interface DeliveryExtras {
+    fun putString(name: String, value: String)
+    fun putInt(name: String, value: Int)
+    fun putDouble(name: String, value: Double)
+    fun putFloat(name: String, value: Float)
+    fun putStringArray(name: String, value: Array<String>)
+}
+
+/**
+ * Writes the extras of one delivery: the router API's payload, the parts in [share] and the
+ * [fields] the user mapped ([RouterConfig.fieldsFor]), nothing else. [listedId] names the listed router the delivery
+ * is for, null for the receiver's declared one.
+ */
+fun writeDeliveryExtras(out: DeliveryExtras, listedId: String?, text: RoutedText, share: Set<Need>, fields: Map<String, String>) {
+    out.putInt(RouterApi.EXTRA_API_VERSION, if (listedId == null) RouterApi.VERSION else RouterApi.VERSION_LISTED)
+    out.putString(RouterApi.EXTRA_CAPTURE_ID, text.captureId)
+    out.putString(RouterApi.EXTRA_TEXT, text.text)
+    out.putString(RouterApi.EXTRA_UNMATCHED_TEXT, text.unmatchedText)
+    listedId?.let { out.putString(RouterApi.EXTRA_ROUTER_ID, it) }
+    if (Need.RECORDED_AT in share) out.putString(RouterApi.EXTRA_RECORDED_AT, text.recordedAt)
+    text.location?.takeIf { Need.LOCATION in share }?.let { location ->
+        out.putDouble(RouterApi.EXTRA_LOCATION_LATITUDE, location.latitude)
+        out.putDouble(RouterApi.EXTRA_LOCATION_LONGITUDE, location.longitude)
+        location.accuracyMeters?.let { out.putFloat(RouterApi.EXTRA_LOCATION_ACCURACY_METERS, it) }
+    }
+    if (fields.isNotEmpty()) {
+        out.putStringArray(RouterApi.EXTRA_FIELD_NAMES, fields.keys.toTypedArray())
+        out.putStringArray(RouterApi.EXTRA_FIELD_VALUES, fields.values.toTypedArray())
+    }
 }

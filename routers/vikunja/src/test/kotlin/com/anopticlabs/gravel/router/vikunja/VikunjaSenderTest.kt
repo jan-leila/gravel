@@ -28,6 +28,18 @@ class VikunjaSenderTest {
         assertEquals("""{"title":"buy milk"}""", bare.body!!.decodeToString())
     }
 
+    @Test
+    fun theTitleIsTheTaskWithoutTheWordsThatRoutedItHere() {
+        val routed = Delivery("c1", "add a task: buy milk", null, null, unmatchedText = "buy milk")
+        assertEquals("""{"title":"buy milk"}""", vikunjaRequest("https://tasks.example.net", "tok", "7", routed).body!!.decodeToString())
+    }
+
+    @Test
+    fun mappedParametersFillTheTitleAndTheDescription() {
+        val mapped = Delivery("c1", "task buy milk for the party", "2026-09-22T17:00:00+02:00", null, fields = mapOf("title" to "buy milk", "description" to "for the party"))
+        assertEquals("""{"title":"buy milk","description":"for the party"}""", vikunjaRequest("https://tasks.example.net", "tok", "7", mapped).body!!.decodeToString())
+    }
+
     /** A project is a router of its own, its id stable for the project; a saved filter and an archived project are not. */
     @Test
     fun theProjectsAreReadPageByPage() {

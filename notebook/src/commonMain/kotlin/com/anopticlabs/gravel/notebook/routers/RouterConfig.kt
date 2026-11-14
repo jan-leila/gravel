@@ -144,7 +144,8 @@ sealed interface RouterConfig {
      * Forwards to a router another app declares (`ROUTER_API.md`): the receiver, named by package
      * and class, that declared [id] when the user picked it, in an app signed by [namespace].
      * [needs] is what the receiver declared it wants beyond the text, as read when it was picked;
-     * [shares] what the user grants of that.
+     * [shares] what the user grants of that. [params] are the request parameters the receiver
+     * declared, as read when it was picked, and [fields] what the user maps to them (see [fieldsFor]).
      */
     @Serializable
     @SerialName("app")
@@ -158,12 +159,15 @@ sealed interface RouterConfig {
         val shares: Shares = Shares(),
         override val confirm: Boolean = false,
         override val description: String? = null,
+        val params: List<String> = emptyList(),
+        val fields: List<FieldMapping> = emptyList(),
     ) : RouterConfig
 
     /**
      * Posts the text as JSON to [url]; [bearerToken], when set, goes in the Authorization header.
      * [shares] is what goes with the text: the user is also the one who set the server up, so a
-     * grant is the only declaration of need there is.
+     * grant is the only declaration of need there is, and [fields] name the server's parameters
+     * themselves, as nothing declares them.
      */
     @Serializable
     @SerialName("network")
@@ -176,6 +180,7 @@ sealed interface RouterConfig {
         val shares: Shares = Shares(),
         override val confirm: Boolean = false,
         override val description: String? = null,
+        val fields: List<FieldMapping> = emptyList(),
     ) : RouterConfig
 }
 
@@ -206,9 +211,52 @@ fun RouterConfig.shared(granted: Set<Need>): Set<Need> = needed().filterTo(mutab
     }
 }
 
-/** [pattern] is a regular expression looked for anywhere in the text; [router] is where a match goes. */
+/**
+ * The request parameters a delivery to this router carries, by name: for an App router each
+ * parameter it declared, from the source the user mapped to it, else from the named group of the
+ * same name; for a Network router each parameter the user mapped. A parameter whose source has no
+ * value in [text] (a group that took no part in its match, a rule that never matched) is left out.
+ */
+fun RouterConfig.fieldsFor(text: RoutedText): Map<String, String> {
+    val sources: List<Pair<String, String?>> = when (this) {
+        is RouterConfig.App -> params.map { param -> param to fields.firstOrNull { it.param == param }.let { if (it == null) param else it.source } }
+        is RouterConfig.Network -> fields.map { it.param to it.source }
+        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place -> return emptyMap()
+    }
+    val groups = text.groupValues()
+    return buildMap {
+        for ((param, source) in sources) {
+            val value = when (source) {
+                null -> null
+                FieldMapping.WHOLE_TEXT -> text.text
+                FieldMapping.UNMATCHED_TEXT -> text.unmatchedText
+                else -> groups[source]
+            }
+            value?.let { put(param, it) }
+        }
+    }
+}
+
+/**
+ * [pattern] is a regular expression looked for anywhere in the text; [router] is where a match goes.
+ * With [cut], the words it matched are taken out of the text a router sends ([RoutedText.unmatchedText]);
+ * its named groups become fields whatever [cut] says ([RouterConfig.fieldsFor]).
+ */
 @Serializable
-data class SwitchRule(val pattern: String, val router: RouterRef, val ignoreCase: Boolean = true)
+data class SwitchRule(val pattern: String, val router: RouterRef, val ignoreCase: Boolean = true, val cut: Boolean = false)
+
+/**
+ * Where the request parameter [param] of an App or Network router takes its value from: a named
+ * group of a Switch rule that matched on the way, or [WHOLE_TEXT] or [UNMATCHED_TEXT]; a null
+ * [source] sends nothing for it.
+ */
+@Serializable
+data class FieldMapping(val param: String, val source: String? = null) {
+    companion object {
+        const val WHOLE_TEXT = "@text"
+        const val UNMATCHED_TEXT = "@unmatched"
+    }
+}
 
 /** A circle on the map: [radiusMeters] round a point, called [label] in the settings. */
 @Serializable
@@ -368,6 +416,7 @@ data class RoutingConfig(
     }
 
     private fun requireWellFormed(network: RouterConfig.Network) {
+        requireWellFormed(network.name, network.fields, declared = null)
         require(isHttpsUrl(network.url)) { "${network.name} needs an https:// address of up to $MAX_URL_CHARS characters." }
         network.bearerToken?.let {
             require(it.isNotEmpty() && it.length <= MAX_TOKEN_CHARS && it.none { c -> c.isWhitespace() || c.isISOControl() }) {
@@ -381,6 +430,21 @@ data class RoutingConfig(
         require(app.receiverClass.isNotEmpty() && app.receiverClass.length <= MAX_CLASS_CHARS && CLASS_NAME.matches(app.receiverClass)) {
             "${app.name} names an app router with an invalid class name."
         }
+        require(app.params.size <= MAX_PARAMS && app.params.all(::isParamName) && app.params.toSet().size == app.params.size) {
+            "${app.name} declares parameters this version of Gravel cannot read; pick the router again."
+        }
+        requireWellFormed(app.name, app.fields, declared = app.params)
+    }
+
+    // [declared] is the parameters an app declared; a Network router has none to hold its own to.
+    private fun requireWellFormed(name: String, fields: List<FieldMapping>, declared: List<String>?) {
+        require(fields.size <= MAX_PARAMS) { "$name can map at most $MAX_PARAMS parameters." }
+        fields.forEach { field ->
+            require(isParamName(field.param)) { "A parameter of $name has to be 1 to $MAX_PARAM_CHARS lowercase letters, digits or underscores, starting with a letter." }
+            require(declared == null || field.param in declared) { "$name maps ${field.param}, which its app does not declare." }
+            require(field.source == null || isFieldSource(field.source)) { "The parameter ${field.param} of $name takes its value from a source that is not a group name." }
+        }
+        require(fields.map { it.param }.toSet().size == fields.size) { "$name maps a parameter twice." }
     }
 
     // A circle can only run through the routers that forward.
@@ -439,12 +503,24 @@ data class RoutingConfig(
         const val MAX_URL_CHARS = 2048
         const val MAX_TOKEN_CHARS = 512
         const val MAX_CLASS_CHARS = 256
+        const val MAX_PARAMS = 16
+        const val MAX_PARAM_CHARS = 32
 
         private val ROUTER_ID = Regex("[a-z0-9-]{1,$MAX_ID_CHARS}")
         private val PACKAGE_NAME = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")
         private val CLASS_NAME = Regex("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*")
 
         fun isRouterId(id: String): Boolean = ROUTER_ID.matches(id)
+
+        private val PARAM_NAME = Regex("[a-z][a-z0-9_]{0,${MAX_PARAM_CHARS - 1}}")
+        private val GROUP_NAME = Regex("[A-Za-z_][A-Za-z0-9_]{0,${MAX_PARAM_CHARS - 1}}")
+
+        /** A request parameter's name, as an app declares it and a mapping names it. */
+        fun isParamName(name: String): Boolean = PARAM_NAME.matches(name)
+
+        /** A named group a mapping can take its value from, or one of the whole-text sources. */
+        fun isFieldSource(source: String): Boolean =
+            source == FieldMapping.WHOLE_TEXT || source == FieldMapping.UNMATCHED_TEXT || GROUP_NAME.matches(source)
 
         /** `https://` with a host, no whitespace or control characters, within the cap. */
         fun isHttpsUrl(url: String): Boolean =

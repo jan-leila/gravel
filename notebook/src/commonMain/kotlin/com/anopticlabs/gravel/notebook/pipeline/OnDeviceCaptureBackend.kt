@@ -77,8 +77,7 @@ class OnDeviceCaptureBackend(
             return BuiltCapture.Completion(utterance)
         }
         val config = readRouting()
-        val routed = RoutedText.of(request.id, request.capturedAt, request.zone, transcript, request.location)
-        val terminal = RouteWalk.terminal(config, routed)
+        val (terminal, routed) = RouteWalk.route(config, RoutedText.of(request.id, request.capturedAt, request.zone, transcript, request.location))
         // A router that waits on the user gets nothing built now: the answer may change what is sent, or drop it.
         val asks = terminal.asked()
         if (terminal.confirm || asks.isNotEmpty()) return BuiltCapture.ToConfirm(terminal, routed, asks)

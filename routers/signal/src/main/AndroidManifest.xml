@@ -15,6 +15,7 @@
                 <action android:name="com.anopticlabs.gravel.notebook.action.ROUTE_TEXT" />
             </intent-filter>
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.id" android:value="signal" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.params" android:value="text" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.label" android:value="Send over Signal" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.description" android:value="Sends what you said as a Signal message through your signal-cli relay" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.list" android:value="${applicationId}.routers" />

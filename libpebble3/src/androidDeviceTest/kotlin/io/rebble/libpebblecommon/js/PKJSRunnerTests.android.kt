@@ -80,6 +80,7 @@ fun createJsRunner(
         httpInterceptorManager = HttpInterceptorManager(emulator, InjectedPKJSHttpInterceptors(emptyList())),
         notificationConfigFlow = NotificationConfigFlow(configFlow),
         watchappPermissions = watchappPermissions,
+        watchappPush = libPebble,
         networkDenyEnforcement = networkDenyEnforcement,
     )
 }

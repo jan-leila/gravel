@@ -70,6 +70,18 @@
             </intent-filter>
         </service>
 
+        <!-- Gravel: UnifiedPush for watchapps (DESIGN_NOTES). The connector binds this in-process. -->
+        <service android:name="com.anopticlabs.gravel.push.WatchappPushService"
+                 android:exported="false">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT"/>
+            </intent-filter>
+        </service>
+        <!-- The connector exports this so a distributor can lift the app to the foreground on a
+             push; Gravel already runs a foreground service, and nothing else needs it. -->
+        <service android:name="org.unifiedpush.android.connector.internal.RaiseToForegroundService"
+                 tools:node="remove"/>
+
         <service android:name="io.rebble.libpebblecommon.pebblekit.two.PebbleSenderReceiver"
                  android:exported="true">
             <intent-filter>
