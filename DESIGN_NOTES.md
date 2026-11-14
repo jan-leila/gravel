@@ -353,8 +353,11 @@ the app which it got.
 (`MessagingReceiverImpl`). It acts only on a broadcast carrying the random
 token Gravel gave the distributor for that registration
 (`MessagingReceiver.onReceive`) and forwards to `WatchappPushService`,
-which is not exported. The connector's exported
-`RaiseToForegroundService` is removed in `libpebble3`'s manifest.
+which is not exported. No permission can protect it, because any
+installed app may be the distributor, so it is on the release
+exported-component allowlist (`allowedExportedComponents`) without one.
+The connector's exported `RaiseToForegroundService` is removed in
+`libpebble3`'s manifest.
 
 **Layout.** `com.anopticlabs.gravel.push` in `libpebble3`: the routing
 (`WatchappPushManager`) is common code over a `PushTransport` seam, and
