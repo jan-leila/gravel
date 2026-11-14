@@ -81,4 +81,12 @@ class RoutingDiffTest {
         val moved = before.copy(routers = listOf(places.copy(rules = listOf(PlaceRule(home.copy(latitude = 0.0, longitude = 0.0), true, g("notebook"))), unknown = g("notebook")), note))
         assertEquals(listOf("The rules of 'Places' changed.", "The place 'Home' of 'Places' moved.", "'Places' sends recordings without a location to 'Notebook'."), RoutingDiff.describe(before, moved))
     }
+
+    @Test
+    fun aChangedParameterMappingOrCutIsNamed() {
+        val mapped = config.copy(routers = listOf(split, note, reminder, hook.copy(fields = listOf(FieldMapping("title", "item")))))
+        assertEquals(listOf("'Hook' fills its parameters differently."), RoutingDiff.describe(config, mapped))
+        val cutting = config.copy(routers = listOf(split.copy(rules = split.rules.map { it.copy(cut = true) }), note, reminder, hook))
+        assertEquals(listOf("The rules of 'Split' changed."), RoutingDiff.describe(config, cutting))
+    }
 }

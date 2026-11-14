@@ -15,6 +15,7 @@
                 <action android:name="com.anopticlabs.gravel.notebook.action.ROUTE_TEXT" />
             </intent-filter>
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.id" android:value="post" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.params" android:value="text" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.label" android:value="Post to Mastodon" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.description" android:value="Posts what you said as a status on your Mastodon account" />
         </receiver>

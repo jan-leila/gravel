@@ -16,9 +16,9 @@ import kotlinx.coroutines.withTimeout
 /** What a receiver left: its result code, and its result data when it set any. */
 data class BroadcastAnswer(val code: Int, val data: String? = null)
 
-/** Sends one delivery to a router receiver, [share] saying what goes with the text and [listedId] naming the listed router it is for (null for the receiver's declared one), and returns what the receiver left; the caller bounds the wait. */
+/** Sends one delivery to a router receiver, [share] saying what goes with the text, [fields] the request parameters it carries, and [listedId] naming the listed router it is for (null for the receiver's declared one), and returns what the receiver left; the caller bounds the wait. */
 fun interface RouterBroadcastSender {
-    suspend fun send(packageName: String, receiverClass: String, listedId: String?, text: RoutedText, share: Set<Need>): BroadcastAnswer
+    suspend fun send(packageName: String, receiverClass: String, listedId: String?, text: RoutedText, share: Set<Need>, fields: Map<String, String>): BroadcastAnswer
 }
 
 /**
@@ -47,7 +47,7 @@ class AppRouterDelivery(
         val trusted = RouterTrust.isTrusted(receiver.namespace, trusted()) { installed.signedBy(receiver.packageName, it) }
         if (!trusted) unavailable("the app behind ${router.name} is not trusted")
         val answer = try {
-            withTimeout(waitMillis) { sender.send(receiver.packageName, receiver.receiverClass, receiver.id.takeIf { receiver.listed }, text, share) }
+            withTimeout(waitMillis) { sender.send(receiver.packageName, receiver.receiverClass, receiver.id.takeIf { receiver.listed }, text, share, router.fieldsFor(text)) }
         } catch (e: TimeoutCancellationException) {
             throw CaptureProcessingException(CaptureFailureKind.RETRY, "${router.name} did not answer in time", e)
         }
@@ -77,20 +77,11 @@ class AppRouterDelivery(
  * API's payload, the shared parts and nothing else.
  */
 class AndroidRouterBroadcastSender(private val context: Context) : RouterBroadcastSender {
-    override suspend fun send(packageName: String, receiverClass: String, listedId: String?, text: RoutedText, share: Set<Need>): BroadcastAnswer = suspendCancellableCoroutine { continuation ->
+    override suspend fun send(packageName: String, receiverClass: String, listedId: String?, text: RoutedText, share: Set<Need>, fields: Map<String, String>): BroadcastAnswer = suspendCancellableCoroutine { continuation ->
         val intent = Intent(RouterApi.ACTION_ROUTE_TEXT)
             .setComponent(ComponentName(packageName, receiverClass))
             .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-            .putExtra(RouterApi.EXTRA_API_VERSION, if (listedId == null) RouterApi.VERSION else RouterApi.VERSION_LISTED)
-            .putExtra(RouterApi.EXTRA_CAPTURE_ID, text.captureId)
-            .putExtra(RouterApi.EXTRA_TEXT, text.text)
-        listedId?.let { intent.putExtra(RouterApi.EXTRA_ROUTER_ID, it) }
-        if (Need.RECORDED_AT in share) intent.putExtra(RouterApi.EXTRA_RECORDED_AT, text.recordedAt)
-        text.location?.takeIf { Need.LOCATION in share }?.let { location ->
-            intent.putExtra(RouterApi.EXTRA_LOCATION_LATITUDE, location.latitude)
-            intent.putExtra(RouterApi.EXTRA_LOCATION_LONGITUDE, location.longitude)
-            location.accuracyMeters?.let { intent.putExtra(RouterApi.EXTRA_LOCATION_ACCURACY_METERS, it) }
-        }
+        writeDeliveryExtras(IntentExtras(intent), listedId, text, share, fields)
         val result = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 if (continuation.isActive) continuation.resume(BroadcastAnswer(resultCode, resultData))
@@ -98,4 +89,12 @@ class AndroidRouterBroadcastSender(private val context: Context) : RouterBroadca
         }
         context.sendOrderedBroadcast(intent, null, result, null, Activity.RESULT_CANCELED, null, null)
     }
+}
+
+private class IntentExtras(private val intent: Intent) : DeliveryExtras {
+    override fun putString(name: String, value: String) { intent.putExtra(name, value) }
+    override fun putInt(name: String, value: Int) { intent.putExtra(name, value) }
+    override fun putDouble(name: String, value: Double) { intent.putExtra(name, value) }
+    override fun putFloat(name: String, value: Float) { intent.putExtra(name, value) }
+    override fun putStringArray(name: String, value: Array<String>) { intent.putExtra(name, value) }
 }

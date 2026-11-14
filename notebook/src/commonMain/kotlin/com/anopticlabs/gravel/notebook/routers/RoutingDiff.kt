@@ -59,9 +59,11 @@ object RoutingDiff {
                     was.bearerToken == null -> lines += "'$name' has a token now."
                     else -> lines += "'$name' has a different token."
                 }
+                if (was.fields != now.fields) lines += "'$name' fills its parameters differently."
             }
             was is RouterConfig.App && now is RouterConfig.App -> {
                 if (was.packageName != now.packageName || was.receiverClass != now.receiverClass) lines += "'$name' now sends to ${now.packageName}."
+                if (was.fields != now.fields) lines += "'$name' fills its parameters differently."
             }
             else -> Unit
         }

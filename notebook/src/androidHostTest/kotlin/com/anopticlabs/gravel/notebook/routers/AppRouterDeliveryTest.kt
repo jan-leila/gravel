@@ -31,8 +31,10 @@ class AppRouterDeliveryTest {
         var answer = BroadcastAnswer(RouterApi.RESULT_ACKNOWLEDGED)
         var answerAfterMillis = 0L
         val listedIds = mutableListOf<String?>()
-        override suspend fun send(packageName: String, receiverClass: String, listedId: String?, text: RoutedText, share: Set<Need>): BroadcastAnswer {
+        val fields = mutableListOf<Map<String, String>>()
+        override suspend fun send(packageName: String, receiverClass: String, listedId: String?, text: RoutedText, share: Set<Need>, fields: Map<String, String>): BroadcastAnswer {
             listedIds += listedId
+            this.fields += fields
             sent += Triple(packageName, receiverClass, text)
             shared += share
             delay(answerAfterMillis)
@@ -138,6 +140,16 @@ class AppRouterDeliveryTest {
         delivery.deliver(tasks, text, emptySet())
         assertEquals(listOf("list-7", null), sender.listedIds)
         assertTrue(unavailable { delivery.deliver(tasks.copy(id = "list-8"), text, emptySet()) }.message!!.contains("no longer declares that router"))
+    }
+
+    /** The fields are those of the router as configured, resolved from the matches the text carries. */
+    @Test
+    fun theMappedFieldsGoWithTheDelivery() = runBlocking<Unit> {
+        installTasks()
+        val matched = text.copy(text = "task buy milk", matches = listOf(TextMatch("split", 0, 13, groups = listOf(MatchGroup("item", 5, 13)))))
+        delivery.deliver(tasks.copy(params = listOf("title", "item")), matched, emptySet())
+        delivery.deliver(tasks.copy(params = listOf("title"), fields = listOf(FieldMapping("title", "item"))), matched, emptySet())
+        assertEquals(listOf(mapOf("item" to "buy milk"), mapOf("title" to "buy milk")), sender.fields)
     }
 
     @Test

@@ -7,7 +7,9 @@ import com.anopticlabs.gravel.notebook.routers.Need
  * durable queue entry's id. [stage] is set only while PROCESSING; [resultLabel] holds the terminal
  * text; [noteId] is set on NOTE_CREATED, [reminderId] on REMINDER_SET. An AWAITING_USER row
  * carries what the user has to see: the [transcript], the [target] router's name, the needs still
- * [asks]ed about, and whether a [confirm]ation is wanted once they are answered.
+ * [asks]ed about, whether a [confirm]ation is wanted once they are answered, and what the router
+ * would be sent when that differs from the transcript: the text with the cut words out ([sends],
+ * null when nothing was cut) and the mapped [fields].
  */
 data class CaptureQueueItem(
     val id: String,
@@ -22,6 +24,8 @@ data class CaptureQueueItem(
     val target: String? = null,
     val asks: Set<Need> = emptySet(),
     val confirm: Boolean = false,
+    val sends: String? = null,
+    val fields: Map<String, String> = emptyMap(),
 ) {
     enum class Status { QUEUED, PROCESSING, NOTE_CREATED, REMINDER_SET, FORWARDED, FAILED, AWAITING_USER }
 
@@ -73,12 +77,14 @@ fun withSettledCaptureItem(
     target: String? = null,
     asks: Set<Need> = emptySet(),
     confirm: Boolean = false,
+    sends: String? = null,
+    fields: Map<String, String> = emptyMap(),
 ): List<CaptureQueueItem> =
     items.map {
         if (it.id == id) {
             it.copy(
                 status = status, kind = kind, stage = null, resultLabel = label, noteId = noteId, reminderId = reminderId,
-                transcript = transcript, target = target, asks = asks, confirm = confirm,
+                transcript = transcript, target = target, asks = asks, confirm = confirm, sends = sends, fields = fields,
             )
         } else {
             it
@@ -91,6 +97,7 @@ fun awaitingCaptureItem(entry: QueuedCapture): CaptureQueueItem? {
     return CaptureQueueItem(
         entry.id, entry.queuedAtMillis, CaptureQueueItem.Status.AWAITING_USER,
         transcript = awaiting.text, target = awaiting.routerName, asks = awaiting.asks, confirm = awaiting.confirm,
+        sends = awaiting.sends, fields = awaiting.fields,
     )
 }
 

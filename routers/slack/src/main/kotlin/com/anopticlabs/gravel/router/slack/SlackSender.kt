@@ -27,7 +27,7 @@ import kotlinx.serialization.json.booleanOrNull
 fun slackRequest(webhook: String, delivery: Delivery): HttpRequest = HttpRequest(
     method = "POST",
     url = webhook,
-    body = """{"text":${jsonString(delivery.text)}}""".encodeToByteArray(),
+    body = """{"text":${jsonString(delivery.field("text") ?: delivery.content)}}""".encodeToByteArray(),
     contentType = "application/json",
 )
 
@@ -36,7 +36,7 @@ fun slackPostRequest(token: String, channel: String, delivery: Delivery): HttpRe
     method = "POST",
     url = "$SLACK_API/chat.postMessage",
     headers = mapOf("Authorization" to "Bearer $token"),
-    body = """{"channel":${jsonString(channel)},"text":${jsonString(delivery.text)}}""".encodeToByteArray(),
+    body = """{"channel":${jsonString(channel)},"text":${jsonString(delivery.field("text") ?: delivery.content)}}""".encodeToByteArray(),
     contentType = "application/json; charset=utf-8",
 )
 

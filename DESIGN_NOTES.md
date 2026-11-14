@@ -1932,7 +1932,20 @@ in the app's device suite:
   pattern, so no rule can hold the drain, at the price of RE2 syntax (no
   backreferences, no lookaround; the platform's engine backtracks, and on
   Android copies the text to a String before matching, so a deadline read
-  through a `CharSequence` never fired there). The default routing is a
+  through a `CharSequence` never fired there). The walk records each Switch
+  rule that matched as a `TextMatch` on the `RoutedText` (the switch, the
+  span, whether the rule cuts its words, its named groups; Time and Place
+  rules add none, as they read what only a grant may send), kept on a
+  parked capture with the transcript it indexes. The matches stay on the
+  phone: a delivery carries `unmatchedText`, the text with the cutting
+  rules' spans out, and the request parameters `fieldsFor` fills from the
+  named groups by the mapping on the App router (its app's declared
+  `params`, each by default from the group of its name) or the Network
+  router (parameters the user names); the first-party router apps send a
+  mapped parameter where there is one, else `Delivery.content`. A parked
+  row shows the cut text and the fields, so a confirmation is of what is
+  sent, and the Text Routing screen's "Try a sentence" page runs the walk
+  (`RoutingTrial`) on typed text without saving or sending. The default routing is a
   Switch of the reminder cues (`RoutingConfig.REMINDER_CUES`, the cue
   detector's requests as rules, without its guards) before a Reminder
   router, falling back to a Note router, so an install upgraded from the

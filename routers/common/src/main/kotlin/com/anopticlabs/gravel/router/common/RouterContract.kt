@@ -30,6 +30,14 @@ object RouterContract {
     const val EXTRA_LOCATION_LONGITUDE = "location_longitude"
     const val EXTRA_LOCATION_ACCURACY_METERS = "location_accuracy_m"
 
+    /** The text once the words the user's Switch rules cut are taken out, and the request parameters the user filled, names and values in one order. */
+    const val EXTRA_UNMATCHED_TEXT = "unmatched_text"
+    const val EXTRA_FIELD_NAMES = "field_names"
+    const val EXTRA_FIELD_VALUES = "field_values"
+
+    /** The receiver's meta-data naming the request parameters it takes, comma-separated. */
+    const val META_PARAMS = "com.anopticlabs.gravel.notebook.router.params"
+
     /** `Activity.RESULT_OK`: the delivery is taken. */
     const val RESULT_ACKNOWLEDGED = -1
 

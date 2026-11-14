@@ -26,6 +26,7 @@ import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import com.anopticlabs.gravel.notebook.routers.TextDeliverer
+import com.anopticlabs.gravel.notebook.routers.TextMatch
 import com.anopticlabs.gravel.notebook.reminders.ReminderTimeStatus
 import com.anopticlabs.gravel.notebook.storage.FakeCryptographer
 import com.anopticlabs.gravel.notebook.storage.NoteStore
@@ -1215,10 +1216,11 @@ class CaptureDrainTest {
 
     private val hook = RouterConfig.Network("hook", "Hook", "https://example.test/notes")
 
-    private fun parkAt(router: RouterConfig, asks: Set<Need>) {
+    private fun parkAt(router: RouterConfig, asks: Set<Need>, matches: List<TextMatch> = emptyList()) {
         backend.onProcess = { request, onStage ->
             onStage(CaptureStage.TRANSCRIBING)
-            BuiltCapture.ToConfirm(router, RoutedText.of(request.id, request.capturedAt, request.zone, "said: ${request.audio.decodeToString()}"), asks)
+            val said = RoutedText.of(request.id, request.capturedAt, request.zone, "said: ${request.audio.decodeToString()}")
+            BuiltCapture.ToConfirm(router, said.copy(matches = matches), asks)
         }
     }
 
@@ -1272,6 +1274,22 @@ class CaptureDrainTest {
         assertFalse(blob("p1").exists())
         assertEquals(CaptureQueueItem.Status.FORWARDED, row("p1")!!.status)
         assertEquals(DrainReport(), drain.drain(), "a request is consumed by the pass that served it")
+    }
+
+    /** The matches index the kept transcript, so they are kept with it for the router reached once the user answers. */
+    @Test
+    fun aParkedCaptureKeepsItsSwitchMatchesForTheResume() = runBlocking<Unit> {
+        val match = TextMatch("split", 0, 5)
+        enqueue("p1", "hello")
+        parkAt(hook, setOf(Need.LOCATION), listOf(match))
+        drain.drain()
+        assertEquals(listOf(match), entry("p1")!!.awaiting!!.matches)
+        queue.update { answerUser(it, "p1", Need.LOCATION, allow = true) }
+        backend.onResume = { resume, _ -> BuiltCapture.Forward(hook, resume.text, resume.granted) }
+        drain.requestResume("p1")
+        assertEquals(DrainReport(published = 1), drain.drain())
+        assertEquals(listOf(match), backend.resumes.single().text.matches)
+        assertEquals(listOf(match), deliverer.delivered.single().second.matches)
     }
 
     @Test

@@ -15,6 +15,7 @@
                 <action android:name="com.anopticlabs.gravel.notebook.action.ROUTE_TEXT" />
             </intent-filter>
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.id" android:value="transaction" />
+            <meta-data android:name="com.anopticlabs.gravel.notebook.router.params" android:value="amount,payee,notes" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.label" android:value="Add an Actual transaction" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.description" android:value="Enters what you said as a transaction in Actual Budget: an amount, a payee and the words as the note" />
             <meta-data android:name="com.anopticlabs.gravel.notebook.router.needs" android:value="recorded_at" />

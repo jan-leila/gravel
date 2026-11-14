@@ -21,6 +21,7 @@ class RouterContractTest {
             "com.anopticlabs.gravel.notebook.router.id", "com.anopticlabs.gravel.notebook.router.needs",
             RouterContract.EXTRA_ROUTER_ID, RouterContract.META_LIST, RouterContract.LIST_PATH,
             RouterContract.COLUMN_ID, RouterContract.COLUMN_LABEL, RouterContract.COLUMN_DESCRIPTION, RouterContract.COLUMN_NEEDS,
+            RouterContract.EXTRA_UNMATCHED_TEXT, RouterContract.EXTRA_FIELD_NAMES, RouterContract.EXTRA_FIELD_VALUES, RouterContract.META_PARAMS,
         )
         for (name in names) assertTrue(document.contains("`$name`") || document.contains("\"$name\""), name)
         assertTrue(document.contains("`Activity.RESULT_FIRST_USER`\n(`${RouterContract.RESULT_REFUSED}`)"))

@@ -3,7 +3,13 @@ package com.anopticlabs.gravel.notebook.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.anopticlabs.gravel.notebook.backup.BackupDocumentOps
+import com.anopticlabs.gravel.notebook.capture.RecordedAt
 import com.anopticlabs.gravel.notebook.capture.RecordingLocation
+import com.anopticlabs.gravel.notebook.routers.RoutingTrial
+import com.anopticlabs.gravel.notebook.routers.Trial
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
 import kotlinx.serialization.json.decodeFromJsonElement
 import com.anopticlabs.gravel.notebook.storage.NotebookJson
 import com.anopticlabs.gravel.notebook.routers.RoutingSecrets
@@ -81,9 +87,21 @@ class RoutingViewModel<H : Any>(
     private val location: RecordingLocation = RecordingLocation.NONE,
     private val text: CaptureText? = null,
     private val processing: () -> Boolean = { false },
+    private val now: () -> Instant = { Clock.System.now() },
+    private val zone: () -> TimeZone = { TimeZone.currentSystemDefault() },
 ) : ViewModel() {
     /** Where the phone is now, for a place the user is at; null when it is not known or not allowed. */
     suspend fun currentLocation(): RoutedLocation? = withContext(io) { location.current() }
+
+    /**
+     * What the stored routing does with [sentence], as if recorded now and here; null while no
+     * routing is loaded. Nothing is saved or sent, and no text model runs.
+     */
+    suspend fun tryRoute(sentence: String): Trial? {
+        val config = (_ui.value.store as? RoutingStoreState.Loaded)?.config ?: return null
+        val here = currentLocation()
+        return withContext(io) { RoutingTrial.run(config, sentence, RecordedAt.render(now(), zone()), here) }
+    }
 
     private val _ui = MutableStateFlow(RoutingUi())
     val ui: StateFlow<RoutingUi> = _ui.asStateFlow()

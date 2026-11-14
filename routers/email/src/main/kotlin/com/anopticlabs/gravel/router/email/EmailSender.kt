@@ -69,8 +69,8 @@ class EmailSender(
         val message = MailMessage.build(
             from = account.from,
             to = to,
-            subject = emailSubject(account.subject, delivery.recordedAt),
-            body = delivery.text,
+            subject = delivery.field("subject") ?: emailSubject(account.subject, delivery.recordedAt),
+            body = delivery.field("body") ?: delivery.content,
             messageId = delivery.captureId,
             date = emailDate(delivery.recordedAt, now()),
         )

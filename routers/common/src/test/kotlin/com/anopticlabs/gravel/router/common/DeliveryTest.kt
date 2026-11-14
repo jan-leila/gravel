@@ -49,6 +49,41 @@ class DeliveryTest {
         assertEquals(stored, Delivery.read(ByteArrayInputStream(ByteArrayOutputStream().also { stored.write(it) }.toByteArray())))
     }
 
+    private val matched = full + mapOf(
+        RouterContract.EXTRA_TEXT to "add a task: buy milk",
+        RouterContract.EXTRA_UNMATCHED_TEXT to "buy milk",
+        RouterContract.EXTRA_FIELD_NAMES to arrayOf("title", "list"),
+        RouterContract.EXTRA_FIELD_VALUES to arrayOf("Buy milk", " "),
+    )
+
+    @Test
+    fun theFieldsAndTheTextLeftOverAreReadAndTheContentIsWhatIsLeft() {
+        val delivery = Delivery.from(matched)!!
+        assertEquals("buy milk", delivery.unmatchedText)
+        assertEquals(mapOf("title" to "Buy milk", "list" to " "), delivery.fields)
+        assertEquals("Buy milk", delivery.field("title"))
+        assertNull(delivery.field("list"), "a blank field is no field")
+        assertNull(delivery.field("other"))
+        assertEquals("buy milk", delivery.content)
+        assertEquals("buy milk", Delivery.from(full)!!.content, "a Gravel without them sends the text alone")
+        assertEquals("todo", Delivery("c1", "todo", null, null, unmatchedText = " ").content, "nothing left over sends the whole text")
+    }
+
+    /** The field extras are optional: arrays that do not line up drop the fields, never the delivery. */
+    @Test
+    fun fieldArraysThatDoNotLineUpLeaveTheFieldsOut() {
+        assertEquals(emptyMap<String, String>(), Delivery.from(matched + (RouterContract.EXTRA_FIELD_VALUES to arrayOf("x")))!!.fields)
+        assertEquals(emptyMap<String, String>(), Delivery.from(matched - RouterContract.EXTRA_FIELD_NAMES)!!.fields)
+        assertEquals(emptyMap<String, String>(), Delivery.from(matched + (RouterContract.EXTRA_FIELD_NAMES to "title"))!!.fields)
+        assertEquals(16, Delivery.from(matched + mapOf(RouterContract.EXTRA_FIELD_NAMES to Array(20) { "p$it" }, RouterContract.EXTRA_FIELD_VALUES to Array(20) { "v" }))!!.fields.size)
+    }
+
+    @Test
+    fun theFieldsRoundTripThroughTheOutboxFormat() {
+        val delivery = Delivery.from(matched + (RouterContract.EXTRA_FIELD_VALUES to arrayOf("Buy = \"milk\"\nnow", "x")))!!
+        assertEquals(delivery, Delivery.read(ByteArrayInputStream(ByteArrayOutputStream().also { delivery.write(it) }.toByteArray())))
+    }
+
     @Test
     fun aDeliveryRoundTripsThroughTheOutboxFormatWithEveryCharacterKept() {
         val tricky = Delivery("c1", "line one\nline two = \"quoted\" é \\ end", "2026-09-22T17:00:00+02:00", Location(-33.9, 151.2, null))

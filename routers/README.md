@@ -52,6 +52,16 @@ optional now, and a delivery to it is refused while it is empty.
   (`RouterApp.refusal`, for one that can never be sent as the app is set
   up: a missing setting, a bad address, no amount to book), with a reason
   Gravel shows the user.
+- Every app declares request parameters in its manifest (`params`: a
+  Vikunja task's `title` and `description`, an Actual transaction's
+  `amount`, `payee` and `notes`, an email's `subject` and `body`, the
+  `text` of the others), which the user fills from named groups of their
+  Switch rules (`ROUTER_API.md`, What a delivery carries). A sender uses a
+  filled parameter (`Delivery.field`), else `Delivery.content`: the text
+  with the words of rules set to cut taken out, so a cutting rule
+  `^add a task:?` before Vikunja makes "add a task: buy milk" the task
+  "buy milk".
+
 - `OutboxWorker` sends what waits once there is a network: a sent delivery
   leaves the outbox; a refused one (an answer no retry changes: a bad
   token, a redirect, no such API at the address, a certificate the pin
