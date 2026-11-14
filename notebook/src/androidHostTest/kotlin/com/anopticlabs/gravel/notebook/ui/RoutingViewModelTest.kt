@@ -325,7 +325,7 @@ class RoutingViewModelEditTest {
         assertEquals("s3cret", (proposal.config.router(g("hook")) as RouterConfig.Network).bearerToken)
         assertEquals(home, (proposal.config.router(g("places")) as RouterConfig.Place).rules.single().spot)
         assertEquals(g("split"), proposal.config.entry)
-        assertEquals(listOf("The entry router is now 'Split'.", "Added Switch 'Split'.", "Added Reminder 'Reminders'."), proposal.lines)
+        assertEquals(listOf("The entry router is now 'Split'.", "Added Switch 'Split': 1 rule, else to Places.", "Added Reminder 'Reminders': sets a reminder from the text."), proposal.lines)
         assertEquals(current, store.read(), "nothing stored until the user keeps it")
         viewModel.applyProposal()
         settle()

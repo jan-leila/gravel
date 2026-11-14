@@ -2,6 +2,8 @@ package com.anopticlabs.gravel.notebook.capture
 
 import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.routers.RouterRef
+import com.anopticlabs.gravel.notebook.routers.RoutingChange
+import com.anopticlabs.gravel.notebook.routers.RoutingConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -80,6 +82,16 @@ class CaptureQueueItemsTest {
         assertEquals("Waiting for you: a router", captureQueueRowLabel(row.copy(target = null)))
         assertEquals(CaptureQueueItem("w", 7L, wait, transcript = "buy milk", target = "Hook", asks = setOf(Need.LOCATION), confirm = true), awaitingCaptureItem(parked))
         assertNull(awaitingCaptureItem(parked.copy(awaiting = null)))
+    }
+
+    @Test
+    fun aRowParkedByARoutingAssistantShowsWhatWouldChange() {
+        val routing = RoutingConfig.DEFAULT
+        val change = RoutingChange(routing, routing.copy(entry = RouterRef.gravel(RoutingConfig.NOTEBOOK_ROUTER_ID)), listOf("The entry router is now 'Notebook'."))
+        val proposed = parked.copy(awaiting = parked.awaiting!!.copy(asks = emptySet(), change = change))
+        assertEquals(change.lines, awaitingCaptureItem(proposed)!!.changes)
+        assertTrue(awaitingCaptureItem(parked)!!.changes.isEmpty())
+        assertEquals("Text routing changed", captureQueueRowLabel(CaptureQueueItem("a", 1L, CaptureQueueItem.Status.ROUTING_CHANGED)))
     }
 
     /** The queue is the record: after a process death the rows come back from it, and an answered question leaves the row. */

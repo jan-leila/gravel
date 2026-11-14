@@ -12,8 +12,11 @@ import com.anopticlabs.gravel.notebook.reminders.ReminderItem
 import com.anopticlabs.gravel.notebook.reminders.ReminderProposal
 import com.anopticlabs.gravel.notebook.reminders.ReminderRefreshSignal
 import com.anopticlabs.gravel.notebook.reminders.ReminderTimeStatus
+import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.RoutingChange
+import com.anopticlabs.gravel.notebook.routers.RoutingConfig
 import com.anopticlabs.gravel.notebook.storage.FakeCryptographer
 import com.anopticlabs.gravel.notebook.storage.NoteStore
 import com.anopticlabs.gravel.notebook.storage.ReminderEventStore
@@ -324,6 +327,14 @@ class CapturePublisherTest {
         assertIs<PublishedCapture.ReminderSet>(publisher.publish(reminder(ReminderTimeStatus.TO_CHECK), now, emptyList()))
         assertEquals(1, completions.readAll(strict = true).size)
         assertTrue(reminders.readAll(strict = true).single().timeToCheck)
+    }
+
+    @Test
+    fun aRoutingEditWithNoRoutingStoreBoundIsFlagged() = runBlocking<Unit> {
+        val change = RoutingChange(RoutingConfig.DEFAULT, RoutingConfig.DEFAULT, emptyList())
+        val failed = assertFailsWith<CaptureProcessingException> { publisher().publish(BuiltCapture.RoutingEdit("Assistant", change), now, emptyList()) }
+        assertEquals(CaptureFailureKind.FLAG, failed.kind)
+        assertEquals(CaptureFailureReason.ROUTING_NOT_CHANGED, failed.reason)
     }
 
     @Test

@@ -220,6 +220,22 @@ sealed interface RouterConfig {
         val params: List<String> = emptyList(),
         val fields: List<FieldMapping> = emptyList(),
     ) : RouterConfig
+
+    /**
+     * Takes the text as a change to this routing, said in the user's own words: the text model
+     * rewrites the routing from it ([RoutingEditor]), and the recording waits with what would
+     * change until the user applies or dismisses it, so [confirm] is always on and not stored.
+     */
+    @Serializable
+    @SerialName("assistant")
+    data class Assistant(
+        override val id: String,
+        override val name: String,
+        override val namespace: String? = null,
+        override val description: String? = null,
+    ) : RouterConfig {
+        override val confirm: Boolean get() = true
+    }
 }
 
 /** The grants of a router that sends out of the phone; null for one the Notebook consumes. */
@@ -228,7 +244,7 @@ val RouterConfig.shares: Shares?
         is RouterConfig.App -> shares
         is RouterConfig.Network -> shares
         is RouterConfig.WatchApp -> shares
-        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp -> null
+        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp, is RouterConfig.Assistant -> null
     }
 
 /** What a delivery to this router may carry beyond the text: an app's declared needs, every need not refused for a server or a watch app. */
@@ -236,7 +252,7 @@ fun RouterConfig.needed(): Set<Need> = when (this) {
     is RouterConfig.App -> needs
     is RouterConfig.Network -> Need.entries.filterTo(mutableSetOf()) { shares.of(it) != Grant.NEVER }
     is RouterConfig.WatchApp -> Need.entries.filterTo(mutableSetOf()) { shares.of(it) != Grant.NEVER }
-    is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp -> emptySet()
+    is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp, is RouterConfig.Assistant -> emptySet()
 }
 
 /** The needs the user has to be asked about before a delivery to this router. */
@@ -262,7 +278,7 @@ fun RouterConfig.fieldsFor(text: RoutedText): Map<String, String> {
         is RouterConfig.App -> params.map { param -> param to fields.firstOrNull { it.param == param }.let { if (it == null) param else it.source } }
         is RouterConfig.WatchApp -> params.map { param -> param to fields.firstOrNull { it.param == param }.let { if (it == null) param else it.source } }
         is RouterConfig.Network -> fields.map { it.param to it.source }
-        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp -> return emptyMap()
+        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp, is RouterConfig.Assistant -> return emptyMap()
     }
     val groups = text.groupValues()
     return buildMap {
@@ -355,7 +371,7 @@ val RouterConfig.forwards: List<RouterRef>
         is RouterConfig.Time -> rules.map { it.router } + listOfNotNull(otherwise)
         is RouterConfig.Place -> rules.map { it.router } + listOfNotNull(otherwise, unknown)
         is RouterConfig.OpenApp -> rules.map { it.router } + listOfNotNull(otherwise)
-        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.App, is RouterConfig.Network, is RouterConfig.WatchApp -> emptyList()
+        is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.App, is RouterConfig.Network, is RouterConfig.WatchApp, is RouterConfig.Assistant -> emptyList()
     }
 
 /** Whether this router hands the text on rather than consuming it. */
@@ -401,7 +417,7 @@ data class RoutingConfig(
                     "${router.name} needs the SHA-256 of its app's signing certificate as its namespace."
                 }
                 is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.Network,
-                is RouterConfig.OpenApp, is RouterConfig.WatchApp ->
+                is RouterConfig.OpenApp, is RouterConfig.WatchApp, is RouterConfig.Assistant ->
                     require(router.namespace == null) { "${router.name} is one of Gravel's own routers and cannot be in a namespace." }
             }
         }
@@ -418,7 +434,7 @@ data class RoutingConfig(
                 is RouterConfig.App -> requireWellFormed(router)
                 is RouterConfig.OpenApp -> requireWellFormed(router)
                 is RouterConfig.WatchApp -> requireWellFormed(router)
-                is RouterConfig.Note, is RouterConfig.Reminder -> Unit
+                is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Assistant -> Unit
             }
         }
         requireNoCircle()

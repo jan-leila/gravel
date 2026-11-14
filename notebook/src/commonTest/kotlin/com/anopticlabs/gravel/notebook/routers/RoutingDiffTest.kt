@@ -38,10 +38,24 @@ class RoutingDiffTest {
         assertEquals(
             listOf(
                 "The entry router is now 'Notes'.",
-                "Added Switch 'Sorter'.",
+                "Added Switch 'Sorter': no rules.",
                 "Removed Reminder 'Reminders'.",
                 "'Split' is now a Time.",
                 "Renamed 'Notebook' to 'Notes'.",
+            ),
+            RoutingDiff.describe(config, after),
+        )
+    }
+
+    /** A router that was not there before is the one the user has nothing to compare with, so its line says what it does. */
+    @Test
+    fun anAddedRouterIsNamedWithWhatItDoes() {
+        val added = RouterConfig.Network("out", "Out", "https://hooks.example.net/x?k=secret", bearerToken = "tok", shares = Shares(Grant.ALWAYS, Grant.NEVER))
+        val after = config.copy(routers = config.routers + added + RouterConfig.Assistant("assistant", "Assistant"))
+        assertEquals(
+            listOf(
+                "Added Network 'Out': posts to hooks.example.net, shares your location.",
+                "Added Assistant 'Assistant': changes this routing as the text says, asks you first.",
             ),
             RoutingDiff.describe(config, after),
         )

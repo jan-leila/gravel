@@ -52,8 +52,9 @@ class CaptureRows {
         confirm: Boolean = false,
         sends: String? = null,
         fields: Map<String, String> = emptyMap(),
+        changes: List<String> = emptyList(),
     ) = synchronized(lock) {
-        _items.value = withSettledCaptureItem(_items.value, id, status, kind, label, noteId, reminderId, transcript, target, asks, confirm, sends, fields)
+        _items.value = withSettledCaptureItem(_items.value, id, status, kind, label, noteId, reminderId, transcript, target, asks, confirm, sends, fields, changes)
         _batchSubmitted.value = captureBatchAfterSettle(_items.value, _batchSubmitted.value)
     }
 

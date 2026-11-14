@@ -3,6 +3,7 @@ package com.anopticlabs.gravel.notebook.pipeline
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.notebook.alarms.ReminderAlarms
 import com.anopticlabs.gravel.notebook.alarms.ReminderNotifier
+import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
 import com.anopticlabs.gravel.notebook.notes.BuiltNote
 import com.anopticlabs.gravel.notebook.notes.noteWriteFolder
 import com.anopticlabs.gravel.notebook.reminders.ReminderItem
@@ -13,6 +14,8 @@ import com.anopticlabs.gravel.notebook.reminders.cutToReminderMessage
 import com.anopticlabs.gravel.notebook.reminders.mergeParkedForDisplay
 import com.anopticlabs.gravel.notebook.reminders.planReminderArm
 import com.anopticlabs.gravel.notebook.reminders.shouldPostVoiceCompletionNotification
+import com.anopticlabs.gravel.notebook.routers.RoutingConfigStore
+import com.anopticlabs.gravel.notebook.routers.RoutingEditor
 import com.anopticlabs.gravel.notebook.storage.NoteStore
 import com.anopticlabs.gravel.notebook.storage.ReminderStore
 import com.anopticlabs.gravel.notebook.storage.VoiceCompletionStore
@@ -33,10 +36,14 @@ sealed interface PublishedCapture {
 
     /** Delivered to the app or server router [routerName]; the drain delivered it before publishing. */
     data class Forwarded(val routerName: String) : PublishedCapture
+
+    /** The routing was rewritten with the change the routing assistant [routerName] worked out. */
+    data class RoutingChanged(val routerName: String) : PublishedCapture
 }
 
 /**
- * Publishes a capture by storing what it asked for (a parked claim, a reminder or a note);
+ * Publishes a capture by storing what it asked for (a parked claim, a reminder, a note, or a
+ * change to the text routing in [routing]);
  * a failure of that write propagates, so the capture stays queued. What follows the write (the
  * alarm, a notification, the refresh tick) is best effort and never fails the publish.
  */
@@ -51,6 +58,7 @@ class CapturePublisher(
     private val appBackgrounded: () -> Boolean,
     private val now: () -> Long = System::currentTimeMillis,
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    private val routing: RoutingConfigStore? = null,
 ) {
     // Orders a park's save and notice against readParked's read and cancel.
     private val completionNotice = Mutex()
@@ -75,6 +83,7 @@ class CapturePublisher(
             is BuiltCapture.Note -> note(built.note, offeredFolders)
             // Nothing of the Notebook's is written for a delivery, which the drain made before this.
             is BuiltCapture.Forward -> PublishedCapture.Forwarded(built.router.name)
+            is BuiltCapture.RoutingEdit -> changeRouting(built)
             is BuiltCapture.ToConfirm -> throw IllegalArgumentException("a capture waiting on the user is parked, not published")
         }
 
@@ -115,6 +124,22 @@ class CapturePublisher(
                 notifier.cancelCompletionsToReview()
             }
         }
+    }
+
+    // A change refused here would be refused again, so the capture is flagged.
+    private suspend fun changeRouting(built: BuiltCapture.RoutingEdit): PublishedCapture {
+        val store = routing ?: throw CaptureProcessingException(
+            CaptureFailureKind.FLAG, "this build cannot change the text routing", reason = CaptureFailureReason.ROUTING_NOT_CHANGED,
+        )
+        try {
+            store.change { RoutingEditor.resolve(built.change, it) }
+        } catch (e: IllegalArgumentException) {
+            throw CaptureProcessingException(
+                CaptureFailureKind.FLAG, "the routing changed since this change was proposed, or no longer takes it", e,
+                reason = CaptureFailureReason.ROUTING_NOT_CHANGED,
+            )
+        }
+        return PublishedCapture.RoutingChanged(built.routerName)
     }
 
     private suspend fun reminder(proposal: ReminderProposal): PublishedCapture {

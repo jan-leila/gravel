@@ -65,6 +65,7 @@ object RoutingEdits {
         is RouterConfig.Network -> "Network"
         is RouterConfig.OpenApp -> "Open app"
         is RouterConfig.WatchApp -> "Watch app"
+        is RouterConfig.Assistant -> "Assistant"
     }
 
     /** The id prefix a new router of the same kind as [router] gets. */
@@ -89,6 +90,7 @@ object RoutingEdits {
         is RouterConfig.Network -> "Posts to ${hostOf(router.url)}" + sharesSummary(router)
         is RouterConfig.OpenApp -> rulesSummary(router.rules.size, router.otherwise, config, "app")
         is RouterConfig.WatchApp -> "Opens its watch app with the text" + sharesSummary(router)
+        is RouterConfig.Assistant -> "Changes this routing as the text says"
     }
 
     private fun rulesSummary(count: Int, otherwise: RouterRef?, config: RoutingConfig, unit: String = "rule"): String {

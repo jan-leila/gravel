@@ -420,6 +420,7 @@ private fun kindName(router: RouterConfig): String = stringResource(
         is RouterConfig.Network -> R.string.notebook_routing_kind_network
         is RouterConfig.OpenApp -> R.string.notebook_routing_kind_open_app
         is RouterConfig.WatchApp -> R.string.notebook_routing_kind_watch_app
+        is RouterConfig.Assistant -> R.string.notebook_routing_kind_assistant
     }
 )
 
@@ -525,6 +526,7 @@ private fun KindPicker(config: RoutingConfig, onPick: (RouterConfig) -> Unit, on
         Kind(R.string.notebook_routing_kind_network, R.string.notebook_routing_kind_network_hint) { id, name -> RouterConfig.Network(id, name, "") },
         // The app and its router are picked on the page.
         Kind(R.string.notebook_routing_kind_watch_app, R.string.notebook_routing_kind_watch_app_hint) { id, name -> RouterConfig.WatchApp(id, name, "", "") },
+        Kind(R.string.notebook_routing_kind_assistant, R.string.notebook_routing_kind_assistant_hint) { id, name -> RouterConfig.Assistant(id, name) },
     )
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -620,6 +622,7 @@ private fun RouterPage(
                 router.id, trimmed, url.trim(), token.trim().ifEmpty { null }, shares = shares, confirm = confirm, description = about, fields = fieldMaps,
             )
             is RouterConfig.OpenApp -> RouterConfig.OpenApp(router.id, trimmed, openRules, openOtherwise, description = about)
+            is RouterConfig.Assistant -> RouterConfig.Assistant(router.id, trimmed, description = about)
             // A router its app no longer declares keeps the app, router and parameters it was picked with.
             is RouterConfig.WatchApp -> watchTarget?.let {
                 RouterConfig.WatchApp(
@@ -681,6 +684,7 @@ private fun RouterPage(
                 )
                 when (router) {
                     is RouterConfig.Note, is RouterConfig.Reminder -> Unit
+                    is RouterConfig.Assistant -> Text(stringResource(R.string.notebook_routing_assistant_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     is RouterConfig.Switch -> SwitchFields(rules, otherwise, others, onRules = { rules = it }, onOtherwise = { otherwise = it })
                     is RouterConfig.Time -> TimeRulesFields(timeRules, timeOtherwise, others, onRules = { timeRules = it }, onOtherwise = { timeOtherwise = it })
                     is RouterConfig.Place -> PlaceRulesFields(
@@ -709,7 +713,8 @@ private fun RouterPage(
                         ParamsFields(watchTarget?.params ?: router.params, fieldMaps, groups, onFields = { fieldMaps = it })
                     }
                 }
-                if (!router.forwardsText) {
+                // An assistant always asks first, so it has nothing to tick.
+                if (!router.forwardsText && router !is RouterConfig.Assistant) {
                     Row(Modifier.fillMaxWidth().clickable { confirm = !confirm }, verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = confirm, onCheckedChange = { confirm = it })
                         Column(Modifier.padding(start = 4.dp)) {
@@ -1415,6 +1420,7 @@ private fun TrialResult(trial: Trial.Ended) {
         match.groups.forEach { (name, value) -> Text("  $name = \"$value\"", style = MaterialTheme.typography.bodySmall) }
     }
     when (trial.router) {
+        is RouterConfig.Assistant -> Text(stringResource(R.string.notebook_routing_try_assistant, trial.unmatchedText), style = MaterialTheme.typography.bodyMedium)
         is RouterConfig.App, is RouterConfig.Network, is RouterConfig.WatchApp -> {
             Text(stringResource(R.string.notebook_routing_try_sends, trial.unmatchedText), style = MaterialTheme.typography.bodyMedium)
             if (trial.fields.isNotEmpty()) {
