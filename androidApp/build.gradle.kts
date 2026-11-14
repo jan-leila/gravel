@@ -250,6 +250,9 @@ val allowedExportedComponents = setOf(
     "receiver|androidx.profileinstaller.ProfileInstallReceiver|perm=android.permission.DUMP|read=|write=",
     "provider|io.rebble.libpebblecommon.pebblekit.two.PebbleKitProvider|perm=|read=|write=",
     "provider|io.rebble.libpebblecommon.pebblekit.classic.PebbleKitProvider|perm=|read=|write=",
+    // Gravel: where the UnifiedPush distributor delivers. No permission can gate it, since any app
+    // may be the distributor; the connector drops a broadcast that lacks the registration's token.
+    "receiver|org.unifiedpush.android.connector.internal.MessagingReceiverImpl|perm=|read=|write=",
 )
 
 abstract class VerifyExportedComponents : DefaultTask() {

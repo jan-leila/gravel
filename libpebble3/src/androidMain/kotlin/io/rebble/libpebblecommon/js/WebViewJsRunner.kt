@@ -1,5 +1,10 @@
 package io.rebble.libpebblecommon.js
 
+import com.anopticlabs.gravel.push.PushEndpoint
+import com.anopticlabs.gravel.push.PushFailure
+import com.anopticlabs.gravel.push.PushMessage
+import com.anopticlabs.gravel.push.WatchappPush
+import kotlinx.serialization.json.putJsonObject
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
@@ -89,6 +94,7 @@ class WebViewJsRunner(
     httpInterceptorManager: HttpInterceptorManager,
     notificationConfigFlow: NotificationConfigFlow,
     private val watchappPermissions: WatchappPermissionResolver,
+    private val watchappPush: WatchappPush,
     private val networkDenyEnforcement: NetworkDenyEnforcement,
 ): JsRunner(appInfo, lockerEntry, jsPath, device, urlOpenRequests), LibPebbleKoinComponent {
     private val context = appContext.context
@@ -169,7 +175,7 @@ class WebViewJsRunner(
     private var restoreCompleted: Boolean = false
     private val initializedLock = Object()
     private val publicJsInterface = WebViewPKJSInterface(this, device, context, libPebble, jsTokenUtil)
-    private val privateJsInterface = WebViewPrivatePKJSInterface(this, device, scope, _outgoingAppMessages, logMessages, jsTokenUtil, remoteTimelineEmulator, httpInterceptorManager, notificationConfigFlow, watchappPermissions)
+    private val privateJsInterface = WebViewPrivatePKJSInterface(this, device, scope, _outgoingAppMessages, logMessages, jsTokenUtil, remoteTimelineEmulator, httpInterceptorManager, notificationConfigFlow, watchappPermissions, watchappPush)
     private val localStorageInterface = WebViewJSLocalStorageInterface(appInfo.uuid, appContext) {
         // The frame's localStorage stand-in computes its own length.
         if (denyConstruction) return@WebViewJSLocalStorageInterface
@@ -804,6 +810,40 @@ class WebViewJsRunner(
         val tokenJson = Json.encodeToString(mapOf("userToken" to null, "callId" to callId))
         withContext(Dispatchers.Main) {
             evaluateInPage("window.signalTimelineTokenFailure(${Json.encodeToString(tokenJson)})")
+        }
+    }
+
+    override suspend fun signalPushEndpoint(callId: String, endpoint: PushEndpoint) {
+        val json = buildJsonObject {
+            put("callId", callId)
+            putJsonObject("endpoint") {
+                put("url", endpoint.url)
+                put("p256dh", endpoint.p256dh)
+                put("auth", endpoint.auth)
+            }
+        }.toString()
+        withContext(Dispatchers.Main) {
+            evaluateInPage("window.signalPushEndpoint($json)")
+        }
+    }
+
+    override suspend fun signalPushEndpointFail(callId: String, reason: PushFailure) {
+        val json = buildJsonObject {
+            put("callId", callId)
+            put("reason", reason.code)
+        }.toString()
+        withContext(Dispatchers.Main) {
+            evaluateInPage("window.signalPushEndpoint($json)")
+        }
+    }
+
+    override suspend fun signalPush(message: PushMessage) {
+        val json = buildJsonObject {
+            put("body", message.body)
+            put("encrypted", message.encrypted)
+        }.toString()
+        withContext(Dispatchers.Main) {
+            evaluateInPage("window.signalPush($json)")
         }
     }
 

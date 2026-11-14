@@ -128,6 +128,8 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.core.ktx)
             implementation(libs.pebblekit)
+            // Gravel: push for watchapps, through whichever distributor app the user picks.
+            implementation(libs.unifiedpush.connector)
             // Fork: ProxyController for the watchapp network black-hole (layer 3).
             implementation(libs.androidx.webkit)
         }

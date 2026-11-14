@@ -17,6 +17,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -143,6 +144,13 @@ fun WatchappPermissionsScreen(nav: NavBarNav, topBarParams: TopBarParams) {
                         updateWatchConfig { it.copy(watchappDefaultLocationAllowed = allowed) }
                     },
                 )
+                GlobalDefaultToggle(
+                    label = "Push messages",
+                    checked = watchConfig.watchappDefaultPushAllowed,
+                    onCheckedChange = { allowed ->
+                        updateWatchConfig { it.copy(watchappDefaultPushAllowed = allowed) }
+                    },
+                )
                 if (networkDenyEnforcement.deniedPkjsSwitchApplies) {
                     Spacer(Modifier.height(16.dp))
                     HorizontalDivider()
@@ -168,6 +176,10 @@ fun WatchappPermissionsScreen(nav: NavBarNav, topBarParams: TopBarParams) {
                     )
                     KnownIssuesLink(KnownIssue.REAL_TIME_CONNECTIONS_ON_ONE_LAYER)
                 }
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(8.dp))
+                PushDistributorSection(libPebble)
                 Spacer(Modifier.height(16.dp))
                 HorizontalDivider()
                 Spacer(Modifier.height(8.dp))
@@ -318,6 +330,57 @@ private fun GlobalDefaultToggle(
     }
 }
 
+/**
+ * Which UnifiedPush distributor app Gravel registers with. Choosing one registers Gravel itself;
+ * watchapps register under it when their code asks and their Push messages grant allows.
+ */
+@Composable
+private fun PushDistributorSection(libPebble: LibPebble) {
+    // The installed distributors can change while the screen is away.
+    LaunchedEffect(Unit) { libPebble.refreshPushState() }
+    val state by libPebble.pushState.collectAsState()
+    Text(
+        "Push messages",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+    )
+    Text(
+        "Watchapps with the Push messages permission can be opened on your watch by a message " +
+            "sent over the internet. Gravel receives those through a UnifiedPush app on this " +
+            "phone, such as ntfy.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(8.dp))
+    if (state.distributors.isEmpty()) {
+        Text(
+            "No UnifiedPush app is installed.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        return
+    }
+    (listOf<String?>(null) + state.distributors).forEach { distributor ->
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .clickable { libPebble.selectPushDistributor(distributor) },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = state.selectedDistributor == distributor,
+                onClick = { libPebble.selectPushDistributor(distributor) },
+            )
+            Text(distributor ?: "Off", style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+    if (state.selectedDistributor != null) {
+        Text(
+            if (state.appRegistered) "Registered." else "Waiting for the push app to answer.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 @Composable
 private fun WatchappPermissionListRow(
     app: LockerWrapper.NormalApp,
@@ -422,6 +485,21 @@ fun WatchappPermissionControls(uuid: Uuid, modifier: Modifier = Modifier) {
             type = LockerAppPermissionType.Location,
             label = "Location",
             libPebble = libPebble,
+        )
+        Spacer(Modifier.height(12.dp))
+        WatchappPermissionSelector(
+            uuid = uuid,
+            type = LockerAppPermissionType.Push,
+            label = "Push messages",
+            libPebble = libPebble,
+        )
+        Text(
+            "Lets this app ask for a push address. Anyone who has that address can open the " +
+                "app on your watch and hand it a short message. Needs a push app chosen in " +
+                "Settings > Apps > Watch App Permissions.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
         )
     }
 }

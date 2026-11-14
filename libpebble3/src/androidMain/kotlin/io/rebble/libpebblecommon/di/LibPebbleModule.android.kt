@@ -1,5 +1,7 @@
 package io.rebble.libpebblecommon.di
 
+import com.anopticlabs.gravel.push.PushTransport
+import com.anopticlabs.gravel.push.UnifiedPushTransport
 import android.app.Application
 import io.rebble.libpebblecommon.calendar.AndroidCalendarActionHandler
 import io.rebble.libpebblecommon.calendar.AndroidSystemCalendar
@@ -67,6 +69,7 @@ actual val platformModule: Module = module {
             PhoneAppVersion.PlatformFlag.makeFlags(PhoneAppVersion.OSType.Android, emptyList())
         )
     }
+    singleOf(::UnifiedPushTransport) bind PushTransport::class
     singleOf(::AndroidPebbleNotificationListenerConnection) bind NotificationListenerConnection::class
     singleOf(::AndroidNotificationActionHandler) bind PlatformNotificationActionHandler::class
     singleOf(::AndroidNotificationAppsSync) bind NotificationAppsSync::class
