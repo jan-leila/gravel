@@ -7,7 +7,7 @@ object RoutingDiff {
         val old = before.routers.associateBy { it.ref }
         val new = after.routers.associateBy { it.ref }
         if (before.entry != after.entry) lines += "The entry router is now ${nameOf(after, after.entry)}."
-        after.routers.filter { it.ref !in old }.forEach { lines += "Added ${RoutingEdits.kindName(it)} '${it.name}'." }
+        after.routers.filter { it.ref !in old }.forEach { lines += "Added ${RoutingEdits.kindName(it)} '${it.name}': ${RoutingEdits.summary(it, after).replaceFirstChar(Char::lowercase)}." }
         before.routers.filter { it.ref !in new }.forEach { lines += "Removed ${RoutingEdits.kindName(it)} '${it.name}'." }
         for ((ref, now) in new) {
             val was = old[ref] ?: continue

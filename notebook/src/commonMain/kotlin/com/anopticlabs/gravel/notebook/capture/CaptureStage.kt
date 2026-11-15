@@ -8,6 +8,7 @@ enum class CaptureStage(val label: String) {
     SETTING_REMINDER("Setting your reminder"),
     COMPLETING_TASK("Assessing task completion"),
     FORWARDING("Sending it on"),
+    CHANGING_ROUTING("Working out the routing change"),
 }
 
 /** The stage to show once a transcript is classified; a recognized completion wins over the note/reminder fork. */

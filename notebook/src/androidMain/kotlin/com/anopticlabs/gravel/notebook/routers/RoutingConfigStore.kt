@@ -69,6 +69,13 @@ class RoutingConfigStore(root: File, crypto: Cryptographer) {
         _state.value = RoutingStoreState.Loaded(config)
     }
 
+    /**
+     * Stores what [change] makes of the stored routing, read and written under the file's lock, so no
+     * save in between is lost; a change that throws, or gives a config that is refused, writes nothing.
+     */
+    suspend fun change(change: (RoutingConfig) -> RoutingConfig): RoutingConfig =
+        file.update(change).also { _state.value = RoutingStoreState.Loaded(it) }
+
     /** Sets the file aside whatever it holds, so the routing reads as the default again. */
     suspend fun reset() {
         file.setAside()

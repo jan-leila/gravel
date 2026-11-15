@@ -15,7 +15,10 @@ import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.routers.RouteWalk
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.RoutingChange
 import com.anopticlabs.gravel.notebook.routers.RoutingConfig
+import com.anopticlabs.gravel.notebook.routers.RoutingEditRefused
+import com.anopticlabs.gravel.notebook.routers.RoutingEditor
 import com.anopticlabs.gravel.notebook.routers.asked
 import com.anopticlabs.gravel.notebook.routers.forwardsText
 import com.anopticlabs.gravel.notebook.routers.shared
@@ -43,7 +46,8 @@ fun hasSpeech(transcript: String): Boolean =
  * The capture pipeline: decode, transcribe, then a completion claim is parked without the text
  * model; otherwise the transcript goes through the text routing ([routing], read for each capture)
  * to the router that consumes it: a note or a reminder built here with the text model, or a
- * [BuiltCapture.Forward] for the drain to deliver. Before a transcription on the phone, the text
+ * [BuiltCapture.Forward] for the drain to deliver, or a change to the routing itself, worked out with the text model
+ * and parked for the user ([RouterConfig.Assistant]). Before a transcription on the phone, the text
  * model is freed when memory is short ([SpeechCapture.phoneFits]).
  */
 class OnDeviceCaptureBackend(
@@ -78,10 +82,11 @@ class OnDeviceCaptureBackend(
         }
         val config = readRouting()
         val (terminal, routed) = RouteWalk.route(config, RoutedText.of(request.id, request.capturedAt, request.zone, transcript, request.location, request.openApp))
+        if (terminal is RouterConfig.Assistant) return BuiltCapture.ToConfirm(terminal, routed, emptySet(), proposeChange(config, routed, onStage))
         // A router that waits on the user gets nothing built now: the answer may change what is sent, or drop it.
         val asks = terminal.asked()
         if (terminal.confirm || asks.isNotEmpty()) return BuiltCapture.ToConfirm(terminal, routed, asks)
-        return consume(terminal, routed, emptySet(), emptySet(), request.capturedAt, request.zone, request.folders, request.folderTags, onStage)
+        return consume(terminal, routed, emptySet(), emptySet(), null, request.capturedAt, request.zone, request.folders, request.folderTags, onStage)
     }
 
     // The router is read again, not re-walked: the user answered for a destination, not for the rules that led there.
@@ -89,7 +94,9 @@ class OnDeviceCaptureBackend(
         val router = readRouting().router(resume.router)
             ?: unavailable("${resume.routerName} no longer exists in the text routing")
         if (router.forwardsText) unavailable("${resume.routerName} now forwards elsewhere")
-        return consume(router, resume.text, resume.granted, resume.denied, resume.capturedAt, resume.zone, resume.folders, resume.folderTags, onStage)
+        // The user read the change against the routing it was parked at, which had this router as an assistant.
+        if (resume.change != null && router !is RouterConfig.Assistant) unavailable("the routing changed since this change was proposed")
+        return consume(router, resume.text, resume.granted, resume.denied, resume.change, resume.capturedAt, resume.zone, resume.folders, resume.folderTags, onStage)
     }
 
     // What the user refused for this recording stays refused, whatever grant the router gained since it was asked.
@@ -98,6 +105,7 @@ class OnDeviceCaptureBackend(
         routed: RoutedText,
         granted: Set<Need>,
         denied: Set<Need>,
+        change: RoutingChange?,
         capturedAt: Instant,
         zone: TimeZone,
         folders: List<String>,
@@ -110,6 +118,7 @@ class OnDeviceCaptureBackend(
             onStage(CaptureStage.FORWARDING)
             BuiltCapture.Forward(terminal, routed, terminal.shared(granted) - denied)
         }
+        is RouterConfig.Assistant -> BuiltCapture.RoutingEdit(terminal.name, change ?: unavailable("${terminal.name} became a routing assistant after this was recorded"))
         is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp -> throw IllegalStateException("the routing walk ended at a router that forwards")
     }
 
@@ -147,6 +156,27 @@ class OnDeviceCaptureBackend(
         val raw = text.generate(Prompts.REMINDER_MESSAGE_SYSTEM, Prompts.reminderMessagePrompt(capToBudget(routed.text, PROMPT_CONTENT_BUDGET)), REPLY_TOKENS)
         val spoken = SpokenTimeReader.read(routed.text, capturedAt, zone)
         return BuiltCapture.Reminder(ReminderExtractor.proposal(raw, routed.text, spoken, routed.recordedAt))
+    }
+
+    // The words a rule cut on the way are the cue that routed here, so the instruction is the text without them.
+    private suspend fun proposeChange(config: RoutingConfig, routed: RoutedText, onStage: (CaptureStage) -> Unit): RoutingChange {
+        onStage(CaptureStage.THINKING)
+        text.prepare()
+        onStage(CaptureStage.CHANGING_ROUTING)
+        val proposed = try {
+            RoutingEditor.propose(text, config, routed.unmatchedText)
+        } catch (e: RoutingEditRefused) {
+            val why = when (e.why) {
+                RoutingEditRefused.Why.INSTRUCTION -> "a routing change has to be said in up to ${RoutingEditor.MAX_INSTRUCTION_CHARS} characters"
+                RoutingEditRefused.Why.TOO_LARGE -> "the routing is too large for the text model to change"
+                RoutingEditRefused.Why.NO_ANSWER -> "the text model could not make that routing change"
+            }
+            throw CaptureProcessingException(CaptureFailureKind.FLAG, why, e, reason = CaptureFailureReason.ROUTING_NOT_CHANGED)
+        }
+        if (proposed.config == config) {
+            throw CaptureProcessingException(CaptureFailureKind.FLAG, "the text model found nothing to change in the routing", reason = CaptureFailureReason.ROUTING_NOT_CHANGED)
+        }
+        return proposed.change
     }
 
     // Every capture would go the same way without its routing, so a routing that cannot be read holds the drain.

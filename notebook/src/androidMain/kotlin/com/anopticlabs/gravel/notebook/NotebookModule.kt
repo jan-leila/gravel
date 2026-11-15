@@ -231,7 +231,7 @@ val notebookModule = module {
         CapturePublisher(
             notes = get(), reminders = get(), completions = get(), alarms = get(), notifier = get(),
             refresh = get(), quickRemindMinutes = { get<NotebookPreferences>().quickRemindMinutes },
-            appBackgrounded = { get<AppVisibility>().isBackgrounded },
+            appBackgrounded = { get<AppVisibility>().isBackgrounded }, routing = get(),
         )
     }
     single {
