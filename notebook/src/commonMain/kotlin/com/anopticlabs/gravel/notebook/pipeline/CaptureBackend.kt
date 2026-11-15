@@ -8,6 +8,7 @@ import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import com.anopticlabs.gravel.notebook.routers.RouterRef
+import com.anopticlabs.gravel.notebook.routers.RoutingChange
 import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
 
@@ -25,9 +26,13 @@ sealed interface BuiltCapture {
 
     /**
      * The text routing ended at [router], which waits for the user: a confirmation, questions about
-     * the needs in [asks], or both. Nothing was built; the drain parks [text] and resumes on the answer.
+     * the needs in [asks], or both. Nothing was built, but for the [change] a routing assistant worked
+     * out, which the user confirms; the drain parks [text] and resumes on the answer.
      */
-    data class ToConfirm(val router: RouterConfig, val text: RoutedText, val asks: Set<Need>) : BuiltCapture
+    data class ToConfirm(val router: RouterConfig, val text: RoutedText, val asks: Set<Need>, val change: RoutingChange? = null) : BuiltCapture
+
+    /** The user applied the [change] the routing assistant [routerName] worked out; publishing it rewrites the routing. */
+    data class RoutingEdit(val routerName: String, val change: RoutingChange) : BuiltCapture
 }
 
 data class CaptureSettings(
@@ -66,7 +71,8 @@ class CaptureRequest(
 /**
  * A parked capture to take up again: the [text] as it was routed, the [router] the walk ended at
  * (its current definition is used; [routerName] is for a failure that finds it gone), the needs the
- * user [granted] and [denied] for this recording, and what the Note and Reminder builders read off a request.
+ * user [granted] and [denied] for this recording, the [change] it was parked with, and what the Note and
+ * Reminder builders read off a request.
  */
 class CaptureResume(
     val router: RouterRef,
@@ -78,6 +84,7 @@ class CaptureResume(
     val folders: List<String>,
     val folderTags: Map<String, List<String>>,
     val denied: Set<Need> = emptySet(),
+    val change: RoutingChange? = null,
 )
 
 /** Turns a recording into what it asked for; failures as [CaptureProcessingException]. */

@@ -7,6 +7,7 @@ import com.anopticlabs.gravel.notebook.alarms.ReminderAlarms
 import com.anopticlabs.gravel.notebook.capture.AwaitingUser
 import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
 import com.anopticlabs.gravel.notebook.capture.answerUser
+import com.anopticlabs.gravel.notebook.capture.confirmUser
 import com.anopticlabs.gravel.notebook.capture.awaitsUser
 import com.anopticlabs.gravel.notebook.capture.CaptureQueueItem
 import com.anopticlabs.gravel.notebook.capture.CaptureStage
@@ -25,6 +26,9 @@ import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
+import com.anopticlabs.gravel.notebook.routers.RoutingChange
+import com.anopticlabs.gravel.notebook.routers.RoutingConfig
+import com.anopticlabs.gravel.notebook.routers.RoutingConfigStore
 import com.anopticlabs.gravel.notebook.routers.TextDeliverer
 import com.anopticlabs.gravel.notebook.routers.TextMatch
 import com.anopticlabs.gravel.notebook.reminders.ReminderTimeStatus
@@ -67,6 +71,7 @@ class CaptureDrainTest {
     private val reminders = ReminderStore(root, crypto)
     private val events = ReminderEventStore(root, crypto)
     private val completions = VoiceCompletionStore(root, crypto)
+    private val routing = RoutingConfigStore(root, crypto)
     private val rows = CaptureRows()
     private val now = 1_790_089_200_000L
     private var ids = 0
@@ -125,7 +130,7 @@ class CaptureDrainTest {
     private fun publisher() = CapturePublisher(
         notes, reminders, completions,
         ReminderAlarms(reminders, events, FakeScheduler(), FakeNotifier(), FakeSettings(), ReminderRefreshSignal(), { now }, { TimeZone.UTC }),
-        FakeNotifier(), ReminderRefreshSignal(), { 30 }, { true }, { now }, { "id-${++ids}" },
+        FakeNotifier(), ReminderRefreshSignal(), { 30 }, { true }, { now }, { "id-${++ids}" }, routing,
     )
 
     private val settings = CaptureSettings(triggerEnabled = true, triggerWord = "done")
@@ -1274,6 +1279,53 @@ class CaptureDrainTest {
         assertFalse(blob("p1").exists())
         assertEquals(CaptureQueueItem.Status.FORWARDED, row("p1")!!.status)
         assertEquals(DrainReport(), drain.drain(), "a request is consumed by the pass that served it")
+    }
+
+    private val assistant = RouterConfig.Assistant("assistant", "Assistant")
+    private val edited = RoutingConfig.DEFAULT.copy(routers = RoutingConfig.DEFAULT.routers + assistant)
+    private val change = RoutingChange(RoutingConfig.DEFAULT, edited, listOf("Added Assistant 'Assistant'."))
+
+    private suspend fun parkChange(id: String) {
+        enqueue(id, "add an assistant")
+        backend.onProcess = { request, _ ->
+            BuiltCapture.ToConfirm(assistant, RoutedText.of(request.id, request.capturedAt, request.zone, "add an assistant"), emptySet(), change)
+        }
+        backend.onResume = { resume, _ -> BuiltCapture.RoutingEdit(resume.routerName, resume.change!!) }
+        assertEquals(DrainReport(awaiting = 1), drain.drain())
+    }
+
+    @Test
+    fun aRoutingChangeWaitsWithWhatWouldChangeAndIsWrittenOnceTheUserAppliesIt() = runBlocking<Unit> {
+        parkChange("r1")
+        val awaiting = entry("r1")!!.awaiting!!
+        assertTrue(awaiting.confirm)
+        assertEquals(change, awaiting.change)
+        assertEquals(change.lines, row("r1")!!.changes)
+        assertEquals(RoutingConfig.DEFAULT, routing.read(), "nothing is written before the user applies it")
+        queue.update { confirmUser(it, "r1") }
+        drain.requestResume("r1")
+        assertEquals(DrainReport(published = 1), drain.drain())
+        assertEquals(change, backend.resumes.single().change)
+        assertEquals(edited, routing.read())
+        assertNull(entry("r1"))
+        val row = row("r1")!!
+        assertEquals(CaptureQueueItem.Status.ROUTING_CHANGED, row.status)
+        assertEquals("Text routing changed by Assistant", captureQueueRowLabel(row))
+    }
+
+    /** The user read the change against a routing that is gone, so it is not laid over the one saved since. */
+    @Test
+    fun aRoutingChangeAppliedAfterTheRoutingMovedOnIsFlaggedAndWritesNothing() = runBlocking<Unit> {
+        parkChange("r1")
+        val since = RoutingConfig.DEFAULT.copy(entry = RoutingConfig.DEFAULT.routers.last().ref)
+        routing.write(since)
+        queue.update { confirmUser(it, "r1") }
+        drain.requestResume("r1")
+        assertEquals(DrainReport(flagged = 1), drain.drain())
+        assertEquals(since, routing.read())
+        assertEquals("routing_not_changed", entry("r1")!!.failure)
+        assertEquals(CaptureQueueItem.Status.FAILED, row("r1")!!.status)
+        assertTrue(blob("r1").exists())
     }
 
     /** The matches index the kept transcript, so they are kept with it for the router reached once the user answers. */

@@ -129,7 +129,7 @@ class RouterConfigTest {
                 is RouterConfig.App -> router.copy(confirm = true)
                 is RouterConfig.Network -> router.copy(confirm = true)
                 is RouterConfig.WatchApp -> router.copy(confirm = true)
-                is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp -> error("not here")
+                is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp, is RouterConfig.Assistant -> error("not here")
             }
             val json = NotebookJson.encodeToString(RouterConfig.serializer(), careful)
             assertEquals("true", NotebookJson.parseToJsonElement(json).jsonObject.getValue("confirm").jsonPrimitive.content)
@@ -138,6 +138,21 @@ class RouterConfigTest {
         }
         assertFalse(switch.confirm)
         assertEquals(full.copy(routers = full.routers.map { if (it is RouterConfig.Note) it.copy(confirm = true) else it }).let { RoutingExport.decode(RoutingExport.encode(it, TrustEntries.EMPTY)).routing }.router(g("notes"))!!.confirm, true)
+    }
+
+    /** The confirmation is what stands between a recording and a rewritten routing, so no stored flag can turn it off. */
+    @Test
+    fun anAssistantRoundTripsUnderItsTagAndAlwaysAsksFirst() {
+        val assistant = RouterConfig.Assistant("assistant", "Assistant", description = "Say what to change")
+        val json = NotebookJson.encodeToString(RouterConfig.serializer(), assistant)
+        assertEquals("""{"type":"assistant","id":"assistant","name":"Assistant","description":"Say what to change"}""", json)
+        assertEquals(assistant, NotebookJson.decodeFromString(RouterConfig.serializer(), json))
+        val off = NotebookJson.decodeFromString(RouterConfig.serializer(), """{"type":"assistant","id":"assistant","name":"Assistant","confirm":false}""")
+        assertTrue(off.confirm)
+        assertFalse(off.forwardsText)
+        assertEquals(null, off.shares)
+        RoutingConfig(entry = g("assistant"), routers = listOf(assistant)).requireWellFormed()
+        assertFailsWith<IllegalArgumentException> { RoutingConfig(entry = g("assistant"), routers = listOf(assistant.copy(namespace = "a".repeat(64)))).requireWellFormed() }
     }
 
     private val home = Spot("Home", 52.52, 13.405, 800)

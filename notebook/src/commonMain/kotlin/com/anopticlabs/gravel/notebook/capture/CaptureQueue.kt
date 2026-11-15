@@ -4,6 +4,7 @@ import com.anopticlabs.gravel.notebook.routers.Need
 import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterRef
+import com.anopticlabs.gravel.notebook.routers.RoutingChange
 import com.anopticlabs.gravel.notebook.routers.TextMatch
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.Serializable
@@ -48,7 +49,8 @@ data class QueuedCapture(
  * whether that router asks for a [confirm]ation, the needs still [asks]ed about, those
  * [granted] for this one recording, those [denied] for it, which a grant the router gains
  * meanwhile does not override, and the Switch [matches] the walk made, kept with the text they index, with the [fields] they
- * gave the router when parked, shown for the user to see what is sent.
+ * gave the router when parked, shown for the user to see what is sent. [change] is what a routing assistant
+ * worked out of the text, kept so applying it runs no model again.
  */
 @Serializable
 data class AwaitingUser(
@@ -63,6 +65,7 @@ data class AwaitingUser(
     val denied: Set<Need> = emptySet(),
     val matches: List<TextMatch> = emptyList(),
     val fields: Map<String, String> = emptyMap(),
+    val change: RoutingChange? = null,
 ) {
     /** The text with the cut words out, when any were: what the router is sent in place of [text]. */
     val sends: String? get() = RoutedText("", recordedAt, text, matches = matches).unmatchedText.takeIf { it != text }

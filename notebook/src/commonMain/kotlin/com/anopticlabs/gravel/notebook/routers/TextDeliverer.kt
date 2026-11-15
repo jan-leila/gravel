@@ -25,7 +25,7 @@ class RouterDeliveries(
             is RouterConfig.App -> app
             is RouterConfig.Network -> network
             is RouterConfig.WatchApp -> watchApp
-            is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp ->
+            is RouterConfig.Note, is RouterConfig.Reminder, is RouterConfig.Switch, is RouterConfig.Time, is RouterConfig.Place, is RouterConfig.OpenApp, is RouterConfig.Assistant ->
                 throw IllegalArgumentException("${router.name} is consumed by the Notebook, not delivered")
         } ?: throw CaptureProcessingException(
             CaptureFailureKind.FLAG, "this build cannot deliver to ${router.name}", reason = CaptureFailureReason.ROUTER_UNAVAILABLE,

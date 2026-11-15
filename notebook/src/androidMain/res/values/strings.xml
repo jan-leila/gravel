@@ -92,6 +92,10 @@
     <string name="notebook_routing_kind_open_app_hint">Forwards by the watch app that was open on your watch when the recording was made</string>
     <string name="notebook_routing_kind_watch_app">Watch app</string>
     <string name="notebook_routing_kind_watch_app_hint">Opens a watch app and hands the text to a router that app declares</string>
+    <string name="notebook_routing_kind_assistant">Routing Assistant</string>
+    <string name="notebook_routing_kind_assistant_hint">Changes this routing from what you say, once you have looked at the change</string>
+    <string name="notebook_routing_assistant_hint">A recording routed here is read as a change to this routing, such as "send anything starting with remind to a reminder router". The text model rewrites the routing, and the recording waits in the Notebook with what would change until you apply or dismiss it. Tokens and places are hidden from the model. Words a Switch rule cuts on the way here are left out of what it reads.</string>
+    <string name="notebook_routing_try_assistant">Read as a change to the routing: %1$s</string>
     <string name="notebook_routing_open_app_when">When open: %1$s</string>
     <string name="notebook_routing_no_watch_apps">There are no watch apps in the locker.</string>
     <string name="notebook_routing_no_watch_targets">No watch app has declared a router. An app declares its routers when it runs on the watch.</string>
@@ -264,6 +268,7 @@
     <string name="notebook_failed_tries_ran_out">It couldn\'t be processed after %1$d tries</string>
     <string name="notebook_failed_not_routed">Text Routing couldn\'t take it to a router: no rule matched, or a rule is broken. Check Settings > Notebook > Text Routing</string>
     <string name="notebook_failed_router_unavailable">The app or server it was routed to isn\'t there, isn\'t trusted or refused it. Check Settings > Notebook > Text Routing</string>
+    <string name="notebook_failed_routing_not_changed">The text model couldn\'t make a routing change of it, or the routing changed before you applied the one it made. Try again, or change it in Settings > Notebook > Text Routing</string>
     <string name="notebook_failed_router_refused">The app it was sent to said it can\'t take this recording. Its row in the Notebook said why</string>
     <string name="notebook_failed_unknown">Gravel doesn\'t know why it failed</string>
 
@@ -292,6 +297,8 @@
     <string name="notebook_awaiting_no">No</string>
     <string name="notebook_awaiting_remember">Don\'t ask again</string>
     <string name="notebook_awaiting_send">Send</string>
+    <string name="notebook_awaiting_apply">Apply</string>
+    <string name="notebook_awaiting_changes">What would change in the text routing</string>
     <string name="notebook_awaiting_dismiss">Dismiss</string>
     <string name="notebook_awaiting_rerecord">Re-record</string>
     <string name="notebook_awaiting_notice_failed">That couldn\'t be saved. Try again.</string>
@@ -299,6 +306,7 @@
     <string name="notebook_awaiting_notice_grant_not_kept">Your answer was taken, but it couldn\'t be kept for next time. Check Settings > Notebook > Text Routing.</string>
     <string name="notebook_awaiting_notice_busy">That recording is being sent right now.</string>
     <string name="notebook_result_forwarded">Sent on</string>
+    <string name="notebook_result_routing">Text routing</string>
     <string name="notebook_result_failed">Not saved</string>
     <string name="notebook_result_dismiss">Dismiss</string>
 

@@ -12,10 +12,12 @@ import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.RoutedText
 import com.anopticlabs.gravel.notebook.routers.RouterConfig
 import com.anopticlabs.gravel.notebook.routers.RouterRef
+import com.anopticlabs.gravel.notebook.routers.RoutingChange
 import com.anopticlabs.gravel.notebook.routers.RoutingConfig
 import com.anopticlabs.gravel.notebook.routers.Shares
 import com.anopticlabs.gravel.notebook.routers.SwitchRule
 import com.anopticlabs.gravel.notebook.storage.CorruptFileException
+import com.anopticlabs.gravel.notebook.storage.NotebookJson
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -424,9 +426,9 @@ class OnDeviceCaptureBackendTest {
         assertEquals(BuiltCapture.Completion("weeded the garden"), claim)
     }
 
-    private fun resumeOf(router: RouterConfig, text: String, granted: Set<Need> = emptySet(), location: RoutedLocation? = null, denied: Set<Need> = emptySet()) = CaptureResume(
+    private fun resumeOf(router: RouterConfig, text: String, granted: Set<Need> = emptySet(), location: RoutedLocation? = null, denied: Set<Need> = emptySet(), change: RoutingChange? = null) = CaptureResume(
         router.ref, router.name, RoutedText("c1", "2026-09-22T17:00:00+02:00", text, location), granted,
-        capturedAt, berlin, listOf("unclassified", "shopping"), mapOf("shopping" to listOf("shopping")), denied,
+        capturedAt, berlin, listOf("unclassified", "shopping"), mapOf("shopping" to listOf("shopping")), denied, change,
     )
 
     private suspend fun resume(resume: CaptureResume, text: FakeText = FakeText(), stages: MutableList<CaptureStage> = mutableListOf()): BuiltCapture {
@@ -490,6 +492,66 @@ class OnDeviceCaptureBackendTest {
         val renamed = hook.copy(name = "Hook 2", url = "https://example.test/v2")
         graph = RoutingConfig(entry = renamed.ref, routers = listOf(renamed))
         assertEquals(renamed, assertIs<BuiltCapture.Forward>(resume(resumeOf(hook, "hello"))).router, "the router as it is now, not as it was")
+    }
+
+    private val assistant = RouterConfig.Assistant("assistant", "Assistant")
+    private val edits = RoutingConfig(
+        entry = RouterRef.gravel("split"),
+        routers = listOf(
+            RouterConfig.Switch("split", "Split", listOf(SwitchRule("^change the routing[,:]?", assistant.ref, cut = true)), otherwise = RouterRef.gravel("notes")),
+            RouterConfig.Note("notes", "Notes"),
+            assistant,
+        ),
+    )
+    private val withReminder = edits.copy(routers = edits.routers + RouterConfig.Reminder("reminder", "Reminder"))
+
+    private fun json(config: RoutingConfig) = NotebookJson.encodeToString(RoutingConfig.serializer(), config)
+
+    /** The model runs before the park, so the user confirms a change they can read; the cue a rule cut is no part of the instruction. */
+    @Test
+    fun aRoutingAssistantWorksOutTheChangeFromTheTextWithoutItsCueAndParksItForTheUser() = runBlocking<Unit> {
+        graph = edits
+        val text = FakeText(json(withReminder))
+        val stages = mutableListOf<CaptureStage>()
+        val asked = assertIs<BuiltCapture.ToConfirm>(run("Change the routing: add a reminder router", text, stages = stages))
+        assertEquals(assistant, asked.router)
+        assertTrue(asked.router.confirm)
+        assertEquals(emptySet(), asked.asks)
+        assertEquals("Change the routing: add a reminder router", asked.text.text)
+        assertEquals(RoutingChange(edits, withReminder, listOf("Added Reminder 'Reminder': sets a reminder from the text.")), asked.change)
+        assertEquals(listOf(CaptureStage.TRANSCRIBING, CaptureStage.THINKING, CaptureStage.CHANGING_ROUTING), stages)
+        assertEquals(1, text.prepared)
+        val generation = text.generations.single()
+        assertEquals(Prompts.ROUTING_EDIT_SYSTEM, generation.system)
+        assertEquals(Prompts.routingEditPrompt(json(edits), "add a reminder router"), generation.user)
+    }
+
+    @Test
+    fun aChangeTheModelCannotMakeOrThatChangesNothingIsFlagged() = runBlocking<Unit> {
+        graph = edits
+        for (reply in listOf("no JSON here", json(edits))) {
+            val failed = assertFailsWith<CaptureProcessingException> { run("change the routing, make it better", FakeText(reply)) }
+            assertEquals(CaptureFailureKind.FLAG, failed.kind, reply)
+            assertEquals(CaptureFailureReason.ROUTING_NOT_CHANGED, failed.reason, reply)
+        }
+    }
+
+    /** The user answered for the change they read, so a resume hands that one on and asks the model nothing. */
+    @Test
+    fun aResumeOfAnAssistantHandsOnTheChangeItWasParkedWithAndIsFlaggedWhenThereIsNoneToApply() = runBlocking<Unit> {
+        graph = edits
+        val change = RoutingChange(edits, withReminder, listOf("Added Reminder 'Reminder'."))
+        val text = FakeText()
+        assertEquals(BuiltCapture.RoutingEdit("Assistant", change), resume(resumeOf(assistant, "add a reminder router", change = change), text))
+        assertTrue(text.generations.isEmpty())
+        val unread = assertFailsWith<CaptureProcessingException> { resume(resumeOf(assistant, "add a reminder router")) }
+        assertEquals(CaptureFailureKind.FLAG, unread.kind)
+        assertEquals(CaptureFailureReason.ROUTER_UNAVAILABLE, unread.reason)
+        graph = edits.copy(routers = edits.routers.map { if (it == assistant) RouterConfig.Note("assistant", "Assistant") else it })
+        val retyped = assertFailsWith<CaptureProcessingException> { resume(resumeOf(assistant, "add a reminder router", change = change), text) }
+        assertEquals(CaptureFailureKind.FLAG, retyped.kind)
+        assertEquals("the routing changed since this change was proposed", retyped.message)
+        assertTrue(text.generations.isEmpty(), "a change is never written as a note")
     }
 
     @Test

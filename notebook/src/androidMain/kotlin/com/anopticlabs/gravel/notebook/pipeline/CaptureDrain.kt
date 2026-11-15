@@ -476,6 +476,7 @@ class CaptureDrain(
                 zone = captureZone(entry.zoneId) ?: zone(),
                 folders = folders,
                 folderTags = notes.readFolderTags(strict = true).filterKeys { it in folders },
+                change = awaiting.change,
             )
             val built = backend.resume(resume) { stage -> stage(entry, stage) }
             return finish(entry, built, folders)
@@ -511,7 +512,7 @@ class CaptureDrain(
         if (!settling(entry)) throw CancellationException("capture interrupted")
         val awaiting = AwaitingUser(
             built.router.ref, built.router.name, built.text.text, built.text.recordedAt, built.router.confirm, built.text.location, built.asks,
-            matches = built.text.matches, fields = built.router.fieldsFor(built.text),
+            matches = built.text.matches, fields = built.router.fieldsFor(built.text), change = built.change,
         )
         val parked = withContext(NonCancellable) { queue.update { awaitUser(it, entry.id, awaiting, entry.attempts) } }
         rowBack(entry.copy(awaiting = awaiting))
@@ -535,7 +536,7 @@ class CaptureDrain(
             rows.settle(
                 entry.id, CaptureQueueItem.Status.AWAITING_USER, null, label,
                 transcript = awaiting.text, target = awaiting.routerName, asks = awaiting.asks, confirm = awaiting.confirm,
-                sends = awaiting.sends, fields = awaiting.fields,
+                sends = awaiting.sends, fields = awaiting.fields, changes = awaiting.change?.lines.orEmpty(),
             )
         }
     }
@@ -604,6 +605,7 @@ class CaptureDrain(
         is PublishedCapture.Parked -> rows.remove(id)
         is PublishedCapture.Forwarded ->
             rows.settle(id, CaptureQueueItem.Status.FORWARDED, CaptureQueueItem.Kind.FORWARDED, "Sent to ${published.routerName}")
+        is PublishedCapture.RoutingChanged -> rows.settle(id, CaptureQueueItem.Status.ROUTING_CHANGED, null, "Text routing changed by ${published.routerName}")
     }
 
     // A failure here leaves a published capture queued, to be published again by a later drain.

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -492,6 +493,7 @@ private fun CaptureResultRow(item: CaptureQueueItem, onOpen: (() -> Unit)?, onDi
                 val (icon, tint) = when (item.status) {
                     CaptureQueueItem.Status.REMINDER_SET -> Icons.Filled.Alarm to MaterialTheme.colorScheme.primary
                     CaptureQueueItem.Status.FORWARDED -> Icons.AutoMirrored.Filled.Send to MaterialTheme.colorScheme.primary
+                    CaptureQueueItem.Status.ROUTING_CHANGED -> Icons.Filled.Settings to MaterialTheme.colorScheme.primary
                     CaptureQueueItem.Status.FAILED -> Icons.Filled.ErrorOutline to MaterialTheme.colorScheme.error
                     else -> Icons.Filled.Description to MaterialTheme.colorScheme.primary
                 }
@@ -505,6 +507,7 @@ private fun CaptureResultRow(item: CaptureQueueItem, onOpen: (() -> Unit)?, onDi
                             item.status == CaptureQueueItem.Status.NOTE_CREATED -> R.string.notebook_result_note
                             item.status == CaptureQueueItem.Status.REMINDER_SET -> R.string.notebook_result_reminder
                             item.status == CaptureQueueItem.Status.FORWARDED -> R.string.notebook_result_forwarded
+                            item.status == CaptureQueueItem.Status.ROUTING_CHANGED -> R.string.notebook_result_routing
                             else -> R.string.notebook_result_failed
                         }
                     ),
@@ -545,6 +548,10 @@ private fun AwaitingRow(
             // What the router gets when it is not the transcript as heard, so a confirmation is of what is sent.
             item.sends?.let { Text(stringResource(R.string.notebook_awaiting_sends, it), style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis) }
             item.fields.forEach { (param, value) -> Text("$param: $value", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            if (item.changes.isNotEmpty()) {
+                Text(stringResource(R.string.notebook_awaiting_changes), style = MaterialTheme.typography.labelMedium)
+                item.changes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
             item.asks.sortedBy { it.ordinal }.forEach { need ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -571,7 +578,9 @@ private fun AwaitingRow(
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onReRecord) { Text(stringResource(R.string.notebook_awaiting_rerecord)) }
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.notebook_awaiting_dismiss)) }
-                if (item.asks.isEmpty()) Button(onClick = onConfirm) { Text(stringResource(R.string.notebook_awaiting_send)) }
+                if (item.asks.isEmpty()) Button(onClick = onConfirm) {
+                    Text(stringResource(if (item.changes.isEmpty()) R.string.notebook_awaiting_send else R.string.notebook_awaiting_apply))
+                }
             }
         }
     }

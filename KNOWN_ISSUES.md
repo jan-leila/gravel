@@ -1960,12 +1960,16 @@ send in the app's settings says so.
 **Status: accepted; the preview is the safeguard.**
 
 Settings > Notebook > Text Routing can ask the on-device text model to
-rewrite the routing from a description. The models Gravel ships are small
+rewrite the routing from a description, and a Routing Assistant router does the
+same from a recording routed to it. The models Gravel ships are small
 (Qwen3 1.7B and 0.8B, greedy decoding, no grammar-constrained output), so
 a larger routing or a vaguer request can come back as JSON the routing
 refuses, or as a change other than the one meant. A refused answer is asked
 for once more with the reason and then given up on; a valid one is shown
-as a list of what changed and stored only when the user keeps it. The
+as a list of what changed and stored only when the user keeps it (for a
+recording, on its row in the Notebook, which waits until then). The list
+names routers and what kind of thing changed, not every rule's text, so a
+changed rule is worth opening in the settings afterwards. The
 tokens and the places' coordinates are swapped out before the model sees
 the routing and back afterwards. Constraining the model's output with a
 grammar (llama.cpp's GBNF) would make the shape certain and is a possible

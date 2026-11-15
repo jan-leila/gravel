@@ -106,6 +106,7 @@ private fun failureReasonText(reason: CaptureFailureReason): String = when (reas
     CaptureFailureReason.NOT_ROUTED -> stringResource(R.string.notebook_failed_not_routed)
     CaptureFailureReason.ROUTER_UNAVAILABLE -> stringResource(R.string.notebook_failed_router_unavailable)
     CaptureFailureReason.ROUTER_REFUSED -> stringResource(R.string.notebook_failed_router_refused)
+    CaptureFailureReason.ROUTING_NOT_CHANGED -> stringResource(R.string.notebook_failed_routing_not_changed)
     CaptureFailureReason.TRIES_RAN_OUT -> stringResource(R.string.notebook_failed_tries_ran_out, MAX_QUEUE_ATTEMPTS)
     CaptureFailureReason.UNKNOWN -> stringResource(R.string.notebook_failed_unknown)
 }

@@ -29,6 +29,9 @@ enum class CaptureFailureReason(val code: String) {
     /** The app's router it was sent to answered that it cannot take this recording (`ROUTER_API.md`, refusing). */
     ROUTER_REFUSED("router_refused"),
 
+    /** A routing assistant could not make a change of it, or the routing changed before the user applied the one it made. */
+    ROUTING_NOT_CHANGED("routing_not_changed"),
+
     /** What a flagged entry with no code reads as: it ran out of attempts. */
     TRIES_RAN_OUT("tries_ran_out"),
 

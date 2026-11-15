@@ -10,15 +10,10 @@ import com.anopticlabs.gravel.notebook.routers.Trial
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
-import kotlinx.serialization.json.decodeFromJsonElement
-import com.anopticlabs.gravel.notebook.storage.NotebookJson
-import com.anopticlabs.gravel.notebook.routers.RoutingSecrets
-import com.anopticlabs.gravel.notebook.routers.RoutingDiff
-import com.anopticlabs.gravel.notebook.routers.RedactedRouting
+import com.anopticlabs.gravel.notebook.routers.RoutingEditRefused
+import com.anopticlabs.gravel.notebook.routers.RoutingEditor
 import com.anopticlabs.gravel.notebook.pipeline.CaptureText
 import com.anopticlabs.gravel.notebook.pipeline.CaptureProcessingException
-import com.anopticlabs.gravel.notebook.llm.Prompts
-import com.anopticlabs.gravel.notebook.llm.LlmJson
 import com.anopticlabs.gravel.notebook.routers.RoutedLocation
 import com.anopticlabs.gravel.notebook.routers.InstalledRouter
 import com.anopticlabs.gravel.notebook.routers.InstalledRouters
@@ -224,9 +219,8 @@ class RoutingViewModel<H : Any>(
     }
 
     /**
-     * Asks the text model for the routing the user described, with the secrets swapped out before
-     * it sees the routing and back afterwards, and validated before it is shown; nothing is
-     * stored until [applyProposal]. One retry with the reason when the first answer is refused.
+     * Asks the text model for the routing the user described ([RoutingEditor.propose]); nothing is
+     * stored until [applyProposal].
      */
     fun describeChange(instruction: String) = run {
         val engine = text
@@ -238,6 +232,7 @@ class RoutingViewModel<H : Any>(
             _ui.update { it.copy(error = EDIT_BUSY) }
             return@run
         }
+        // Refused before the model is loaded, which takes seconds.
         val asked = instruction.trim()
         if (asked.isEmpty() || asked.length > MAX_INSTRUCTION_CHARS) {
             _ui.update { it.copy(error = EDIT_INSTRUCTION) }
@@ -251,29 +246,20 @@ class RoutingViewModel<H : Any>(
             _ui.update { it.copy(error = EDIT_FAILED) }
             return@run
         }
-        val redacted = RoutingSecrets.redact(current)
-        val json = NotebookJson.encodeToString(RoutingConfig.serializer(), redacted.config)
-        if (json.length > MAX_EDIT_JSON_CHARS) {
-            _ui.update { it.copy(error = EDIT_TOO_LARGE) }
-            return@run
-        }
         try {
             engine.checkReady()
             engine.prepare()
-            var problem: String? = null
-            repeat(EDIT_ATTEMPTS) {
-                val raw = engine.generate(Prompts.ROUTING_EDIT_SYSTEM, Prompts.routingEditPrompt(json, asked, problem), EDIT_REPLY_TOKENS)
-                when (val outcome = proposalFrom(raw, current, redacted)) {
-                    is Proposal -> {
-                        _ui.update { it.copy(proposal = outcome) }
-                        return@run
-                    }
-                    is String -> problem = outcome
-                }
-            }
-            _ui.update { it.copy(error = EDIT_FAILED) }
+            val proposed = RoutingEditor.propose(engine, current, asked)
+            _ui.update { it.copy(proposal = Proposal(proposed.config, proposed.change.lines)) }
         } catch (e: CancellationException) {
             throw e
+        } catch (e: RoutingEditRefused) {
+            val error = when (e.why) {
+                RoutingEditRefused.Why.INSTRUCTION -> EDIT_INSTRUCTION
+                RoutingEditRefused.Why.TOO_LARGE -> EDIT_TOO_LARGE
+                RoutingEditRefused.Why.NO_ANSWER -> EDIT_FAILED
+            }
+            _ui.update { it.copy(error = error) }
         } catch (e: CaptureProcessingException) {
             _ui.update { it.copy(error = e.message ?: EDIT_UNAVAILABLE) }
         } catch (e: Exception) {
@@ -343,30 +329,10 @@ class RoutingViewModel<H : Any>(
         const val IMPORTED = "The routing and the trusted certificates were imported."
         const val EDIT_UNAVAILABLE = "The text model is not set up."
         const val EDIT_BUSY = "Wait for the recordings being processed to finish."
-        const val MAX_INSTRUCTION_CHARS = 1_000
+        const val MAX_INSTRUCTION_CHARS = RoutingEditor.MAX_INSTRUCTION_CHARS
         const val EDIT_INSTRUCTION = "Describe the change in up to $MAX_INSTRUCTION_CHARS characters."
         const val EDIT_TOO_LARGE = "The routing is too large to edit this way."
         const val EDIT_FAILED = "The model couldn't make that change."
-        const val MAX_EDIT_JSON_CHARS = 24 * 1024
-        const val EDIT_REPLY_TOKENS = 2_048
-        const val EDIT_ATTEMPTS = 2
-
-        /** The proposal in the model's [raw] answer, or the reason it is refused, for the retry prompt. */
-        internal fun proposalFrom(raw: String, current: RoutingConfig, redacted: RedactedRouting): Any {
-            val element = LlmJson.extract(LlmJson.cleanThinkAndFences(raw)) ?: return "the answer was not a JSON object"
-            val decoded = try {
-                NotebookJson.decodeFromJsonElement(RoutingConfig.serializer(), element)
-            } catch (e: IllegalArgumentException) {
-                return "the JSON did not have the routing's shape: ${e.message?.take(200)}"
-            }
-            return try {
-                val restored = RoutingSecrets.restore(decoded, redacted)
-                restored.requireWellFormed()
-                Proposal(restored, RoutingDiff.describe(current, restored))
-            } catch (e: IllegalArgumentException) {
-                e.message ?: "the routing was refused"
-            }
-        }
 
         /** Up to [max] bytes of [input] as text; past that the file is not an export, whatever it is. */
         private fun readUpTo(input: InputStream, max: Int): String {

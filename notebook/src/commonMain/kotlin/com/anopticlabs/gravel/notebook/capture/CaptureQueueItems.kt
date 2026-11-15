@@ -9,7 +9,7 @@ import com.anopticlabs.gravel.notebook.routers.Need
  * carries what the user has to see: the [transcript], the [target] router's name, the needs still
  * [asks]ed about, whether a [confirm]ation is wanted once they are answered, and what the router
  * would be sent when that differs from the transcript: the text with the cut words out ([sends],
- * null when nothing was cut) and the mapped [fields].
+ * null when nothing was cut) and the mapped [fields], or, for a routing assistant, what [changes] in the routing.
  */
 data class CaptureQueueItem(
     val id: String,
@@ -26,8 +26,9 @@ data class CaptureQueueItem(
     val confirm: Boolean = false,
     val sends: String? = null,
     val fields: Map<String, String> = emptyMap(),
+    val changes: List<String> = emptyList(),
 ) {
-    enum class Status { QUEUED, PROCESSING, NOTE_CREATED, REMINDER_SET, FORWARDED, FAILED, AWAITING_USER }
+    enum class Status { QUEUED, PROCESSING, NOTE_CREATED, REMINDER_SET, FORWARDED, ROUTING_CHANGED, FAILED, AWAITING_USER }
 
     enum class Kind { NOTE, REMINDER, FORWARDED }
 
@@ -79,12 +80,13 @@ fun withSettledCaptureItem(
     confirm: Boolean = false,
     sends: String? = null,
     fields: Map<String, String> = emptyMap(),
+    changes: List<String> = emptyList(),
 ): List<CaptureQueueItem> =
     items.map {
         if (it.id == id) {
             it.copy(
                 status = status, kind = kind, stage = null, resultLabel = label, noteId = noteId, reminderId = reminderId,
-                transcript = transcript, target = target, asks = asks, confirm = confirm, sends = sends, fields = fields,
+                transcript = transcript, target = target, asks = asks, confirm = confirm, sends = sends, fields = fields, changes = changes,
             )
         } else {
             it
@@ -97,7 +99,7 @@ fun awaitingCaptureItem(entry: QueuedCapture): CaptureQueueItem? {
     return CaptureQueueItem(
         entry.id, entry.queuedAtMillis, CaptureQueueItem.Status.AWAITING_USER,
         transcript = awaiting.text, target = awaiting.routerName, asks = awaiting.asks, confirm = awaiting.confirm,
-        sends = awaiting.sends, fields = awaiting.fields,
+        sends = awaiting.sends, fields = awaiting.fields, changes = awaiting.change?.lines.orEmpty(),
     )
 }
 
@@ -150,6 +152,7 @@ fun captureQueueRowLabel(item: CaptureQueueItem): String = when (item.status) {
     CaptureQueueItem.Status.NOTE_CREATED -> item.resultLabel ?: "Note saved"
     CaptureQueueItem.Status.REMINDER_SET -> item.resultLabel ?: "Reminder set"
     CaptureQueueItem.Status.FORWARDED -> item.resultLabel ?: "Sent on"
+    CaptureQueueItem.Status.ROUTING_CHANGED -> item.resultLabel ?: "Text routing changed"
     CaptureQueueItem.Status.FAILED -> item.resultLabel ?: "Couldn't process this recording"
     CaptureQueueItem.Status.AWAITING_USER -> item.resultLabel ?: "Waiting for you: ${item.target ?: "a router"}"
 }

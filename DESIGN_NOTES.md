@@ -2180,13 +2180,35 @@ in the app's device suite:
     (why the last send did not go through), and a count-only notification
     (`notebook_awaiting`) says recordings wait while the app is off screen.
   - The settings can ask the text model to rewrite the routing from a
-    description (`RoutingViewModel.describeChange`): the routing goes to
+    description (`RoutingViewModel.describeChange`, on
+    `RoutingEditor.propose`): the routing goes to
     the model with its secrets swapped out (`RoutingSecrets`: a token
     becomes `SECRET_n`, a spot loses its coordinates), the answer is read
     with the same lenient JSON extraction the notes use, the secrets go
     back, the result is validated like any save, and what changed
-    (`RoutingDiff`) is shown for the user to keep or discard; nothing is
+    (`RoutingDiff`, which says of an added router what it does) is shown
+    for the user to keep or discard; nothing is
     stored before that. One retry carries the refusal's reason.
+  - A **Routing Assistant** router (`RouterConfig.Assistant`, tag `assistant`)
+    makes the same edit from a recording: the walk ends at it, the text
+    without the words a cutting rule matched is the instruction, and
+    `OnDeviceCaptureBackend` runs `RoutingEditor.propose` before the
+    capture is parked, so the parked row lists what would change beside
+    the transcript, with Apply in place of Send. Its `confirm` is a
+    getter, always true and never stored, so no saved routing and no
+    model answer can turn the confirmation off. The parked entry keeps a
+    `RoutingChange`: the routing the model saw and the one it answered,
+    both still with their secrets out, so the queue (which a backup
+    carries) never holds a routing token or a place's coordinates. Apply
+    resumes through `BuiltCapture.RoutingEdit`, and `CapturePublisher`
+    writes it with `RoutingConfigStore.change`, under the file's lock:
+    `RoutingEditor.resolve` swaps the secrets of the routing as stored
+    now back in, and refuses when that routing, secrets aside, is no
+    longer the one the change was read against, so a save made while the
+    recording waited is never overwritten. A change the model cannot
+    make, one that changes nothing, and one refused at Apply flag the
+    capture (`ROUTING_NOT_CHANGED`); a Try again from the failed list
+    transcribes and asks the model afresh.
   - A network router posts the payload (`NetworkPayload`: the same
     fields, the shared parts only) through a `TextPoster` the app binds to a Ktor client of its
     own (`KtorTextPoster`), answered by the status alone: a 2xx is taken,
