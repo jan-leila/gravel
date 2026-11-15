@@ -302,7 +302,7 @@ class FakeLibPebble : LibPebble {
         pushState.value = pushState.value.copy(selectedDistributor = packageName)
     }
 
-    override suspend fun registerWatchappPush(appUuid: Uuid): PushRegistration =
+    override suspend fun registerWatchappPush(appUuid: Uuid, channel: String?): PushRegistration =
         PushRegistration.Failed(PushFailure.Unsupported)
 
     override fun watchappPushMessages(appUuid: Uuid): Flow<PushMessage> = emptyFlow()

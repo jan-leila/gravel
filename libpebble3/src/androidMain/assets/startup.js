@@ -298,7 +298,7 @@ navigator.geolocation.clearWatch = (id) => {
         }
     };
     global.signalPush = (data) => {
-        dispatchPebbleEvent(PebbleEventTypes.PUSH, { payload: data.body, encrypted: data.encrypted });
+        dispatchPebbleEvent(PebbleEventTypes.PUSH, { payload: data.body, encrypted: data.encrypted, channel: data.channel });
     };
     // Gravel: routers this app offers the Notebook's text routing.
     global.signalRoute = (data) => {
@@ -378,11 +378,14 @@ navigator.geolocation.clearWatch = (id) => {
             pebbleEventHandler.addEventListener(PebbleEventTypes.GET_TIMELINE_TOKEN_SUCCESS, successCallback);
             pebbleEventHandler.addEventListener(PebbleEventTypes.GET_TIMELINE_TOKEN_FAILURE, failureCallback);
         },
-        getPushEndpoint: (onSuccess, onFailure) => {
+        // getPushEndpoint(onSuccess, onFailure) is the default channel; getPushEndpoint(channel, onSuccess, onFailure) a named one.
+        getPushEndpoint: (...args) => {
+            const channel = typeof args[0] === 'string' ? args.shift() : '';
+            const [onSuccess, onFailure] = args;
             if (typeof onSuccess !== 'function') {
                 throw new TypeError('getPushEndpoint needs a success callback');
             }
-            const callId = _Pebble.getPushEndpointAsync();
+            const callId = _Pebble.getPushEndpointAsync(channel);
             pushEndpointCallbacks.set(callId, { onSuccess, onFailure });
         },
         setRouters: (routers) => {

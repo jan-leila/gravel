@@ -305,7 +305,11 @@ the distributor under Settings > Apps > Watch App Permissions, which
 registers Gravel's own instance (`gravel`); that registration carries no
 messages and exists to show the distributor answers. Each watchapp that
 asks gets a further instance named by its UUID, with its own endpoint, so
-an arriving message names its target without Gravel reading the body.
+an arriving message names its target without Gravel reading the body. An
+app may also ask for named channels (`PushChannel`: 1 to 32 lowercase
+letters, digits or dashes), each its own instance `<uuid>/<name>` with its
+own endpoint, so a sender can be told apart and revoked on its own; no name
+is the default channel, whose instance stays the bare UUID.
 
 **What a watchapp sees** (`startup.js`):
 
@@ -313,11 +317,13 @@ an arriving message names its target without Gravel reading the body.
 Pebble.getPushEndpoint(function (endpoint) {
     // endpoint.url, and endpoint.p256dh / endpoint.auth for Web Push encryption
 }, function (reason) {
-    // permission_denied, no_distributor, registration_failed, timeout, unsupported
+    // permission_denied, no_distributor, registration_failed, timeout, unsupported, invalid_channel
 });
+// getPushEndpoint('alerts', onSuccess, onFailure) registers the named channel.
 Pebble.addEventListener('push', function (e) {
     // e.payload: the body as text, '' when the sender posted none
     // e.encrypted: false when the body arrived in the clear
+    // e.channel: the named channel it arrived on, undefined for the default
 });
 ```
 
@@ -335,7 +341,7 @@ no watcher on grants or the locker. With no watch connected the launch
 does nothing and the message waits in the inbox until the app next runs
 or the process ends.
 
-**The grant.** `LockerAppPermissionType.Push`, in the same tri-state system
+**The grant.** One per app, not per channel: `LockerAppPermissionType.Push`, in the same tri-state system
 as Network and Location, denied by default
 (`WatchConfig.watchappDefaultPushAllowed`). It gates registration,
 arrival, and delivery to the JavaScript. An app needs its Network grant as
