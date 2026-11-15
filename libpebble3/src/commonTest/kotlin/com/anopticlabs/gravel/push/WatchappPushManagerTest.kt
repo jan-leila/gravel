@@ -28,15 +28,21 @@ class WatchappPushManagerTest {
     private val uuid = Uuid.parse("00000000-0000-0000-0000-0000000000aa")
     private val endpoint = PushEndpoint("https://push.example/abc", "pub", "auth")
 
-    private class FakeTransport(var selected: String? = "org.example.distributor") : PushTransport {
+    private class FakeTransport(
+        var selected: String? = "org.example.distributor",
+        var installed: List<String> = listOf("org.example.distributor"),
+    ) : PushTransport {
+        var optedOut = false
         val registered = mutableListOf<String>()
         val unregistered = mutableListOf<String>()
 
-        override fun distributors() = listOf("org.example.distributor")
+        override fun distributors() = installed
         override fun selectedDistributor() = selected
         override fun selectDistributor(packageName: String?) {
+            optedOut = packageName == null
             selected = packageName
         }
+        override fun optedOut() = optedOut
         override fun register(instance: String) {
             registered += instance
         }
@@ -114,8 +120,53 @@ class WatchappPushManagerTest {
 
     @Test
     fun registrationFailsWithoutADistributor() = runTest {
-        val f = fixture(transport = FakeTransport(selected = null))
+        val f = fixture(transport = FakeTransport(selected = null, installed = emptyList()))
         assertEquals(PushRegistration.Failed(PushFailure.NoDistributor), f.manager.registerWatchappPush(uuid))
+    }
+
+    
+    fun theOnlyInstalledDistributorIsSelectedOnRefresh() = runTest {
+        val f = fixture(transport = FakeTransport(selected = null))
+        f.manager.refreshPushState()
+        assertEquals("org.example.distributor", f.transport.selected)
+        assertEquals("org.example.distributor", f.manager.pushState.value.selectedDistributor)
+        assertEquals(listOf("gravel"), f.transport.registered)
+    }
+
+    
+    fun theOnlyInstalledDistributorIsSelectedBeforeARegistration() = runTest {
+        val f = fixture(transport = FakeTransport(selected = null))
+        val result = async { f.manager.registerWatchappPush(uuid) }
+        runCurrent()
+        assertEquals(listOf(uuid.toString()), f.transport.registered)
+        f.manager.onNewEndpoint(uuid.toString(), endpoint)
+        assertEquals(PushRegistration.Registered(endpoint), result.await())
+    }
+
+    
+    fun severalDistributorsAreLeftForTheUserToChoose() = runTest {
+        val two = listOf("org.example.a", "org.example.b")
+        val f = fixture(transport = FakeTransport(selected = null, installed = two))
+        f.manager.refreshPushState()
+        assertEquals(null, f.transport.selected)
+        assertEquals(PushRegistration.Failed(PushFailure.NoDistributor), f.manager.registerWatchappPush(uuid))
+    }
+
+    
+    fun turningPushOffIsNotUndoneByAutoSelection() = runTest {
+        val f = fixture()
+        f.manager.selectPushDistributor(null)
+        f.manager.refreshPushState()
+        assertEquals(null, f.transport.selected)
+        assertEquals(PushRegistration.Failed(PushFailure.NoDistributor), f.manager.registerWatchappPush(uuid))
+    }
+
+    
+    fun choosingADistributorAfterOffTurnsAutoSelectionBackOn() = runTest {
+        val f = fixture()
+        f.manager.selectPushDistributor(null)
+        f.manager.selectPushDistributor("org.example.distributor")
+        assertFalse(f.transport.optedOut)
     }
 
     @Test

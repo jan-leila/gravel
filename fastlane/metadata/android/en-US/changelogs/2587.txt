@@ -1,0 +1,3 @@
+Push for watch apps now sets itself up.
+
+If exactly one UnifiedPush app (ntfy, for example) is installed, Gravel uses it automatically, so a watch app's push registration works without a visit to Settings > Apps > Watch App Permissions. With several installed you still choose one there, and choosing Off is remembered, so Gravel does not switch push back on by itself. Gravel still names no push provider of its own.

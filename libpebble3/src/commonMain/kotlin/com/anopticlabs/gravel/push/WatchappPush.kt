@@ -39,8 +39,14 @@ interface PushTransport {
 
     fun selectedDistributor(): String?
 
-    /** `null` drops the distributor and every registration made through it. */
+    /**
+     * `null` is the user turning push off: it drops the distributor and every registration made
+     * through it, and is remembered ([optedOut]) until a distributor is selected again.
+     */
     fun selectDistributor(packageName: String?)
+
+    /** The user chose Off, so [WatchappPushManager] must not pick a distributor itself. */
+    fun optedOut(): Boolean
 
     /** Answered later through [PushTransportEvents], also when the instance is already registered. */
     fun register(instance: String)
@@ -182,11 +188,21 @@ class WatchappPushManager(
 
     override fun refreshPushState() {
         val transport = transport ?: return
-        val selected = transport.selectedDistributor()
+        val selected = selectedOrAutoSelected(transport)
         _pushState.update {
             PushState(transport.distributors(), selected, it.appRegistered && selected != null)
         }
         if (selected != null) transport.register(APP_INSTANCE)
+    }
+
+    // With exactly one distributor installed there is nothing to choose, so it is used without the
+    // user visiting the settings. With several, picking one is left to the user.
+    private fun selectedOrAutoSelected(transport: PushTransport): String? {
+        transport.selectedDistributor()?.let { return it }
+        if (transport.optedOut()) return null
+        val only = transport.distributors().singleOrNull() ?: return null
+        transport.selectDistributor(only)
+        return only
     }
 
     override fun selectPushDistributor(packageName: String?) {
@@ -201,7 +217,7 @@ class WatchappPushManager(
         if (!permissions.isWatchappPermissionGranted(appUuid, LockerAppPermissionType.Push)) {
             return PushRegistration.Failed(PushFailure.PermissionDenied)
         }
-        if (transport.selectedDistributor() == null) return PushRegistration.Failed(PushFailure.NoDistributor)
+        if (selectedOrAutoSelected(transport) == null) return PushRegistration.Failed(PushFailure.NoDistributor)
         if (channel != null && !PushChannel.isValidName(channel)) return PushRegistration.Failed(PushFailure.InvalidChannel)
         val instance = PushChannel.instance(appUuid, channel)
         val result = withTimeoutOrNull(registrationTimeout) {

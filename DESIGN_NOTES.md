@@ -300,9 +300,11 @@ holds the connection to a push server and hands messages to Gravel, with
 no Google service involved, so this is a different thing from the FCM
 stack above, which stays deleted.
 
-**Registrations.** Gravel is one client of the distributor. The user picks
-the distributor under Settings > Apps > Watch App Permissions, which
-registers Gravel's own instance (`gravel`); that registration carries no
+**Registrations.** Gravel is one client of the distributor. Gravel names
+no distributor: with exactly one installed it is used without the user
+visiting settings, with several the user picks under Settings > Apps >
+Watch App Permissions, and choosing Off there is remembered so the single
+installed one is not picked again. Selecting one registers Gravel's own instance (`gravel`); that registration carries no
 messages and exists to show the distributor answers. Each watchapp that
 asks gets a further instance named by its UUID, with its own endpoint, so
 an arriving message names its target without Gravel reading the body. An
