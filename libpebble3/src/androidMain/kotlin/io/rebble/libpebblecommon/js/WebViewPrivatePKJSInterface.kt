@@ -97,8 +97,8 @@ class WebViewPrivatePKJSInterface(
     }
 
     @JavascriptInterface
-    override fun getPushEndpointAsync(): String {
-        return super.getPushEndpointAsync()
+    override fun getPushEndpointAsync(channel: String): String {
+        return super.getPushEndpointAsync(channel)
     }
 
     @JavascriptInterface

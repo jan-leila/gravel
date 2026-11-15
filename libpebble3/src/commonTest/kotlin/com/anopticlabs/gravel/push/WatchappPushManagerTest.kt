@@ -210,4 +210,68 @@ class WatchappPushManagerTest {
         f.manager.selectPushDistributor(null)
         assertEquals(PushState(listOf("org.example.distributor"), null, false), f.manager.pushState.value)
     }
+
+    @Test
+    fun aNamedChannelRegistersItsOwnInstanceAndEndpoint() = runTest {
+        val f = fixture()
+        val named = PushEndpoint("https://push.example/alerts", "pub2", "auth2")
+        val result = async { f.manager.registerWatchappPush(uuid, "alerts") }
+        runCurrent()
+        assertEquals(listOf("$uuid/alerts"), f.transport.registered)
+        f.manager.onNewEndpoint(uuid.toString(), endpoint)
+        runCurrent()
+        assertFalse(result.isCompleted)
+        f.manager.onNewEndpoint("$uuid/alerts", named)
+        assertEquals(PushRegistration.Registered(named), result.await())
+    }
+
+    @Test
+    fun noChannelIsTheDefaultChannelUnderTheBareUuid() = runTest {
+        val f = fixture()
+        val result = async { f.manager.registerWatchappPush(uuid, null) }
+        runCurrent()
+        assertEquals(listOf(uuid.toString()), f.transport.registered)
+        f.manager.onNewEndpoint(uuid.toString(), endpoint)
+        assertEquals(PushRegistration.Registered(endpoint), result.await())
+    }
+
+    @Test
+    fun aChannelNameThatBreaksTheGrammarNeverReachesTheTransport() = runTest {
+        val f = fixture()
+        for (name in listOf("", "Alerts", "a/b", "a b", "x".repeat(33))) {
+            assertEquals(
+                PushRegistration.Failed(PushFailure.InvalidChannel),
+                f.manager.registerWatchappPush(uuid, name),
+            )
+        }
+        assertTrue(f.transport.registered.isEmpty())
+    }
+
+    @Test
+    fun aMessageCarriesTheChannelItArrivedOn() = runTest {
+        val f = fixture()
+        f.manager.onMessage("$uuid/alerts", "hi".encodeToByteArray(), decrypted = true)
+        runCurrent()
+        assertEquals(listOf(uuid), f.targetApps.launched)
+        assertEquals(PushMessage("hi", encrypted = true, channel = "alerts"), f.manager.watchappPushMessages(uuid).first())
+    }
+
+    @Test
+    fun aMessageForANamedChannelWithoutTheGrantUnregistersThatChannel() = runTest {
+        val f = fixture()
+        f.resolver.setWatchappPermission(uuid, LockerAppPermissionType.Push, PermissionSetting.Deny)
+        f.manager.onMessage("$uuid/alerts", "hi".encodeToByteArray(), decrypted = true)
+        runCurrent()
+        assertEquals(listOf("$uuid/alerts"), f.transport.unregistered)
+    }
+
+    @Test
+    fun aMessageToAMalformedInstanceIsIgnored() = runTest {
+        val f = fixture()
+        f.manager.onMessage("$uuid/Bad Name", "hi".encodeToByteArray(), decrypted = true)
+        f.manager.onMessage("$uuid/", "hi".encodeToByteArray(), decrypted = true)
+        runCurrent()
+        assertTrue(f.targetApps.launched.isEmpty())
+        assertTrue(f.transport.unregistered.isEmpty())
+    }
 }
