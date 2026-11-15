@@ -1,1 +1,5 @@
-RELEASE NOTES PENDING: replace this file with the release notes before merging main into release.
+Change your Text Routing by saying what you want.
+
+Routing Assistant router: a recording routed to it is read as a change to the routing itself ("send anything starting with todo to my tasks app"). The on-device text model rewrites the routing, and the recording waits in the Notebook with what would change until you apply or dismiss it. Tokens and places are hidden from the model.
+
+The list of proposed changes now says what a newly added router does.
