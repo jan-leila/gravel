@@ -134,12 +134,15 @@ abstract class PrivatePKJSInterface(
         return uuid.toString()
     }
 
-    /** Gravel: registers this app for push; the answer arrives by [JsRunner.signalPushEndpoint]. */
-    open fun getPushEndpointAsync(): String {
+    /**
+     * Gravel: registers this app for push on [channel], the default channel when empty; the answer
+     * arrives by [JsRunner.signalPushEndpoint].
+     */
+    open fun getPushEndpointAsync(channel: String): String {
         val uuid = Uuid.parse(jsRunner.appInfo.uuid)
         val callId = Uuid.random().toString()
         scope.launch {
-            val result = watchappPush?.registerWatchappPush(uuid)
+            val result = watchappPush?.registerWatchappPush(uuid, channel.ifEmpty { null })
                 ?: PushRegistration.Failed(PushFailure.Unsupported)
             when (result) {
                 is PushRegistration.Registered -> jsRunner.signalPushEndpoint(callId, result.endpoint)

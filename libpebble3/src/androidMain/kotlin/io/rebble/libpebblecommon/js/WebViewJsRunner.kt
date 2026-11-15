@@ -843,6 +843,7 @@ class WebViewJsRunner(
         val json = buildJsonObject {
             put("body", message.body)
             put("encrypted", message.encrypted)
+            message.channel?.let { put("channel", it) }
         }.toString()
         withContext(Dispatchers.Main) {
             evaluateInPage("window.signalPush($json)")

@@ -1,0 +1,3 @@
+Watch apps can register several named push channels.
+
+A watch app that listens for UnifiedPush messages can now ask for a named channel (Pebble.getPushEndpoint('alerts', onSuccess, onFailure)), each with its own endpoint, so different senders can be told apart and dropped on their own. The push event says which channel a message arrived on (e.channel). Without a name you get the default channel, and endpoints registered before this release keep working.

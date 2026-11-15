@@ -59,8 +59,11 @@ interface PushTransportEvents {
 /** [p256dh] and [auth] are the Web Push keys a sender encrypts with (RFC 8291). */
 data class PushEndpoint(val url: String, val p256dh: String?, val auth: String?)
 
-/** [encrypted] is false for a body the sender posted in the clear, which the push server could read. */
-data class PushMessage(val body: String, val encrypted: Boolean)
+/**
+ * [encrypted] is false for a body the sender posted in the clear, which the push server could read.
+ * [channel] is the named channel the message arrived on; null for the app's default channel.
+ */
+data class PushMessage(val body: String, val encrypted: Boolean, val channel: String? = null)
 
 /** [code] is what the watchapp's JavaScript receives. */
 enum class PushFailure(val code: String) {
@@ -69,6 +72,7 @@ enum class PushFailure(val code: String) {
     RegistrationFailed("registration_failed"),
     Timeout("timeout"),
     Unsupported("unsupported"),
+    InvalidChannel("invalid_channel"),
 }
 
 sealed interface PushRegistration {
@@ -91,10 +95,39 @@ interface WatchappPush {
 
     fun selectPushDistributor(packageName: String?)
 
-    suspend fun registerWatchappPush(appUuid: Uuid): PushRegistration
+    /** [channel] names one of the app's channels, each with its own endpoint; null is the default channel. */
+    suspend fun registerWatchappPush(appUuid: Uuid, channel: String? = null): PushRegistration
 
     /** Messages for one watchapp, each delivered to a single collector. */
     fun watchappPushMessages(appUuid: Uuid): Flow<PushMessage>
+}
+
+/**
+ * A watchapp's channels. Each is its own registration with the distributor, so an arriving message
+ * names its channel in the instance without Gravel reading the body. The default channel's instance
+ * is the bare app UUID, which is what registrations made before channels existed already use.
+ */
+object PushChannel {
+    private val NAME = Regex("[a-z0-9-]{1,32}")
+    private const val SEPARATOR = '/'
+
+    fun isValidName(name: String) = NAME.matches(name)
+
+    fun instance(appUuid: Uuid, channel: String?): String =
+        if (channel == null) appUuid.toString() else "$appUuid$SEPARATOR$channel"
+
+    /** The app and channel an instance names; null for an instance that is neither. */
+    fun parse(instance: String): Pair<Uuid, String?>? {
+        val app = instance.substringBefore(SEPARATOR)
+        val channel = if (SEPARATOR in instance) instance.substringAfter(SEPARATOR) else null
+        if (channel != null && !isValidName(channel)) return null
+        val uuid = try {
+            Uuid.parse(app)
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+        return uuid to channel
+    }
 }
 
 /** The watch side of a push: whether its target still exists, and opening it. */
@@ -163,13 +196,14 @@ class WatchappPushManager(
         refreshPushState()
     }
 
-    override suspend fun registerWatchappPush(appUuid: Uuid): PushRegistration {
+    override suspend fun registerWatchappPush(appUuid: Uuid, channel: String?): PushRegistration {
         if (transport == null) return PushRegistration.Failed(PushFailure.Unsupported)
         if (!permissions.isWatchappPermissionGranted(appUuid, LockerAppPermissionType.Push)) {
             return PushRegistration.Failed(PushFailure.PermissionDenied)
         }
         if (transport.selectedDistributor() == null) return PushRegistration.Failed(PushFailure.NoDistributor)
-        val instance = appUuid.toString()
+        if (channel != null && !PushChannel.isValidName(channel)) return PushRegistration.Failed(PushFailure.InvalidChannel)
+        val instance = PushChannel.instance(appUuid, channel)
         val result = withTimeoutOrNull(registrationTimeout) {
             // Subscribed before the request goes out, so an immediate answer is not missed.
             registrationResults
@@ -200,11 +234,7 @@ class WatchappPushManager(
     }
 
     override fun onMessage(instance: String, content: ByteArray, decrypted: Boolean) {
-        val appUuid = try {
-            Uuid.parse(instance)
-        } catch (_: IllegalArgumentException) {
-            return
-        }
+        val (appUuid, channel) = PushChannel.parse(instance) ?: return
         scope.launch {
             val allowed = permissions.isWatchappPermissionGranted(appUuid, LockerAppPermissionType.Push)
             if (!allowed || !targetApps.isInstalled(appUuid)) {
@@ -213,7 +243,7 @@ class WatchappPushManager(
                 transport?.unregister(instance)
                 return@launch
             }
-            inbox(appUuid).send(PushMessage(content.decodeToString(), encrypted = decrypted))
+            inbox(appUuid).send(PushMessage(content.decodeToString(), encrypted = decrypted, channel = channel))
             targetApps.launch(appUuid)
         }
     }
