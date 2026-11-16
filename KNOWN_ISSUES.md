@@ -1839,6 +1839,48 @@ which matters only while two Wi-Fi networks are connected at once. Server
 reach the server only while the network Android gives Gravel runs over
 something besides the VPN; on Android 9 and older, where a VPN may show
 nothing under it, every failure behind a VPN counts, with no signal too.
+The self-hosted text model server follows the same rule, with its own
+switch, and the same limits apply to the transcripts it is sent.
+
+## The Notebook setup guide asks for a phone text model with a text model server set up
+
+**Status: open; deferred from the text model server's first version.**
+
+The setup guide's text model page asks for a model downloaded to the
+phone before it goes on, whatever Where the Text Model Runs says, since
+it reads only what is installed. With Server Only chosen the downloaded
+model is never used. The guide can be finished with a download and the
+model deleted afterwards on Settings > AI > LLM.
+
+## A trusted certificate or a new token alone does not resume paused processing
+
+**Status: accepted for now.**
+
+A Notebook paused on the text model server (an untrusted certificate, a
+refused request) tries again when the server's URL, model, mode or
+mobile-data switch changes, or with the network for the network reasons,
+but not when only a certificate is trusted or a token saved in the
+dialog, since those live in the encrypted store and not in the settings
+the Notebook follows. Processing then resumes with the next recording, a
+network change, or Gravel coming back to the foreground.
+
+## A failing text model server is asked again for every note
+
+**Status: accepted; a text call is short and decided per call.**
+
+Unlike the transcription server, the text model server is not taken out
+of use after an error: in Server (with Local Fallback) each text call
+tries the server first and the phone after it fails, so a server that
+hangs costs each note up to the request's 5-minute limit before the
+phone answers.
+
+## The text model server edge cases
+
+**Status: accepted for now.**
+
+- A reply that is empty (a reasoning model that spent all of `max_tokens` thinking) is accepted, as an empty phone reply is, so the note gets the fallback title or wording and is not retried.
+- A change to the server URL or the Wi-Fi rule closes the cached client while a request on it may still be running; that request fails as a lost connection and counts one attempt.
+- The server clients follow HTTP redirects, as the transcription server's do, so a 307 or 308 from the server would send the text on to its target, checked against the platform trust store when no certificate is pinned for it.
 
 ## A failed text router delivery costs a new transcription
 

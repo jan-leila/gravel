@@ -49,14 +49,18 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   screen is a server-rendered page fed by that relay, so it has no data
   source in Gravel and its entry points are disabled; usable battery
   analytics would need a local, on-device reimplementation. The hosts the
-  app talks to are fixed in the app, with three exceptions you control: an
+  app talks to are fixed in the app, with four exceptions you control: an
   app store source you add yourself is fetched from the host you entered,
   with no account token attached and no store search sent to it, a git
   repository you follow under Git Sources is read anonymously from its
-  host (for GitHub, its API at api.github.com), and a
+  host (for GitHub, its API at api.github.com), a
   transcription server you configure receives your dictation audio and,
-  in the server modes, your Notebook recordings (nothing is sent unless
-  you set one up). Problem reports are a manual
+  in the server modes, your Notebook recordings, and a text model server
+  you configure receives, in its server modes, the transcript of each
+  Notebook recording to title, tag or word as a reminder, and a routing
+  change you ask for with your text routing as the phone's model would get
+  it (nothing is sent to either server unless you set one up). Problem
+  reports are a manual
   export: Settings > Get Help > Export logs writes a zip (app log, device
   summary, anything you attach) for you to add to an issue yourself, and
   nothing in the app can upload it.
@@ -152,7 +156,9 @@ De-google work is completed, all telemetry is removed. What remains is polish an
   reminders. The speech recognition and the text model that writes
   titles, tags, and a reminder's wording run on the phone, in
   isolated processes, on whisper.cpp and llama.cpp built from source; a
-  recording goes to a transcription server only if you set one up.
+  recording goes to a transcription server, and its text to a text model
+  server ([Using your own text model server](#using-your-own-text-model-server)),
+  only if you set one up.
   Where a recording's text goes is yours to set: by default it becomes a
   note, and Settings > Notebook > Text Routing can send it through rules
   on the words, the time or the place it was recorded, or the app open on
@@ -257,7 +263,7 @@ Wi-Fi rule keeps recordings off the server, or the server's name does
 not resolve, it refuses the connection or
 connecting times out, they wait without counting as failed attempts. Any
 other connection failure, such as one lost partway, counts as a failed
-attempt and is tried again later, up to the Notebook's limit of 10. In
+attempt and is tried again later, up to the Notebook's limit of 10; any other HTTP 4xx, such as a note too long for the server, marks that note as failed and the rest go on. In
 server with local fallback, every connection failure while the phone is
 on an allowed network is instead one of a longer recording's 3 tries. An
 error from the server, a reply without text, a certificate Gravel does
@@ -327,6 +333,68 @@ certificates (Caddy's internal CA renews every 12 hours by default):
 each rotation would ask you to confirm again. The bearer token belongs
 to the server it was saved with: a URL edited to another host or port is
 tested and saved without it unless you type one.
+
+## Using your own text model server
+
+Settings > AI > LLM > Self-hosted Server takes the full URL of an
+OpenAI-compatible chat completions endpoint (Ollama's is
+`/v1/chat/completions`), the model's name on the server, which is
+required, and an optional bearer token. Once it is saved, "Where the Text
+Model Runs" offers the same four choices as speech recognition: Local
+Only (the default, which sends nothing), Server Only, Server (with Local
+Fallback), and Local (with Server Fallback). The Notebook then sends the
+prompt it would give the phone's model as one non-streamed POST:
+
+```
+{"model": "<name>", "messages": [{"role": "system", ...}, {"role": "user", ...}],
+ "stream": false, "temperature": 0, "max_tokens": <512, or 2048 for a routing change>}
+```
+
+and reads `choices[0].message.content` from a reply of up to 64 KB, so
+titles, tags and reminder wording come out of the same parsing as on the
+phone. A `<think>` block from a reasoning model is dropped before that.
+Models that answer without reasoning first suit this best, such as
+`gemma4:e4b` or `qwen3:4b-instruct-2507-q4_K_M` under Ollama; a reasoning model
+works but spends time and tokens thinking, and when the token limit cuts
+it off the note falls back to a plain title.
+
+The server follows the transcription server's rules: https only, the same
+certificate trust and "Trust this certificate" flow, a token bound to the
+host and port it was saved for, and requests only while the phone is on
+Wi-Fi that is not marked metered unless this page's own "Use the Server
+on Mobile Data" is on. Its token and trusted certificates are kept apart
+from the transcription server's, even at the same address. "Test
+connection" sends a one-word prompt with the dialog's values.
+
+Server Only sends every request to the server. Off the allowed Wi-Fi,
+with the server unreachable, with its certificate refused, or when it
+refuses the request (an HTTP 401, 403 or 404, such as a wrong model name or token),
+Notebook processing pauses with the reason shown, and tries again after a
+network change for the first two and after a change of the server's
+settings for the others; a connection lost partway, a server error, a reply that is not
+a chat completion, a rate limit (HTTP 429), 3 minutes without a byte from the server or a request
+not finished in 5 minutes counts as a failed attempt and is tried again
+later, up to the Notebook's limit of 10. Server (with Local Fallback)
+asks the server first and the phone's model when the server fails, uses
+the phone while the Wi-Fi rule keeps requests off the server, and works
+like Server Only without a text model on the phone. Local (with Server
+Fallback) asks the phone's model first and the server when the phone has
+no usable model or its model fails, a prompt too long for it or a
+generation past its deadline included. A reverse proxy in front of the
+server needs a read timeout of at least 3 minutes for a slow model.
+
+With Ollama behind a reverse proxy that gets a certificate from a public
+CA, for example Caddy with
+`inference.example.net { reverse_proxy 127.0.0.1:11434 }`, no
+certificate needs confirming:
+
+```
+ollama pull gemma4:e4b
+```
+
+and the URL is `https://inference.example.net/v1/chat/completions` with
+the model name `gemma4:e4b`. Ollama asks for no token; a proxy
+that requires one can be given it in the token field.
 
 ## Installing watch apps from git releases
 

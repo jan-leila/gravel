@@ -132,6 +132,7 @@ fun TextModelsScreen(topBarParams: TopBarParams) {
         onCancelDownload = viewModel::cancelDownload,
         onChoose = viewModel::choose,
         onDelete = viewModel::delete,
+        serverSection = { TextServerSection() },
     )
 }
 
@@ -148,6 +149,7 @@ fun TextModelsContent(
     onCancelDownload: () -> Unit,
     onChoose: (String) -> Unit,
     onDelete: (String) -> Unit,
+    serverSection: (@Composable () -> Unit)? = null,
 ) {
     var heavyDownload by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingDelete by rememberSaveable { mutableStateOf<String?>(null) }
@@ -155,7 +157,8 @@ fun TextModelsContent(
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             item(key = "intro") {
                 Text(
-                    "The Notebook uses a text model on this phone to title and tag notes and to word reminders.",
+                    "The Notebook uses a text model, on this phone or on your own server, to title and tag notes and to " +
+                        "word reminders.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(16.dp),
                 )
@@ -164,13 +167,14 @@ fun TextModelsContent(
                 item(key = "unsupported") {
                     Text(
                         "This phone's processor can't run these models, so the Notebook can't turn recordings into notes " +
-                            "or reminders here. Downloaded models can still be deleted.",
+                            "or reminders here without your own text model server. Downloaded models can still be deleted.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
                 }
             }
+            serverSection?.let { section -> item(key = "server") { section() } }
             item(key = "speed") { TextSpeedRow(score, measuring, onRetestSpeed) }
             items(rows, key = { it.model.id }) { row ->
                 TextModelListItem(
