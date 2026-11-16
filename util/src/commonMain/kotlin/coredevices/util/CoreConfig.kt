@@ -1,6 +1,7 @@
 package coredevices.util
 
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.textserver.TextServerConfig
 import com.russhwolf.settings.Settings
 import com.russhwolf.settings.set
 import coredevices.util.models.CactusSTTMode
@@ -141,6 +142,8 @@ data class CoreConfig(
      * [fetchWeather] on.
      */
     val weatherAgreed: Boolean = false,
+    /** Gravel: the Notebook's self-hosted text model server; stored configs from before the field read as no server. */
+    val textServerConfig: TextServerConfig = TextServerConfig(),
 )
 
 /** Gravel: weather is switched on and agreed to; see [CoreConfig.weatherAgreed]. */

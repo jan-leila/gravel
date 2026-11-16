@@ -48,6 +48,8 @@ import dev.gitlive.firebase.firestore.firestore
 import dev.gitlive.firebase.firestore.firestoreSettings
 import dev.gitlive.firebase.firestore.persistentCacheSettings
 import org.koin.core.module.dsl.singleOf
+import com.anopticlabs.gravel.textserver.SelfHostedTextService
+import com.anopticlabs.gravel.textserver.TextServerStore
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
@@ -134,6 +136,9 @@ val utilModule = module {
     // (encrypted bearer token, pinned certificate).
     single { SelfHostedServerStore(get(), get()) }
     single { SelfHostedTranscriptionService(get(), get(), get(), get()) }
+    // Gravel: the Notebook's self-hosted text model server, with a token and pins of its own.
+    single { TextServerStore(get(), get()) }
+    single { SelfHostedTextService(get(), get<TextServerStore>(), get(), get()) }
     singleOf(::WisprFlowRESTTranscriptionService)
     singleOf(::KirinkiTranscriptionService)
     // Fork: permanently signed out. UsersDaoImpl's auth-restoration observer

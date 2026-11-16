@@ -1269,6 +1269,58 @@ ends the engine process. Constraints the code relies on:
   single, so the probe does not time the CPU under a use (that wiring is
   not pinned by a test). `TextGeneratorTest` and `DeviceSpeedTest` pin
   the rest on fakes.
+- A self-hosted text model server is the text step's remote backend, at
+  the `CaptureText` seam: the app binds `RoutedNotebookText` (composeApp),
+  which wraps the `NotebookText` above and `SelfHostedTextService`
+  (`:util`, `com.anopticlabs.gravel.textserver`), so the notebook module,
+  its prompts and its reply parsers are unchanged. `TextServerConfig`
+  (in `CoreConfig`, URL printed as set or unset) holds the mode, the
+  endpoint URL as entered, the model name, required since
+  OpenAI-compatible servers need one, and the mobile-data switch. The
+  modes mirror speech recognition's four (`textRoute`): Local Only, the
+  default and the only one offered without a server, never builds a
+  request; Server Only never consults the phone, so a phone that cannot
+  run the engine gets notes through a server; the two fallback modes are
+  the phone's alone without a configured server, the other side's while
+  the first has no usable model, and keep to the phone off the allowed
+  network. Unlike speech there is no per-capture server check or retry
+  spacing: a text call is seconds and repeats per capture, so each call
+  decides afresh, the fallback is taken for any failure of the first
+  step, and with both failing the first step's failure is reported.
+  `prepare` loads the phone's model only on routes that start there.
+  The request is one OpenAI chat completion (`chatRequestJson`): the
+  same system and user messages the phone renders, trimmed as the
+  phone's path trims them, `stream: false`, temperature 0 for the phone's
+  greedy sampler, and `max_tokens` the caller's, capped at 2,048, the
+  routing editor's. The JSON encoder carries the contents, so the phone's
+  template-marker refusal has no counterpart here: a server receives
+  roles and contents as separate fields. `parseChatReply` reads
+  `choices[0].message.content` from a reply bounded to 64 KB
+  (`readBoundedBody`, shared with the transcription server) and removes a
+  `<think>` block (`withoutThinking`) before the Notebook's own parsers,
+  which strip one again. Transport, trust and the network rule are the
+  transcription server's (above): `validateServerUrl`, the
+  certificate-pinning client from the same `SelfHostedClientFactory`
+  with its Wi-Fi-only binding, one cached client per address and rule
+  (`ServerClientCache`, shared), and the same failure classes, logged by
+  exception class. Its token (`HostBoundToken`, the transcription
+  store's bound-token format) and pins live in `TextServerStore` under
+  keys of their own, so removing either server never drops the other's
+  pin or token at the same address; both stores implement
+  `ServerTrustStore`, which the shared settings dialog
+  (`ServerSettingsDialog`) works through. How failures reach the drain
+  (`serverTextFailure`): no server, the Wi-Fi rule, a connection never
+  made, a refused certificate and an HTTP 401, 403 or 404 hold the drain, the rule
+  and the connection waiting for the network; a lost or timed-out connection, a 5xx,
+  a reply that is not a chat completion, a rate limit (408, 425, 429) and a
+  request past its 5-minute limit count an attempt; any other 4xx is about
+  that capture's request, so it is flagged at once (413 as too long, the rest
+  as refused) and the queue goes on. A change of `TextServerConfig` asks the drain
+  to run (`speechWatched`). `SelfHostedTextServiceTest`,
+  `ChatCompletionTest`, `NotebookServerTextTest` and
+  `TextServerSettingsTest` pin this on fakes and a mock engine; the
+  device path through `AndroidServerTrust` is the transcription server's
+  and has no host test either.
 
 Storage is a directory of encrypted files under `files/notebook`. Each write
 draws a fresh AES-256 data key, seals the file with it in software

@@ -3,7 +3,8 @@ package coredevices.util.transcription
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.network.NotOnAllowedNetworkException
 import com.anopticlabs.gravel.network.UnmeteredWifi
-import com.anopticlabs.gravel.network.readBody
+import com.anopticlabs.gravel.network.ServerClientCache
+import com.anopticlabs.gravel.network.readBoundedBody
 import coredevices.util.AudioEncoding
 import coredevices.util.CoreConfigFlow
 import coredevices.util.writeWavHeader
@@ -20,14 +21,11 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentLength
 import io.ktor.http.isSuccess
-import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.Buffer
 import kotlinx.io.IOException
@@ -135,20 +133,11 @@ class SelfHostedTranscriptionService(
 
     // Dictation and Notebook recordings each keep their own client, so a client one of them
     // replaces is never closed under the other's request.
-    private inner class ClientSlot(private val answerWait: Duration) {
-        private val mutex = Mutex()
-        private var client: Pair<Pair<String, Boolean>, HttpClient>? = null
+    private inner class ClientSlot(answerWait: Duration) {
+        private val cache = ServerClientCache(clientFactory, answerWait, store::pinnedFingerprint)
 
-        suspend fun clientFor(url: String, wifiOnly: Boolean): HttpClient {
-            val hostPort = serverHostPort(url) ?: throw TranscriptionException.TranscriptionServiceUnavailable(MODEL)
-            val key = hostPort to wifiOnly
-            return mutex.withLock {
-                client?.takeIf { it.first == key }?.second ?: run {
-                    client?.second?.close()
-                    clientFactory.create(hostPort, { store.pinnedFingerprint(hostPort) }, wifiOnly, answerWait).also { client = key to it }
-                }
-            }
-        }
+        suspend fun clientFor(url: String, wifiOnly: Boolean): HttpClient =
+            cache.clientFor(serverHostPort(url) ?: throw TranscriptionException.TranscriptionServiceUnavailable(MODEL), wifiOnly)
     }
 
     private val dictationClients = ClientSlot(DICTATION_ANSWER_WAIT)
@@ -308,20 +297,13 @@ class SelfHostedTranscriptionService(
         }
     }
 
-    /**
-     * The reply body under [MAX_REPLY_BYTES]: a declared length past it is
-     * refused unread, and a body that runs past it is refused at that
-     * point with the rest left on the wire.
-     */
+    /** The reply body under [MAX_REPLY_BYTES], read through [readBoundedBody]. */
     private suspend fun boundedBody(response: HttpResponse): String {
         val declared = response.contentLength()
-        if (declared != null && declared > MAX_REPLY_BYTES) {
-            throw TranscriptionException.TranscriptionServiceError("Server reply too large ($declared bytes)", modelUsed = MODEL)
-        }
-        val bytes = response.readBody { it.readRemaining((MAX_REPLY_BYTES + 1).toLong()).readByteArray() }
-        if (bytes.size > MAX_REPLY_BYTES) {
-            throw TranscriptionException.TranscriptionServiceError("Server reply too large", modelUsed = MODEL)
-        }
+        val bytes = response.readBoundedBody(MAX_REPLY_BYTES) ?: throw TranscriptionException.TranscriptionServiceError(
+            if (declared != null && declared > MAX_REPLY_BYTES) "Server reply too large ($declared bytes)" else "Server reply too large",
+            modelUsed = MODEL,
+        )
         return bytes.decodeToString()
     }
 }

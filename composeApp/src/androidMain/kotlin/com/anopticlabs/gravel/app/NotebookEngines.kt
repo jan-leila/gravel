@@ -75,7 +75,7 @@ val notebookEnginesModule = module {
         )
     } bind CaptureSpeech::class
     single { SpeechSettingWatch(speechWatched(get(), get()), request = { get<CaptureCoordinator>().requestAgain() }) }
-    single<CaptureText> { NotebookText(get()) }
+    single<CaptureText> { RoutedNotebookText(NotebookText(get()), SelfHostedServerText(get())) }
     single<CaptureMemory> { NotebookMemory(androidContext(), get(), get()) }
     single<TextPoster> { KtorTextPoster(routerPostClient()) }
     single<WatchApps> { LibPebbleWatchApps { get<LibPebble>() } }
@@ -83,10 +83,11 @@ val notebookEnginesModule = module {
 
 /**
  * What [SpeechSettingWatch] follows: the speech settings in the app's config, where the server's token and pinned
- * certificate are not kept, and the count of finished speech model downloads.
+ * certificate are not kept, the count of finished speech model downloads, and the text model server's settings,
+ * whose change can end a hold on the text step too.
  */
 internal fun speechWatched(config: CoreConfigFlow, installs: SpeechModelInstalls): List<Flow<Any?>> =
-    listOf(config.flow.map { it.sttConfig }, installs.count)
+    listOf(config.flow.map { it.sttConfig }, installs.count, config.flow.map { it.textServerConfig })
 
 /**
  * A deadline the call ran past, or audio the engine refuses, would fail again; a missing model,
