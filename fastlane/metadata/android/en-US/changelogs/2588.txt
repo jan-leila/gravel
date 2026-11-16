@@ -1,1 +1,5 @@
-RELEASE NOTES PENDING: replace this file with the release notes before merging main into release.
+The Notebook can use your own text model server.
+
+A server that speaks the OpenAI chat completions API (Ollama, llama.cpp's server, vLLM) can now write titles, tags, reminder wording and routing changes instead of the phone's model. Set it up under Settings > AI. Local Only stays the default and sends nothing. The server needs https and, by default, unmetered Wi-Fi.
+
+A server's client error no longer stalls every note behind it.
