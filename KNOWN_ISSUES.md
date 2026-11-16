@@ -1874,6 +1874,14 @@ tries the server first and the phone after it fails, so a server that
 hangs costs each note up to the request's 5-minute limit before the
 phone answers.
 
+## The text model server edge cases
+
+**Status: accepted for now.**
+
+- A reply that is empty (a reasoning model that spent all of `max_tokens` thinking) is accepted, as an empty phone reply is, so the note gets the fallback title or wording and is not retried.
+- A change to the server URL or the Wi-Fi rule closes the cached client while a request on it may still be running; that request fails as a lost connection and counts one attempt.
+- The server clients follow HTTP redirects, as the transcription server's do, so a 307 or 308 from the server would send the text on to its target, checked against the platform trust store when no certificate is pinned for it.
+
 ## A failed text router delivery costs a new transcription
 
 **Status: accepted for now; closing it needs the transcript kept with the

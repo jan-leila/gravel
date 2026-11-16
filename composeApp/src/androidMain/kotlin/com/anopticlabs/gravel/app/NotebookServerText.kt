@@ -1,6 +1,7 @@
 package com.anopticlabs.gravel.app
 
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
 import com.anopticlabs.gravel.notebook.pipeline.CaptureFailureKind
 import com.anopticlabs.gravel.notebook.pipeline.CaptureProcessingException
 import com.anopticlabs.gravel.notebook.pipeline.CaptureRemedy
@@ -65,8 +66,10 @@ internal const val TEXT_SERVER_CERTIFICATE_HELD = "your text model server's cert
 /**
  * A server failure as the capture drain acts on it. What every capture would meet (no server, no allowed network,
  * a server that cannot be reached or whose certificate is refused, a request the server refuses with a 4xx such as a
- * wrong model name or token) holds the drain; a connection lost or timed out, a server error or a reply that is not
- * a chat completion counts an attempt for this capture.
+ * wrong model name or token) holds the drain: 401, 403 and 404, the ones about the setup. A connection lost or timed
+ * out, a server error, a rate limit (408, 425, 429) or a reply that is not a chat completion counts an attempt for
+ * this capture; any other 4xx is about this capture's request and would fail the same way again, so it is flagged
+ * (413 as too long, the rest as refused) while the rest of the queue goes on.
  */
 internal fun serverTextFailure(e: TextServerException): CaptureProcessingException = when (e) {
     is TextServerException.NotConfigured ->
@@ -79,10 +82,16 @@ internal fun serverTextFailure(e: TextServerException): CaptureProcessingExcepti
         TransportFailure.TIMED_OUT, TransportFailure.LOST ->
             CaptureProcessingException(CaptureFailureKind.RETRY, "the connection to the text model server was lost", e)
     }
-    is TextServerException.Failed -> if (e.status in 400..499) {
-        CaptureProcessingException(CaptureFailureKind.HOLD, "your text model server refused the request (HTTP ${e.status})", e, remedy = CaptureRemedy.TEXT_MODEL)
-    } else {
-        CaptureProcessingException(CaptureFailureKind.RETRY, "your text model server could not answer", e)
+    is TextServerException.Failed -> when (e.status) {
+        401, 403, 404 ->
+            CaptureProcessingException(CaptureFailureKind.HOLD, "your text model server refused the request (HTTP ${e.status})", e, remedy = CaptureRemedy.TEXT_MODEL)
+        408, 425, 429 ->
+            CaptureProcessingException(CaptureFailureKind.RETRY, "your text model server is busy (HTTP ${e.status})", e)
+        413 ->
+            CaptureProcessingException(CaptureFailureKind.FLAG, "the text was too long for your text model server", e, reason = CaptureFailureReason.TEXT_TOO_LONG)
+        in 400..499 ->
+            CaptureProcessingException(CaptureFailureKind.FLAG, "your text model server refused the request (HTTP ${e.status})", e, reason = CaptureFailureReason.TEXT_REFUSED)
+        else -> CaptureProcessingException(CaptureFailureKind.RETRY, "your text model server could not answer", e)
     }
 }
 

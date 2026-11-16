@@ -263,7 +263,7 @@ Wi-Fi rule keeps recordings off the server, or the server's name does
 not resolve, it refuses the connection or
 connecting times out, they wait without counting as failed attempts. Any
 other connection failure, such as one lost partway, counts as a failed
-attempt and is tried again later, up to the Notebook's limit of 10. In
+attempt and is tried again later, up to the Notebook's limit of 10; any other HTTP 4xx, such as a note too long for the server, marks that note as failed and the rest go on. In
 server with local fallback, every connection failure while the phone is
 on an allowed network is instead one of a longer recording's 3 tries. An
 error from the server, a reply without text, a certificate Gravel does
@@ -368,11 +368,11 @@ connection" sends a one-word prompt with the dialog's values.
 
 Server Only sends every request to the server. Off the allowed Wi-Fi,
 with the server unreachable, with its certificate refused, or when it
-refuses the request (an HTTP 4xx, such as a wrong model name or token),
+refuses the request (an HTTP 401, 403 or 404, such as a wrong model name or token),
 Notebook processing pauses with the reason shown, and tries again after a
 network change for the first two and after a change of the server's
 settings for the others; a connection lost partway, a server error, a reply that is not
-a chat completion, 3 minutes without a byte from the server or a request
+a chat completion, a rate limit (HTTP 429), 3 minutes without a byte from the server or a request
 not finished in 5 minutes counts as a failed attempt and is tried again
 later, up to the Notebook's limit of 10. Server (with Local Fallback)
 asks the server first and the phone's model when the server fails, uses

@@ -1310,10 +1310,12 @@ ends the engine process. Constraints the code relies on:
   `ServerTrustStore`, which the shared settings dialog
   (`ServerSettingsDialog`) works through. How failures reach the drain
   (`serverTextFailure`): no server, the Wi-Fi rule, a connection never
-  made, a refused certificate and an HTTP 4xx hold the drain, the rule
+  made, a refused certificate and an HTTP 401, 403 or 404 hold the drain, the rule
   and the connection waiting for the network; a lost or timed-out connection, a 5xx,
-  a reply that is not a chat completion and a request past its 5-minute
-  limit count an attempt. A change of `TextServerConfig` asks the drain
+  a reply that is not a chat completion, a rate limit (408, 425, 429) and a
+  request past its 5-minute limit count an attempt; any other 4xx is about
+  that capture's request, so it is flagged at once (413 as too long, the rest
+  as refused) and the queue goes on. A change of `TextServerConfig` asks the drain
   to run (`speechWatched`). `SelfHostedTextServiceTest`,
   `ChatCompletionTest`, `NotebookServerTextTest` and
   `TextServerSettingsTest` pin this on fakes and a mock engine; the

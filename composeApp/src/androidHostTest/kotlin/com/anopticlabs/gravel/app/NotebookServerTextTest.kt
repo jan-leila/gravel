@@ -1,5 +1,6 @@
 package com.anopticlabs.gravel.app
 
+import com.anopticlabs.gravel.notebook.capture.CaptureFailureReason
 import com.anopticlabs.gravel.notebook.pipeline.CaptureFailureKind
 import com.anopticlabs.gravel.notebook.pipeline.CaptureProcessingException
 import com.anopticlabs.gravel.notebook.pipeline.CaptureRemedy
@@ -196,6 +197,20 @@ class NotebookServerTextTest {
         assertEquals(CaptureFailureKind.RETRY, serverTextFailure(unreachable(TransportFailure.LOST)).kind)
         val refused = serverTextFailure(TextServerException.Failed("HTTP 404", 404))
         assertEquals(CaptureFailureKind.HOLD to CaptureRemedy.TEXT_MODEL, refused.kind to refused.remedy)
+        listOf(401, 403).forEach {
+            assertEquals(CaptureFailureKind.HOLD, serverTextFailure(TextServerException.Failed("HTTP $it", it)).kind, "HTTP $it")
+        }
+        listOf(408, 425, 429).forEach {
+            val busy = serverTextFailure(TextServerException.Failed("HTTP $it", it))
+            assertEquals(CaptureFailureKind.RETRY, busy.kind, "HTTP $it")
+            assertNull(busy.reason)
+        }
+        val tooLong = serverTextFailure(TextServerException.Failed("HTTP 413", 413))
+        assertEquals(CaptureFailureKind.FLAG to CaptureFailureReason.TEXT_TOO_LONG, tooLong.kind to tooLong.reason)
+        listOf(400, 422).forEach {
+            val rejected = serverTextFailure(TextServerException.Failed("HTTP $it", it))
+            assertEquals(CaptureFailureKind.FLAG to CaptureFailureReason.TEXT_REFUSED, rejected.kind to rejected.reason, "HTTP $it")
+        }
         assertEquals(CaptureFailureKind.RETRY, serverTextFailure(TextServerException.Failed("HTTP 503", 503)).kind)
         val malformed = serverTextFailure(TextServerException.Failed("not a chat completion"))
         assertEquals(CaptureFailureKind.RETRY, malformed.kind)
