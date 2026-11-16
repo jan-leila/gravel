@@ -1839,6 +1839,40 @@ which matters only while two Wi-Fi networks are connected at once. Server
 reach the server only while the network Android gives Gravel runs over
 something besides the VPN; on Android 9 and older, where a VPN may show
 nothing under it, every failure behind a VPN counts, with no signal too.
+The self-hosted text model server follows the same rule, with its own
+switch, and the same limits apply to the transcripts it is sent.
+
+## The Notebook setup guide asks for a phone text model with a text model server set up
+
+**Status: open; deferred from the text model server's first version.**
+
+The setup guide's text model page asks for a model downloaded to the
+phone before it goes on, whatever Where the Text Model Runs says, since
+it reads only what is installed. With Server Only chosen the downloaded
+model is never used. The guide can be finished with a download and the
+model deleted afterwards on Settings > AI > LLM.
+
+## A trusted certificate or a new token alone does not resume paused processing
+
+**Status: accepted for now.**
+
+A Notebook paused on the text model server (an untrusted certificate, a
+refused request) tries again when the server's URL, model, mode or
+mobile-data switch changes, or with the network for the network reasons,
+but not when only a certificate is trusted or a token saved in the
+dialog, since those live in the encrypted store and not in the settings
+the Notebook follows. Processing then resumes with the next recording, a
+network change, or Gravel coming back to the foreground.
+
+## A failing text model server is asked again for every note
+
+**Status: accepted; a text call is short and decided per call.**
+
+Unlike the transcription server, the text model server is not taken out
+of use after an error: in Server (with Local Fallback) each text call
+tries the server first and the phone after it fails, so a server that
+hangs costs each note up to the request's 5-minute limit before the
+phone answers.
 
 ## A failed text router delivery costs a new transcription
 

@@ -1,5 +1,7 @@
 package coredevices.util.transcription
 
+import com.anopticlabs.gravel.network.HostBoundToken
+import com.anopticlabs.gravel.network.ServerTrustStore
 import com.russhwolf.settings.Settings
 import coredevices.util.security.EncryptedStringSetting
 import coredevices.util.security.SecretCipher
@@ -185,7 +187,7 @@ fun formatFingerprint(sha256: ByteArray): String =
  * `host:port`, and (Gravel) the one `host:port` whose replies announced a
  * separate dictation lane.
  */
-class SelfHostedServerStore(private val settings: Settings, cipher: SecretCipher) {
+class SelfHostedServerStore(private val settings: Settings, cipher: SecretCipher) : ServerTrustStore {
     private companion object {
         const val UNBOUND_TOKEN_KEY = "stt_server_token"
         const val TOKEN_KEY = "stt_server_token_bound"
@@ -195,20 +197,14 @@ class SelfHostedServerStore(private val settings: Settings, cipher: SecretCipher
 
     private val unboundToken = EncryptedStringSetting(settings, cipher, UNBOUND_TOKEN_KEY)
 
-    // Gravel: the address, a line break, the token, as one value, so one read gives a token and whose it is.
-    private val boundToken = EncryptedStringSetting(settings, cipher, TOKEN_KEY)
+    private val boundToken = HostBoundToken(settings, cipher, TOKEN_KEY)
 
     /** Gravel: the token saved for [hostPort]; null for any other address. */
-    fun tokenFor(hostPort: String?): String? {
-        val saved = boundToken.get() ?: return null
-        val at = saved.indexOf('\n')
-        return if (hostPort != null && at > 0 && saved.substring(0, at) == hostPort) saved.substring(at + 1) else null
-    }
+    override fun tokenFor(hostPort: String?): String? = boundToken.tokenFor(hostPort)
 
     /** Gravel: saves [value] as the token of [hostPort], or removes the saved token without either; a token stored without an address goes too. */
-    fun setToken(hostPort: String?, value: String?) {
-        val token = value?.trim()?.takeIf { it.isNotBlank() }
-        boundToken.set(if (hostPort != null && token != null) "$hostPort\n$token" else null)
+    override fun setToken(hostPort: String?, value: String?) {
+        boundToken.set(hostPort, value)
         settings.remove(UNBOUND_TOKEN_KEY)
     }
 
@@ -222,7 +218,7 @@ class SelfHostedServerStore(private val settings: Settings, cipher: SecretCipher
         if (hostPort != null) {
             val token = unboundToken.get()?.trim() ?: return
             if (token.isNotEmpty()) {
-                boundToken.set("$hostPort\n$token")
+                boundToken.set(hostPort, token)
                 if (!settings.hasKey(TOKEN_KEY)) return
             }
         }
@@ -230,13 +226,13 @@ class SelfHostedServerStore(private val settings: Settings, cipher: SecretCipher
     }
 
     /** Gravel: the saved token with its address as stored (encrypted), so one that cannot be decrypted for a moment still reads the same; null when none is saved for an address. */
-    fun storedToken(): String? = settings.getStringOrNull(TOKEN_KEY)
+    override fun storedToken(): String? = boundToken.stored()
 
-    fun pinnedFingerprint(hostPort: String): String? = settings.getStringOrNull(PIN_PREFIX + hostPort)
+    override fun pinnedFingerprint(hostPort: String): String? = settings.getStringOrNull(PIN_PREFIX + hostPort)
 
-    fun trust(hostPort: String, fingerprint: String) = settings.putString(PIN_PREFIX + hostPort, fingerprint)
+    override fun trust(hostPort: String, fingerprint: String) = settings.putString(PIN_PREFIX + hostPort, fingerprint)
 
-    fun forget(hostPort: String) = settings.remove(PIN_PREFIX + hostPort)
+    override fun forget(hostPort: String) = settings.remove(PIN_PREFIX + hostPort)
 
     /** Gravel: whether the last successful reply came from [hostPort] and said dictation has a lane of its own there. */
     fun hasDictationLane(hostPort: String): Boolean = settings.getStringOrNull(LANE_KEY) == hostPort

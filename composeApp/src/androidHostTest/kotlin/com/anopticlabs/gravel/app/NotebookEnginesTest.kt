@@ -24,6 +24,7 @@ import com.anopticlabs.gravel.notebook.pipeline.SpeechCapture
 import com.anopticlabs.gravel.notebook.pipeline.SpeechRoute
 import com.anopticlabs.gravel.notebook.pipeline.SpeechSettingWatch
 import com.russhwolf.settings.MapSettings
+import com.anopticlabs.gravel.textserver.TextServerMode
 import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigFlow
 import coredevices.util.CoreConfigHolder
@@ -523,7 +524,7 @@ class NotebookEnginesTest {
 
     /** The value the Notebook's watch follows, on the app's own config holder. */
     @Test
-    fun theWatchedSpeechSettingChangesWithTheSpeechSettingsAndNoOthers() = runBlocking<Unit> {
+    fun theWatchedSettingChangesWithTheSpeechAndTextServerSettingsAndNoOthers() = runBlocking<Unit> {
         val holder = CoreConfigHolder(defaultValue = CoreConfig(), settings = MapSettings(), json = Json { ignoreUnknownKeys = true })
         var requests = 0
         val scope = CoroutineScope(coroutineContext + SupervisorJob())
@@ -539,6 +540,7 @@ class NotebookEnginesTest {
         assertEquals(3, after { it.copy(sttConfig = it.sttConfig.copy(serverOnMobileData = true)) })
         assertEquals(4, after { it.copy(sttConfig = it.sttConfig.copy(flakyNetworkMode = true)) })
         assertEquals(5, after { it.copy(sttConfig = it.sttConfig.copy(modelName = "whisper-base-en")) })
+        assertEquals(6, after { it.copy(textServerConfig = it.textServerConfig.copy(mode = TextServerMode.ServerOnly)) })
         scope.cancel()
     }
 
